@@ -1,12 +1,13 @@
-const loginHeader = <h1>Login</h1>
+const loginHeader = <h1 class="loginHeader">Login</h1>
+import './loginPage.css';
 
 function LoginPage() {
     return (
         <div>
             {loginHeader}
             <form>
-                <label htmlFor="username">Email Address: </label>
-                <input type="text" id="username" name="username" /> <br />
+                <label htmlFor="email">Email Address: </label>
+                <input type="email" id="email" name="email" /> <br />
                 <br /><label htmlFor="password">Password: </label>
                 <input type="password" id="password" name="password" /> <br />
                 <br /> <button type="submit">Login</button>

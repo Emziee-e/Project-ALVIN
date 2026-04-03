@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+.loginHeader {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 40px;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+}
+
+label {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 15px;
+    font-weight: normal;
+    color: black;
+}
+
+button {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 15px;
+    font-weight: normal;
+    color: black;
+    padding: 5px 10px;
+    border-radius: 5px;
+    border: 1px solid black;
+}
+
+input {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 15px;
+    font-weight: normal;
+    padding: 3px;
+    margin-top: 3px;
+    border-radius: 5px;
+    border: 1px solid black;
+}
