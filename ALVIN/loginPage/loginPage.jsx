@@ -5,8 +5,9 @@ function LoginPage() {
         <div className="loginContainer">
             <div className="logoSection">
                 <div className="logoPlaceholder">
-                    <span>Your Logo Here</span>
+                    <img src="src\assets\ALVIN_logo.png"/>
                 </div>
+                <h1 className="logoText">ALVIN</h1>
             </div>
             <div className="formSection">
                 <h1 className="loginHeader">Login</h1>
