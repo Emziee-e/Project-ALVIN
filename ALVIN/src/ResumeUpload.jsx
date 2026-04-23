@@ -119,7 +119,7 @@ export default function ResumeUpload() {
                 </div>
                 <div className="lg:col-span-4 hidden lg:flex justify-end">
                   <div className="inline-flex flex-col items-end">
-                    <span className="font-[Inter,sans-serif] text-[10px] text-[#862334] uppercase tracking-[0.3em] mb-2 font-bold">Neural Link Status</span>
+                    <span className="font-[Inter,sans-serif] text-[10px] text-[#862334] uppercase tracking-[0.3em] mb-2 font-bold">STATUS</span>
                     <div className="flex items-center gap-2">
                       <span className="h-1 w-12 bg-[#862334] block" />
                       <span className="font-[Space_Grotesk,sans-serif] text-2xl font-light italic text-black">READY_TO_BOOT</span>
@@ -137,7 +137,7 @@ export default function ResumeUpload() {
                     <div className="flex items-center justify-between mb-8">
                       <h3 className="font-[Space_Grotesk,sans-serif] text-xl font-bold flex items-center gap-2 text-black">
                         <Icon name="description" className="text-[#862334]" />
-                        Historical Context
+                        Upload Resume
                       </h3>
                       <span className="text-[10px] font-[Inter,sans-serif] text-[#4a4a4a] uppercase tracking-widest">Step 01 / 02</span>
                     </div>

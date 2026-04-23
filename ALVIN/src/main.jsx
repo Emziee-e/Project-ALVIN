@@ -4,9 +4,11 @@ import './index.css'
 import App from './App.jsx'
 import UserDashboard from './UserDashboard.jsx'
 import ResumeUpload from './ResumeUpload.jsx'
+import HardwareCheck from './HardwareCheck.jsx'
+import LiveSession from './LiveSession.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ResumeUpload />
+    <LiveSession />
   </StrictMode>,
 )
