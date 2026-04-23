@@ -119,7 +119,7 @@ export default function LiveSession() {
                 {/* REC Timer */}
                 <div className="absolute top-6 right-6 z-20">
                   <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-xl text-xs font-black text-white font-[Inter,sans-serif] tracking-widest">
-                    REC 00:00
+                    00:00
                   </div>
                 </div>
               </div>
