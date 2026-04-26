@@ -1,5 +1,6 @@
 import { useState } from "react";
-import Logo from './assets/alvin-logo.png';
+import Logo from '../src/assets/alvin-logo.png';
+
 
 // Tailwind requires these custom values — add to tailwind.config.js:
 // theme: { extend: { colors: { primary: '#862334', accent: '#ffb003' }, fontFamily: { grotesk: ['Space Grotesk', 'sans-serif'], manrope: ['Manrope', 'sans-serif'], inter: ['Inter', 'sans-serif'] } } }
@@ -30,7 +31,7 @@ const assets = [
   { name: "Design_Portfolio_CaseStudies.pdf",  modified: "Modified: Sep 28" },
 ];
 
-export default function UserDashboard() {
+export default function StaffDashboard() {
   const [activeNav, setActiveNav] = useState(0);
 
   return (
@@ -45,10 +46,15 @@ export default function UserDashboard() {
         rel="stylesheet"
       />
 
-      <div className="flex h-screen w-290 justify-center bg-white text-black font-[Manrope,sans-serif]">
+      <style> {`
+                html, body, #root { height: 100%; margin: 0; width: 100%; }
+            `}
+        </style>
+
+      <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Manrope,sans-serif]">
 
         {/* ── Sidebar ── */}
-        <aside className="fixed w-64 h-1 min-h-screen fixed left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex flex-col py-8 px-4 z-50">
+        <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
           <div className="mb-12 px-4">
@@ -93,27 +99,26 @@ export default function UserDashboard() {
         </aside>
 
         {/* ── Main ── */}
-        <main className="flex-1 ml-24 w-screen pb-50 bg-white">
+        <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
 
           {/* Top Header */}
-          <header className="fixed top-0 left-64 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 py-4 border-b border-[#e5e5e5]">
+          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             {/* Search */}
-            <div className="relative">
-              <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#862334] text-xl" />
+            <div className="relative w-40 sm:w-48 md:w-56 lg:w-64 flex-shrink-0">
+              <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#862334] text-lg" />
               <input
                 type="text"
-                placeholder="Search insights..."
-                className="bg-[#f9f9f9] border border-[#e5e5e5] text-black pl-10 pr-4 py-2 w-64 text-sm font-[Inter,sans-serif] rounded-[2px] outline-none focus:shadow-[0_0_0_2px_#862334] transition-shadow"
+                placeholder="Search..."
+                className="w-full bg-[#f9f9f9] border border-[#e5e5e5] text-black pl-10 pr-4 py-2 text-xs sm:text-sm font-[Inter,sans-serif] rounded-[2px] outline-none focus:shadow-[0_0_0_2px_#862334] transition-shadow"
               />
             </div>
 
             {/* Right actions */}
-            <div className="flex items-center gap-6">
-              <button className="bg-transparent border-0 cursor-pointer p-2 text-[#4a4a4a] hover:text-[#862334] transition-colors rounded">
+            <div className="flex items-center gap-3 sm:gap-4 md:gap-6 flex-shrink-0">
+              <button className="hidden sm:flex bg-transparent border-0 cursor-pointer p-2 text-[#4a4a4a] hover:text-[#862334] transition-colors rounded">
                 <Icon name="notifications" />
               </button>
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5]">
-                {/* Replace src with real avatar */}
+              <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0">
                 <div className="w-full h-full bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
                   VN
                 </div>
@@ -122,26 +127,26 @@ export default function UserDashboard() {
           </header>
 
           {/* Page inner */}
-          <div className="flex-1 pt-24 pb-15 px-12 w-full mx-auto">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full">
 
             {/* ── Hero ── */}
-            <section className="mt-8 mb-16 grid grid-cols-[8fr_4fr] gap-12 items-end max-[1100px]:grid-cols-1">
+            <section className="mb-8 md:mb-12 grid grid-cols-1 lg:grid-cols-[8fr_4fr] gap-6 md:gap-12 items-start lg:items-end">
               <div className="text-left">
-                <span className="text-[#862334] font-[Inter,sans-serif] uppercase tracking-[0.3em] text-[10px] font-bold block mb-4">
+                <span className="text-[#862334] font-[Inter,sans-serif] uppercase tracking-[0.3em] text-[9px] sm:text-[10px] font-bold block mb-2 sm:mb-3">
                   Version 4.2.0
                 </span>
-                <h2 className="font-[Space_Grotesk,sans-serif] text-[64px] font-bold tracking-[-0.04em] text-black leading-none mb-6 max-[700px]:text-[36px]">
+                <h2 className="font-[Space_Grotesk,sans-serif] text-xl sm:text-3xl md:text-5xl lg:text-6xl font-bold tracking-[-0.04em] text-black leading-tight mb-3 md:mb-4">
                   Welcome back, <span className="text-[#862334]">Vin!</span>
                 </h2>
-                <p className="text-[#4a4a4a] font-[Manrope,sans-serif] text-xl max-w-[480px] leading-relaxed">
+                <p className="text-[#4a4a4a] font-[Manrope,sans-serif] text-xs sm:text-sm md:text-base lg:text-lg leading-relaxed max-w-2xl">
                   Your interview performance indicates a{" "}
                   <span className="text-[#862334] font-bold">3% improvement</span> since your last session.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-4">
-                <button className="group w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Space_Grotesk,sans-serif] font-bold uppercase tracking-[0.1em] text-sm rounded-[2px] flex items-center justify-between px-8 py-5 transition-all duration-200">
-                  START NEW INTERVIEW
+              <div className="flex flex-col gap-2 w-full lg:w-auto">
+                <button className="group w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Space_Grotesk,sans-serif] font-bold uppercase tracking-[0.1em] text-xs sm:text-sm rounded-[2px] flex items-center justify-center sm:justify-between px-4 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 lg:py-5 transition-all duration-200 gap-2">
+                  <span>START NEW INTERVIEW</span>
                   <Icon name="arrow_forward" className="transition-transform group-hover:translate-x-1" />
                 </button>
               </div>

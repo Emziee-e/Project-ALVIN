@@ -28,11 +28,7 @@ export default function HardwareCheck() {
 
       <style>{`
         .mic-indicator-active {
-          animation: pulse-width 1.5s ease-in-out infinite;
-        }
-        @keyframes pulse-width {
-          0%, 100% { width: 40%; }
-          50% { width: 85%; }
+          width: 60% !important;
         }
       `}</style>
 
