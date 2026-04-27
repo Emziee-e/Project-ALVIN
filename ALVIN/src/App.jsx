@@ -1,10 +1,12 @@
 import React from 'react'
-import LoginPage from '../loginPage/loginPage'
+import StaffDashboard from '../Staff Dashboard/staffDashboard'
+import './App.css'
+
 
 function App() {
   return (
     <>
-      <LoginPage />
+      <StaffDashboard />
     </>
   )
 }
