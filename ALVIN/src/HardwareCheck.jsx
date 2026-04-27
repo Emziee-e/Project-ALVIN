@@ -12,7 +12,7 @@ const Icon = ({ name, className = "" }) => (
 
 const navItems = [
   { icon: "dashboard", label: "Dashboard" },
-  { icon: "mic_external_on", label: "Interviews" },
+  { icon: "mic_external_on", label: "Interview History" },
   { icon: "settings", label: "Settings" },
 ];
 
@@ -91,9 +91,6 @@ export default function HardwareCheck() {
               <span className="text-[#862334] font-bold opacity-100">Pre-Interview Lobby</span>
             </div>
             <div className="flex items-center gap-6">
-              <button className="bg-transparent border-0 cursor-pointer p-2 text-[#4a4a4a] hover:text-[#862334] transition-colors rounded">
-                <Icon name="notifications" />
-              </button>
               <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
                 VN
               </div>

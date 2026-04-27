@@ -16,7 +16,7 @@ const Icon = ({ name, filled = false, className = "" }) => (
 
 const navItems = [
   { icon: "dashboard", label: "Dashboard" },
-  { icon: "mic_external_on", label: "Interviews" },
+  { icon: "mic_external_on", label: "Interview History" },
   { icon: "settings", label: "Settings" },
 ];
 
@@ -88,9 +88,6 @@ export default function InterviewResults() {
                 <Icon name="arrow_back" className="text-sm" />
                 Go back to dashboard
               </a>
-              <button className="bg-transparent border-0 cursor-pointer p-2 text-[#4a4a4a] hover:text-[#862334] transition-colors rounded">
-                <Icon name="notifications" />
-              </button>
               <div className="w-8 h-8 rounded-full border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
                 VN
               </div>

@@ -7,11 +7,12 @@ import HardwareCheck from './HardwareCheck.jsx'
 import LiveSession from './LiveSession.jsx'
 import InterviewResults from './InterviewResults.jsx'
 import UserSettings from './UserSettings.jsx'
+import InterviewHistory from './InterviewHistory.jsx'
 
 function App() {
   return (
     <>
-      <UserSettings/>
+      <InterviewHistory/>
     </>
   )
 }

@@ -16,7 +16,7 @@ const Icon = ({ name, className = "" }) => (
 
 const navItems = [
   { icon: "dashboard", label: "Dashboard" },
-  { icon: "mic_external_on", label: "Interviews" },
+  { icon: "mic_external_on", label: "Interview History" },
   { icon: "settings", label: "Settings" },
 ];
 
@@ -103,21 +103,11 @@ export default function StaffDashboard() {
 
           {/* Top Header */}
           <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
-            {/* Search */}
             <div className="relative w-40 sm:w-48 md:w-56 lg:w-64 flex-shrink-0">
-              <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#862334] text-lg" />
-              <input
-                type="text"
-                placeholder="Search..."
-                className="w-full bg-[#f9f9f9] border border-[#e5e5e5] text-black pl-10 pr-4 py-2 text-xs sm:text-sm font-[Inter,sans-serif] rounded-[2px] outline-none focus:shadow-[0_0_0_2px_#862334] transition-shadow"
-              />
             </div>
 
             {/* Right actions */}
             <div className="flex items-center gap-3 sm:gap-4 md:gap-6 flex-shrink-0">
-              <button className="hidden sm:flex bg-transparent border-0 cursor-pointer p-2 text-[#4a4a4a] hover:text-[#862334] transition-colors rounded">
-                <Icon name="notifications" />
-              </button>
               <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0">
                 <div className="w-full h-full bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
                   VN

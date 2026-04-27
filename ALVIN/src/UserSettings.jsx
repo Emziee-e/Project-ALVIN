@@ -16,7 +16,7 @@ const Icon = ({ name, filled = false, className = "" }) => (
 
 const navItems = [
   { icon: "dashboard",      label: "Dashboard" },
-  { icon: "mic_external_on", label: "Interviews" },
+  { icon: "mic_external_on", label: "Interview History" },
   { icon: "settings",       label: "Settings" },
 ];
 
