@@ -18,19 +18,19 @@ const transcript = [
   {
     speaker: "ALVIN",
     time: "14:02:10",
-    text: "That's a fascinating perspective on neural architectures. How do you see these editorial flows evolving as the context window expands to millions of tokens?",
+    text: "Can you briefly introduce yourself and walk me through your background?",
     isAlvin: true,
   },
   {
     speaker: "YOU",
     time: "14:02:45",
-    text: "I believe the bottleneck isn't the window size anymore, but the retrieval precision. We need to focus on how we filter noise before it ever hits the inference engine.",
+    text: "I’m a full-stack developer with a strong focus on backend systems and scalable architectures. I recently worked at DataCore Solutions, where I contributed to building APIs that handled high-volume requests. I’ve worked with technologies like Node.js, PostgreSQL, and Docker, and I’m particularly interested in designing efficient systems that can scale reliably.",
     isAlvin: false,
   },
   {
     speaker: "ALVIN",
     time: "14:03:12",
-    text: "Precision-first architecture. It makes sense. If we consider the cost of compute at scale, filtering at the ingestion layer is the only sustainable path. Could you elaborate on your proposed filtering mechanism?",
+    text: "Tell me about yourself and what makes you a good fit for this role?",
     isAlvin: true,
   },
 ];

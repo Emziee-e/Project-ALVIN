@@ -108,20 +108,13 @@ export default function ResumeUpload() {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-16 items-end mt-8">
                 <div className="lg:col-span-8">
                   <h2 className="font-[Space_Grotesk,sans-serif] text-5xl md:text-7xl font-bold text-black tracking-tight mb-6 mx-auto pr-15">
-                    Catalyze Your <span className="text-[#862334]"> Next Phase.</span>
+                    Get Started!
                   </h2>
                   <p className="font-[Manrope,sans-serif] text-lg text-[#4a4a4a] max-w-xl leading-relaxed">
                     This information enables the system to generate more relevant and realistic interview questions tailored to your experience.
                   </p>
                 </div>
                 <div className="lg:col-span-4 hidden lg:flex justify-end">
-                  <div className="inline-flex flex-col items-end">
-                    <span className="font-[Inter,sans-serif] text-[10px] text-[#862334] uppercase tracking-[0.3em] mb-2 font-bold">STATUS</span>
-                    <div className="flex items-center gap-2">
-                      <span className="h-1 w-12 bg-[#862334] block" />
-                      <span className="font-[Space_Grotesk,sans-serif] text-2xl font-light italic text-black">READY_TO_BOOT</span>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -226,7 +219,6 @@ export default function ResumeUpload() {
                   {/* CTA */}
                   <section className="bg-[#f9f9f9] border border-[#e5e5e5] p-8 rounded-[4px] relative overflow-hidden">
                     <div className="relative z-10">
-                      <p className="font-[Inter,sans-serif] text-[10px] text-[#4a4a4a] uppercase tracking-widest mb-6 font-bold">Finalize Protocol</p>
                       <button className="w-full py-5 bg-[#862334] hover:bg-[#ffb003] text-white font-[Space_Grotesk,sans-serif] font-black text-lg tracking-tight hover:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 rounded-[2px] uppercase">
                         Initialize Interview
                       </button>
