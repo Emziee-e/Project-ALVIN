@@ -1,3 +1,19 @@
+
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('./fonts/Inter-VariableFont_opsz,wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -11,11 +27,7 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
+  font: 18px/145% "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
   letter-spacing: 0.18px;
   color-scheme: light dark;
   color: var(--text);
@@ -28,6 +40,11 @@
   @media (max-width: 1024px) {
     font-size: 16px;
   }
+}
+
+@theme {
+  --font-geist: "Geist", sans-serif;
+  --font-inter: "Inter", sans-serif;
 }
 
 body {
@@ -47,7 +64,7 @@ body {
 
 h1,
 h2 {
-  font-family: var(--heading);
+  font-family: "Geist", sans-serif;
   font-weight: 500;
   color: var(--text-h);
 }
@@ -76,7 +93,7 @@ p {
 
 code,
 .counter {
-  font-family: var(--mono);
+  font-family: ui-monospace, Consolas, monospace;
   display: inline-flex;
   border-radius: 4px;
   color: var(--text-h);

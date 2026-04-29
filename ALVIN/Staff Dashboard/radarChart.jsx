@@ -32,10 +32,10 @@ const data = [
 // #endregion
 const RadarChartComponent = () => {
   return (
-    <div style={{ width: '100%', height: '100%', minHeight: '300px', maxHeight: '400px', aspectRatio: '1/1' }}>
+    <div className="w-full aspect-square min-h-[250px] max-h-[400px]">
       <ResponsiveContainer width="100%" height="100%">
         <RadarChart
-          outerRadius="70%"
+          outerRadius="60%"
           data={data}
           margin={{
             top: 20,
