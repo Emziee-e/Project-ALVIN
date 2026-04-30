@@ -8,11 +8,12 @@ import LiveSession from './LiveSession.jsx'
 import InterviewResults from './InterviewResults.jsx'
 import UserSettings from './UserSettings.jsx'
 import InterviewHistory from './InterviewHistory.jsx'
+import SystemReport from './SystemReport.jsx'
 
 function App() {
   return (
     <>
-      <InterviewHistory/>
+      <SystemReport/>
     </>
   )
 }
