@@ -10,11 +10,12 @@ import UserSettings from './UserSettings.jsx'
 import InterviewHistory from './InterviewHistory.jsx'
 import SystemReport from './SystemReport.jsx'
 import UserManagement from './UserManagement.jsx'
+import AvatarManagement from './AvatarManagement.jsx'
 
 function App() {
   return (
     <>
-      <UserManagement/>
+      <AvatarManagement/>
     </>
   )
 }
