@@ -1,0 +1,423 @@
+@font-face {
+    font-family: Geist;
+    src: url("../src/assets/fonts/Geist-Bold.ttf");
+}
+
+@font-face {
+    font-family: Inter;
+    src: url("../src/assets/fonts/Inter_28pt-Regular.ttf");
+}
+
+@import "tailwindcss";
+
+@import "tw-animate-css";
+
+@import "shadcn/tailwind.css";
+
+@import "@fontsource-variable/geist";
+
+@theme {
+    --font-Geist: Geist;
+    --font-Inter: Inter;
+
+    --color-maroon: #862334;
+    --color-ub-yellow: #ffb003;
+}
+
+@layer base {
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
+  }
+}
+
+/*Gradient Text Animation*/
+@keyframes gradient-move {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.animate-gradient-text {
+    background-size: 200% auto;
+    animation: gradient-move 4s linear infinite;
+}
+
+/*Loader*/
+@keyframes spin-horizontal {
+    0% {
+        transform: rotateY(0deg);
+    }
+    100% {
+        transform: rotateY(360deg);
+    }
+}
+
+.animate-spin-horizontal {
+    animation: spin-horizontal 2s linear infinite;
+    perspective: 1000px;
+}
+
+.animate-slide-up {
+    animation: slide-up 0.8s ease-in-out forwards;
+}
+
+.bg-grid-pattern {
+    background-image:
+        linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* Fade In Up Animation */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 1.4s ease-out forwards;
+}
+
+/* Fade Out Down Animation - Exit Animation for Features */
+@keyframes fadeOutDown {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+}
+
+.animate-fade-out-down {
+    animation: fadeOutDown 1.4s ease-in forwards;
+}
+
+/* Fade In Down Animation - Hero Section */
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-down {
+    animation: fadeInDown 1.5s ease-out forwards;
+}
+
+/* Slide In Left Animation - How It Works */
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-40px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.animate-slide-in-left {
+    animation: slideInLeft 1.4s ease-out forwards;
+}
+
+/* Scale & Rotate In Animation - Team Section */
+@keyframes scaleRotateIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8) rotateY(10deg);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) rotateY(0deg);
+    }
+}
+
+.animate-scale-rotate-in {
+    animation: scaleRotateIn 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Fade Out Up Animation - Exit Animation for Hero */
+@keyframes fadeOutUp {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+}
+
+.animate-fade-out-up {
+    animation: fadeOutUp 1.4s ease-in forwards;
+}
+
+/* Slide Out Right Animation - Exit Animation for How It Works */
+@keyframes slideOutRight {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(40px);
+    }
+}
+
+.animate-slide-out-right {
+    animation: slideOutRight 1.4s ease-in forwards;
+}
+
+/* Scale & Rotate Out Animation - Exit Animation for Team */
+@keyframes scaleRotateOut {
+    from {
+        opacity: 1;
+        transform: scale(1) rotateY(0deg);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.8) rotateY(-10deg);
+    }
+}
+
+.animate-scale-rotate-out {
+    animation: scaleRotateOut 1.4s ease-in forwards;
+}
+
+.opacity-0 {
+    opacity: 0;
+}
+
+/* Stack Animation - Top to Bottom (Login Pages) */
+@keyframes stackInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-40px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-stack-in {
+    animation: stackInDown 0.8s ease-out forwards;
+}
+
+/* Stack Out Animation - Bottom to Top (Exit) */
+@keyframes stackOutUp {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-40px);
+    }
+}
+
+.animate-stack-out {
+    animation: stackOutUp 0.8s ease-in forwards;
+}
+
+/* Fade In Up + Scale Animation (Login Forms) */
+@keyframes fadeInUpScale {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-fade-in-up-scale {
+    animation: fadeInUpScale 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Smooth Fade In Up Animation (Login Forms - No Scale) */
+@keyframes smoothFadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(25px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-smooth-fade-in-up {
+    animation: smoothFadeInUp 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* Smooth Fade Out Down Animation (Exit) */
+@keyframes smoothFadeOutDown {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(25px);
+    }
+}
+
+.animate-smooth-fade-out-down {
+    animation: smoothFadeOutDown 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* Fade Out Down + Scale Animation (Login Forms Exit) */
+@keyframes fadeOutDownScale {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+}
+
+.animate-fade-out-down-scale {
+    animation: fadeOutDownScale 1s ease-in forwards;
+}
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    --background: white;
+    --foreground: black;
+    --card: white;
+    --card-foreground: black;
+    --popover: white;
+    --popover-foreground: black;
+    --primary: #862334;
+    --primary-foreground: white;
+    --secondary: #f4f4f5;
+    --secondary-foreground: #18181b;
+    --muted: #f4f4f5;
+    --muted-foreground: #71717a;
+    --accent: #f4f4f5;
+    --accent-foreground: #18181b;
+    --destructive: #ef4444;
+    --border: #e4e4e7;
+    --input: #e4e4e7;
+    --ring: #18181b;
+    --chart-1: #f97316;
+    --chart-2: #06b6d4;
+    --chart-3: #3f3f46;
+    --chart-4: #fbbf24;
+    --chart-5: #ec4899;
+    --radius: 0.625rem;
+    --sidebar: #f8fafc;
+    --sidebar-foreground: #334155;
+    --sidebar-primary: #1e293b;
+    --sidebar-primary-foreground: white;
+    --sidebar-accent: #f1f5f9;
+    --sidebar-accent-foreground: #1e293b;
+    --sidebar-border: #e2e8f0;
+    --sidebar-ring: #3b82f6;
+}
+
+.dark {
+    --background: #09090b;
+    --foreground: white;
+    --card: #09090b;
+    --card-foreground: white;
+    --popover: #09090b;
+    --popover-foreground: white;
+    --primary: white;
+    --primary-foreground: #18181b;
+    --secondary: #27272a;
+    --secondary-foreground: white;
+    --muted: #27272a;
+    --muted-foreground: #a1a1aa;
+    --accent: #27272a;
+    --accent-foreground: white;
+    --destructive: #7f1d1d;
+    --border: #27272a;
+    --input: #27272a;
+    --ring: #d4d4d8;
+    --chart-1: #2563eb;
+    --chart-2: #2dd4bf;
+    --chart-3: #fbbf24;
+    --chart-4: #a855f7;
+    --chart-5: #f43f5e;
+    --sidebar: #1e293b;
+    --sidebar-foreground: #f1f5f9;
+    --sidebar-primary: #3b82f6;
+    --sidebar-primary-foreground: white;
+    --sidebar-accent: #1e293b;
+    --sidebar-accent-foreground: #f1f5f9;
+    --sidebar-border: #334155;
+    --sidebar-ring: #3b82f6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    }
+}
