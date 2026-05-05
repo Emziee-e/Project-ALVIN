@@ -145,7 +145,7 @@ export default function LiveSession() {
                     </div>
                   )}
 
-                  {/* Status Indicators overlay */}
+                  {/*Status Indicators overlay*/}
                   <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/60 to-transparent flex items-center justify-between">
                     <div className="px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[10px] text-white font-bold font-[Inter,sans-serif] flex items-center gap-2 border border-white/10">
                       <div className={`w-1.5 h-1.5 rounded-full ${camActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`} />
