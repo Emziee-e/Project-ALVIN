@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { LayoutDashboard, Mic, Settings, Play, Square } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import SignOutModal from '../../Components/SignOutModal';
+import { supabase } from '../../lib/supabaseClient';
 
 const Icon = ({ name, filled = false, className = "" }) => (
   <span
@@ -27,6 +29,13 @@ const navItems = [
 export default function UserSettings() {
   const [activeNav, setActiveNav]     = useState(2); // Settings active
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
   const [twoFactor, setTwoFactor]     = useState(true);
   const [showPass, setShowPass]       = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
@@ -240,11 +249,21 @@ export default function UserSettings() {
           </nav>
 
           <div className="mt-auto">
-            <button className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200">
+            <button
+              onClick={() => setIsSignOutModalOpen(true)}
+              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
+            >
               Sign Out
             </button>
           </div>
         </aside>
+
+        {/* Modal */}
+        <SignOutModal
+          isOpen={isSignOutModalOpen}
+          onClose={() => setIsSignOutModalOpen(false)}
+          onConfirm={handleSignOut}
+        />
 
         {/* ── Main ── */}
         <main className="flex-1 md:ml-60 lg:ml-64 pb-24 sm:pb-20 md:pb-0 bg-white w-full min-h-screen">
@@ -253,7 +272,6 @@ export default function UserSettings() {
           <header className="sticky top-0 z-[100] bg-white/90 backdrop-blur-md flex justify-between items-center px-3 sm:px-4 md:px-8 py-3 sm:py-4 border-b border-[#e5e5e5] gap-2 sm:gap-4">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-sm sm:text-base md:text-lg text-[#862334] uppercase tracking-tight truncate">ALVIN</span>
-              <span className="text-[#862334] font-bold pt-2 ">Settings</span>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4 md:gap-6 flex-shrink-0">

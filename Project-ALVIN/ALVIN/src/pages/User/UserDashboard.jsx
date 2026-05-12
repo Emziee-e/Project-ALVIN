@@ -2,6 +2,8 @@ import { useState } from "react";
 import { LayoutDashboard, Mic, Settings, ArrowRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
+import SignOutModal from '../../Components/SignOutModal';
+import { supabase } from "../../lib/supabaseClient";
 
 
 const navItems = [
@@ -23,7 +25,18 @@ const assets = [
 
 export default function StaffDashboard() {
   const [activeNav, setActiveNav] = useState(0);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      navigate('/login');
+    } catch (error) {
+      console.error('Error signing out:', error.message);
+    }
+  };
 
   return (
     <>
@@ -94,7 +107,10 @@ export default function StaffDashboard() {
           </nav>
 
           <div className="mt-auto">
-            <button className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200">
+            <button
+              onClick={() => setIsSignOutModalOpen(true)}
+              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
+            >
               Sign Out
             </button>
           </div>
@@ -195,9 +211,9 @@ export default function StaffDashboard() {
               </div>
             </section>
 
-            {/* ── Interview History ── */}
-            <div className="flex justify-center items-center">
-              <div className="w-full max-w-[1100px]">
+            {/* ── Interview History & Staff Comment ── */}
+            <div className="flex justify-center items-start gap-8">
+              <div className="flex-1">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="font-[Geist] text-2xl font-bold uppercase tracking-[-0.02em] text-black">
                     Interview History
@@ -234,6 +250,23 @@ export default function StaffDashboard() {
                   </div>
                 ))}
               </div>
+
+              {/* Staff Comment Section */}
+              <div className="w-80 flex-shrink-0">
+                <h3 className="font-[Geist] text-2xl font-bold uppercase tracking-[-0.02em] text-black mb-8">
+                  Staff Comment
+                </h3>
+
+                <div className="p-6 bg-[#f9f9f9] border border-[#e5e5e5] rounded-[2px] hover:border-[#862334] transition-colors h-fit">
+                  <div className="flex gap-3 mb-4">
+                    <div className="w-3 h-3 rounded-full bg-[#862334] flex-shrink-0 mt-1" />
+                    <h4 className="font-[Space_Grotesk,sans-serif] font-bold text-sm text-black">General Performance Feedback</h4>
+                  </div>
+                  <p className="font-[Inter] text-xs text-[#4a4a4a] leading-relaxed">
+                    Your overall performance demonstrates consistent improvement with an 82% average accuracy across all sessions. You excel in communication and eye contact, which are critical competencies. Focus on reducing filler words and maintaining a steady pace when explaining complex topics to further strengthen your interview presence.
+                  </p>
+                </div>
+              </div>
             </div>
 
           </div>
@@ -242,6 +275,12 @@ export default function StaffDashboard() {
         {/* Decorative glow */}
         <div className="fixed top-0 right-0 w-[60vw] h-[614px] pointer-events-none -z-10 opacity-10"
           style={{ background: "radial-gradient(ellipse at top right, rgba(134,35,52,0.15) 0%, transparent 70%)" }}
+        />
+
+        <SignOutModal
+          isOpen={isSignOutModalOpen}
+          onClose={() => setIsSignOutModalOpen(false)}
+          onConfirm={handleSignOut}
         />
       </div>
     </>

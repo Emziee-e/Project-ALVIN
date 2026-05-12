@@ -1,24 +1,46 @@
 import { useState } from "react";
-import {LayoutDashboard,ChevronRight,FileText,UploadCloud,Target,Briefcase} from 'lucide-react';
+import {MessagesSquare,ChevronRight,FileText,UploadCloud,Target,Briefcase,AlertCircle} from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
+import SignOutModal from '../../Components/SignOutModal';
+import { supabase } from '../../lib/supabaseClient';
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard" },
+  { icon: MessagesSquare, label: "Interview Setup" },
 ];
 
 export default function ResumeUpload() {
   const [activeNav, setActiveNav] = useState(0);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
   const [role, setRole] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState(null);
+  const [error, setError] = useState("");
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
 
   const handleFileDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
+    setError("");
     const file = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
-    if (file && file.type === "application/pdf") setFileName(file.name);
+    if (file && file.type === "application/pdf") {
+      setFileName(file.name);
+    } else if (file) {
+      setError("Please upload a PDF file.");
+    }
+  };
+
+  const handleInitialize = () => {
+    if (!fileName) {
+      setError("Please upload your resume before proceeding to the interview.");
+      return;
+    }
+    navigate('/user/hardware-check');
   };
 
   return (
@@ -44,40 +66,19 @@ export default function ResumeUpload() {
            <nav className="flex-1">
              <ul className="flex flex-col gap-1 list-none">
                {navItems.map((item, i) => {
-                 const isDashboard = i === 0;
-                 const isInterviews = i === 1;
-                 const isSettings = i === 2;
-                 const navLink = isDashboard ? '/user/dashboard' : isInterviews ? '/user/interviews' : isSettings ? '/user/settings' : '#';
-
                  return (
                    <li key={item.label}
                      className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
                    >
-                     {isDashboard || isInterviews || isSettings ? (
-                       <Link
-                         to={navLink}
-                         onClick={(e) => { setActiveNav(i); }}
-                         className={`flex items-center gap-4 px-4 py-3 no-underline transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
-                           ${activeNav === i
-                             ? "text-[#862334]"
-                             : "text-[#4a4a4a] hover:text-[#862334] hover:bg-[#f0f0f0]"}`}
-                       >
-                         <item.icon size={20} />
-                         <span>{item.label}</span>
-                       </Link>
-                     ) : (
-                       <a
-                         href="#"
-                         onClick={e => { e.preventDefault(); setActiveNav(i); }}
-                         className={`flex items-center gap-4 px-4 py-3 no-underline transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
-                           ${activeNav === i
-                             ? "text-[#862334]"
-                             : "text-[#4a4a4a] hover:text-[#862334] hover:bg-[#f0f0f0]"}`}
-                       >
-                         <item.icon size={20} />
-                         <span>{item.label}</span>
-                       </a>
-                     )}
+                     <div
+                       className={`flex items-center gap-4 px-4 py-3 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
+                         ${activeNav === i
+                           ? "text-[#862334]"
+                           : "text-[#4a4a4a]"}`}
+                     >
+                       <item.icon size={20} />
+                       <span>{item.label}</span>
+                     </div>
                    </li>
                  );
                })}
@@ -85,11 +86,21 @@ export default function ResumeUpload() {
            </nav>
 
            <div className="mt-auto">
-             <button className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Space_Grotesk,sans-serif] font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200">
+             <button
+               onClick={() => setIsSignOutModalOpen(true)}
+               className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
+             >
                Sign Out
              </button>
            </div>
          </aside>
+
+         {/* Modal */}
+         <SignOutModal
+           isOpen={isSignOutModalOpen}
+           onClose={() => setIsSignOutModalOpen(false)}
+           onConfirm={handleSignOut}
+         />
 
         {/* ── Main ── */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
@@ -97,9 +108,9 @@ export default function ResumeUpload() {
           {/* Top Header */}
           <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-60">
-              <span>Dashboard</span>
+              <Link to="/user/dashboard">Dashboard</Link>
               <ChevronRight size={14} />
-              <span className="text-[#862334] font-bold opacity-100">Session Setup</span>
+              <span className="text-[#862334] font-bold opacity-100">Interview Setup</span>
             </div>
             <div className="flex items-center gap-6">
               <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
@@ -217,8 +228,16 @@ export default function ResumeUpload() {
                   {/* CTA */}
                   <section className="bg-[#f9f9f9] border border-[#e5e5e5] p-6 md:p-8 rounded-[4px] relative overflow-hidden">
                     <div className="relative z-10">
+                      {error && (
+                        <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 rounded flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                          <AlertCircle size={16} className="text-red-500 shrink-0" />
+                          <p className="text-[10px] font-Inter font-bold text-red-700 uppercase tracking-tight leading-tight">
+                            {error}
+                          </p>
+                        </div>
+                      )}
                       <button
-                        onClick={() => navigate('/user/hardware-check')}
+                        onClick={handleInitialize}
                         className="w-full py-5 bg-maroon hover:bg-[#ffb003] text-white font-Geist font-black text-lg tracking-tight hover:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 rounded-[2px] uppercase"
                       >
                         Initialize Interview

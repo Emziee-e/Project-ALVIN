@@ -5,6 +5,9 @@ import StudentLineChart from "./StudentLineChart";
 import RadarChartComponent from "./RadarChart";
 import Leaderboard from "./LeaderBoard";
 import { LayoutDashboard, Settings } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import SignOutModal from "../../Components/SignOutModal";
+import { supabase } from "../../lib/supabaseClient";
 
 const Icon = ({ name, className = "" }) => (
   <span
@@ -48,6 +51,13 @@ const aiSummary = {
 
 export default function StaffDashboard() {
   const [activeNav, setActiveNav] = useState(0);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
 
   return (
     <>
@@ -98,11 +108,21 @@ export default function StaffDashboard() {
 
           {/* Sign Out CTA */}
           <div className="mt-auto">
-            <button className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-widest text-xs rounded-xs flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200">
+            <button
+              onClick={() => setIsSignOutModalOpen(true)}
+              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-widest text-xs rounded-xs flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
+            >
               Sign Out
             </button>
           </div>
         </aside>
+
+        {/* Modal */}
+        <SignOutModal
+          isOpen={isSignOutModalOpen}
+          onClose={() => setIsSignOutModalOpen(false)}
+          onConfirm={handleSignOut}
+        />
 
         {/*── Main ──*/}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">

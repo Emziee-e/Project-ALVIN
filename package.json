@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.3",
     "aos": "^2.3.4",
     "framer-motion": "^12.38.0",
     "react-router-dom": "^7.14.2",
