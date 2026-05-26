@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 
-function Header({ onOpenModal }) {
+function Header() {
+  const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -54,7 +56,7 @@ function Header({ onOpenModal }) {
         {/* Right: Action Buttons (Desktop) */}
         <div className="hidden md:flex items-center space-x-8">
           <button
-            onClick={onOpenModal}
+            onClick={() => navigate('/login/student')}
             className="bg-[#962838] text-white px-6 py-2.5 rounded-full font-bold hover:bg-ub-yellow transition-shadow shadow-sm"
           >
             Get Started
@@ -89,7 +91,7 @@ function Header({ onOpenModal }) {
           ))}
           <button
             onClick={() => {
-              onOpenModal();
+              navigate('/login/student');
               setIsMobileMenuOpen(false);
             }}
             className="w-full bg-[#962838] text-white px-6 py-3 rounded-full font-bold hover:bg-[#7d212e] transition-colors shadow-sm"
@@ -103,4 +105,3 @@ function Header({ onOpenModal }) {
 }
 
 export default Header;
-

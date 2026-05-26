@@ -49,7 +49,7 @@ const UserLogin = () => {
                     <div className="w-20 h-20 flex items-center justify-center mb-1">
                         <img src="../images/Alvin-logo.png" alt="Logo" className="w-15 h-15" />
                     </div>
-                    <h1 className="font-Geist text-2xl font-bold text-gray-900">Student Sign in</h1>
+                    <h1 className="font-Geist text-2xl font-bold text-gray-900"> Sign in</h1>
                     <p className="text-gray-500 mt-1 text-sm">Access your account</p>
                 </div>
 

@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Logo from '/images/Alvin-logo.png';
 import OverallStats from "./OverallStats";
 import StudentLineChart from "./StudentLineChart";
 import RadarChartComponent from "./RadarChart";
 import Leaderboard from "./LeaderBoard";
 import { LayoutDashboard, Settings } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -19,8 +19,8 @@ const Icon = ({ name, className = "" }) => (
 );
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard" },
-  { icon: Settings, label: "Settings" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/staff/dashboard" },
+  { icon: Settings, label: "Settings", path: "/staff/settings" },
 ];
 
 const students = [
@@ -50,9 +50,19 @@ const aiSummary = {
 };
 
 export default function StaffDashboard() {
-  const [activeNav, setActiveNav] = useState(0);
+  const location = useLocation();
+  const [activeNav, setActiveNav] = useState(
+    navItems.findIndex(item => item.path === location.pathname) !== -1
+      ? navItems.findIndex(item => item.path === location.pathname)
+      : 0
+  );
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const index = navItems.findIndex(item => item.path === location.pathname);
+    if (index !== -1) setActiveNav(index);
+  }, [location.pathname]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -77,7 +87,7 @@ export default function StaffDashboard() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
+          <div className="mb-4 px-4 flex flex-col items-center">
             <img src={Logo} alt="Alvin logo" className=" mb-[-10px] h-24" />
             <div className=" text-center text-[#862334] text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
               ALVIN
@@ -85,22 +95,22 @@ export default function StaffDashboard() {
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 mt-4">
+          <nav className="flex-1 mt-2">
             <ul className="flex flex-col gap-1 list-none p-0">
               {navItems.map((item, i) => (
                 <li key={item.label}
                   className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
                 >
-                  <button
-                    onClick={() => setActiveNav(i)}
-                    className={`w-full flex items-center gap-4 px-4 py-3 border-0 transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px] cursor-pointer bg-transparent
+                  <Link
+                    to={item.path}
+                    className={`w-full flex items-center gap-4 px-4 py-3 border-0 transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px] cursor-pointer bg-transparent no-underline
                       ${activeNav === i
                         ? "text-[#862334]"
                         : "text-[#4a4a4a] hover:text-[#862334] hover:bg-[#f0f0f0]"}`}
                   >
                     <item.icon size={20} />
                     <span>{item.label}</span>
-                  </button>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -128,14 +138,14 @@ export default function StaffDashboard() {
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
 
           {/* Top Header */}
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
+          <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md flex items-center justify-between px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
+            <div className="flex items-center gap-3">
+              <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-lg text-[#862334] uppercase tracking-tight">ALVIN</span>
+            </div>
 
             {/* Right actions */}
-            <div className="flex items-center gap-3 sm:gap-4 md:gap-6 flex-shrink-0 ml-auto">
-              <button className="hidden sm:flex bg-transparent border-0 cursor-pointer p-2 text-[#4a4a4a] hover:text-[#862334] transition-colors rounded">
-                <Icon name="notifications" />
-              </button>
-              <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4 md:gap-6 flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0">
                 <div className="w-full h-full bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-geist">
                   AL
                 </div>

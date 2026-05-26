@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { LayoutDashboard, Mic, Settings, Play, Square } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
-import SignOutModal from '../../Components/SignOutModal';
-import { supabase } from '../../lib/supabaseClient';
+import SignOutModal from "../../Components/SignOutModal";
+import { supabase } from "../../lib/supabaseClient";
 
 const Icon = ({ name, filled = false, className = "" }) => (
   <span
@@ -34,7 +34,7 @@ export default function UserSettings() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate('/');
+    navigate("/");
   };
   const [twoFactor, setTwoFactor]     = useState(true);
   const [showPass, setShowPass]       = useState(false);
@@ -42,7 +42,6 @@ export default function UserSettings() {
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [name, setName]               = useState("Vin Perez");
   const [email, setEmail]             = useState("vinperez123@gmail.com");
-  const [gender, setGender]           = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [mic, setMic]                 = useState("Microphone Array (Intel Smart Sound Technology for Digital Microphones)");
@@ -272,6 +271,7 @@ export default function UserSettings() {
           <header className="sticky top-0 z-[100] bg-white/90 backdrop-blur-md flex justify-between items-center px-3 sm:px-4 md:px-8 py-3 sm:py-4 border-b border-[#e5e5e5] gap-2 sm:gap-4">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-sm sm:text-base md:text-lg text-[#862334] uppercase tracking-tight truncate">ALVIN</span>
+              <span className="text-[#862334] font-bold pt-2 ">Settings</span>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4 md:gap-6 flex-shrink-0">
@@ -299,11 +299,18 @@ export default function UserSettings() {
             {/* Bento Grid */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 md:gap-8 auto-rows-max">
 
-              {/* ── Profile Settings (full width) ── */}
-              <div className="md:col-span-12 p-3 sm:p-5 md:p-8 relative overflow-hidden bg-white border border-gray-100 shadow-sm rounded-lg w-full">
+              {/* Left Column: Account Details & Danger Zone */}
+              <div className="md:col-span-5 flex flex-col gap-3 sm:gap-4 md:gap-5">
+
+                {/* ── Profile Settings ── */}
+                <div className="p-3 sm:p-4 md:p-6 relative overflow-hidden bg-white border border-gray-100 shadow-sm rounded-lg h-fit">
                 <div className="absolute top-0 right-0 w-20 sm:w-32 h-20 sm:h-32 bg-[#862334]/5 -mr-8 sm:-mr-16 -mt-8 sm:-mt-16 rounded-full blur-3xl pointer-events-none" />
 
-                <div className="flex flex-col md:flex-row gap-4 sm:gap-6 md:gap-8 items-start mb-6 sm:mb-8 relative z-10">
+                <h3 className="text-base sm:text-lg font-black font-Geist tracking-tighter mb-3 border-b border-gray-100 pb-2 text-black uppercase relative z-10">
+                  Account Details
+                </h3>
+
+                <div className="flex flex-row gap-3 sm:gap-4 items-start mb-3 relative z-10">
                   {/* Avatar */}
                   <div className="relative group flex-shrink-0 self-start">
                     <div className="w-20 sm:w-24 md:w-32 h-20 sm:h-24 md:h-32 bg-gray-50 border border-gray-200 flex items-center justify-center relative overflow-hidden rounded">
@@ -337,14 +344,14 @@ export default function UserSettings() {
                   </div>
 
                   {/* Fields */}
-                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-6 w-full">
+                  <div className="flex-1 grid grid-cols-1 gap-2 w-full">
                     <div className="space-y-1 sm:space-y-2">
                       <label className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-gray-500 font-Geist">Full Name</label>
                       <input
                         type="text"
                         value={name}
-                        onChange={e => setName(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-100 text-black font-Inter px-3 sm:px-4 py-2 sm:py-3 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded"
+                        disabled
+                        className="w-full bg-gray-100 border border-gray-200 text-gray-600 font-Inter px-3 sm:px-4 py-2 sm:py-3 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded cursor-not-allowed"
                       />
                     </div>
                     <div className="space-y-1 sm:space-y-2">
@@ -352,34 +359,36 @@ export default function UserSettings() {
                       <input
                         type="email"
                         value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-100 text-black font-Inter px-3 sm:px-4 py-2 sm:py-3 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded"
+                        disabled
+                        className="w-full bg-gray-100 border border-gray-200 text-gray-600 font-Inter px-3 sm:px-4 py-2 sm:py-3 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded cursor-not-allowed"
                       />
-                    </div>
-                    <div className="space-y-1 sm:space-y-2">
-                      <label className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-gray-500 font-Geist">Gender</label>
-                      <select
-                        value={gender}
-                        onChange={e => setGender(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-100 text-black font-Inter px-3 sm:px-4 py-2 sm:py-3 focus:ring-1 focus:ring-[#862334]  outline-none text-xs sm:text-sm rounded"
-                      >
-                        <option value="">Select Gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                      </select>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-end">
-                  <button className="bg-[#862334] text-white px-4 sm:px-6 md:px-8 py-2 sm:py-3 font-Geist font-black uppercase hover:bg-[#ffb003] transition-all active:scale-95 text-xs sm:text-sm rounded">
-                    Save Profile
-                  </button>
+              </div>
+
+                {/* ── Danger Zone ── */}
+                <div className="p-4 md:p-6 bg-white border border-gray-100 shadow-sm rounded-lg h-fit">
+                  <h3 className="text-base sm:text-lg md:text-xl font-black font-Geist tracking-tighter mb-4 sm:mb-6 md:mb-8 border-b border-red-200 pb-3 sm:pb-4 text-red-600 uppercase">
+                    Terminate Account
+                  </h3>
+
+                  <div className="space-y-4 sm:space-y-6">
+                    <div>
+                      <p className="text-gray-500 text-xs sm:text-sm font-Inter leading-relaxed mb-4">
+                        This will permanently delete all your data and interview history. This action cannot be undone.
+                      </p>
+                    </div>
+                    <button className="w-full px-4 sm:px-6 py-2 sm:py-3 bg-transparent border-2 border-red-600 text-red-600 font-Geist font-black uppercase tracking-tighter hover:bg-red-600 hover:text-white transition-all rounded text-xs sm:text-sm">
+                      Terminate Account
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* ── Hardware & Calibration ── */}
-              <div className="md:col-span-7 p-3 sm:p-5 md:p-8 bg-white border border-gray-100 shadow-sm rounded-lg">
+              {/* Right Column: Hardware & Calibration */}
+              <div className="md:col-span-7 p-3 sm:p-5 md:p-8 bg-white border border-gray-100 shadow-sm rounded-lg h-fit">
                 <h3 className="text-base sm:text-lg md:text-xl font-black font-Geist tracking-tighter mb-4 sm:mb-6 md:mb-8 border-b border-gray-100 pb-3 sm:pb-4 text-black uppercase">
                   Hardware &amp; Calibration
                 </h3>
@@ -464,100 +473,6 @@ export default function UserSettings() {
                   </div>
                 </div>
               </div>
-
-              {/* ── Security ── */}
-              <div className="h-125 md:col-span-5 p-3 sm:p-5 md:p-8 bg-white border border-gray-100 shadow-sm rounded-lg">
-                <h3 className="text-base sm:text-lg md:text-xl font-black font-Geist tracking-tighter mb-4 sm:mb-6 md:mb-8 border-b border-gray-100 pb-3 sm:pb-4 text-black uppercase">
-                  Security
-                </h3>
-
-                <div className="space-y-5 sm:space-y-6">
-                  {/* Current Password */}
-                  <div className="space-y-2">
-                    <label className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-gray-500 font-Geist">
-                      Current Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPass ? "text" : "password"}
-                        defaultValue="********"
-                        className="w-full bg-gray-50 border border-gray-100 text-black font-Inter px-3 sm:px-4 py-2 sm:py-3 pr-10 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded"
-                      />
-                      <button
-                        onClick={() => setShowPass(p => !p)}
-                        className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600 transition-colors"
-                      >
-                        <Icon name={showPass ? "visibility_off" : "visibility"} className="text-xs sm:text-sm" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* New Password */}
-                  <div className="space-y-2">
-                    <label className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-gray-500 font-Geist">
-                      New Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showNewPass ? "text" : "password"}
-                        value={newPassword}
-                        onChange={e => setNewPassword(e.target.value)}
-                        placeholder="Enter new password"
-                        className="w-full bg-gray-50 border border-gray-100 text-black font-Inter px-3 sm:px-4 py-2 sm:py-3 pr-10 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded placeholder:text-gray-400"
-                      />
-                      <button
-                        onClick={() => setShowNewPass(p => !p)}
-                        className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600 transition-colors"
-                      >
-                        <Icon name={showNewPass ? "visibility_off" : "visibility"} className="text-xs sm:text-sm" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Confirm New Password */}
-                  <div className="space-y-2">
-                    <label className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-gray-500 font-Geist">
-                      Confirm New Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showConfirmPass ? "text" : "password"}
-                        value={confirmPassword}
-                        onChange={e => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm new password"
-                        className="w-full bg-gray-50 border border-gray-100 text-black font-Inter px-3 sm:px-4 py-2 sm:py-3 pr-10 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded placeholder:text-gray-400"
-                      />
-                      <button
-                        onClick={() => setShowConfirmPass(p => !p)}
-                        className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600 transition-colors"
-                      >
-                        <Icon name={showConfirmPass ? "visibility_off" : "visibility"} className="text-xs sm:text-sm" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Change Password Button */}
-                  <button className="w-full bg-[#862334] text-white px-4 sm:px-6 py-2 sm:py-3 font-Geist font-black uppercase tracking-tighter hover:bg-[#ffb003] transition-all active:scale-95 text-xs sm:text-sm rounded">
-                    Change Password
-                  </button>
-                </div>
-              </div>
-
-              {/* ── Danger Zone ── */}
-              <div className="md:col-span-12 mt-6 sm:mt-8 md:mt-2 pt-6 sm:pt-8 border-t border-gray-100 flex flex-col sm:flex-row items-start sm:items-start justify-between gap-4 sm:gap-6">
-                <div className="flex-1">
-                  <h4 className="text-lg sm:text-xl font-black font-Geist tracking-tighter text-red-600 uppercase text-left">
-                    Terminate Account
-                  </h4>
-                  <p className="text-gray-500 text-xs sm:text-sm pt-2 sm:pt-3 font-Inter max-w-md leading-relaxed text-left">
-                    This will permanently delete all your data and interview history. This action cannot be undone.
-                  </p>
-                </div>
-                <button className="flex-shrink-0 px-6 sm:px-8 py-2 sm:py-3 bg-transparent border-2 border-red-600 text-red-600 font-Geist font-black uppercase tracking-tighter hover:bg-red-600 hover:text-white transition-all rounded text-xs sm:text-sm whitespace-nowrap">
-                  TERMINATE
-                </button>
-              </div>
-
             </div>
             </div>
           </section>

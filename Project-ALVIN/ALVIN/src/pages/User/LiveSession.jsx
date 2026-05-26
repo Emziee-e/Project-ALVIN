@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Mic, MicOff, Video, VideoOff, Smartphone, MoreVertical, LayoutDashboard, Settings, LogOut, MessageSquare, Play, Square, Signal, Camera } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import EndSessionModal from "../../Components/EndSessionModal";
+import Loading from "../../Components/Loading";
 
 const transcript = [
   {
@@ -32,15 +34,37 @@ const metrics = [
 ];
 
 export default function LiveSession() {
+  const navigate = useNavigate();
   const videoRef = useRef(null);
-  const [elapsed, setElapsed] = useState(42 * 60 + 18);
+  const [elapsed, setElapsed] = useState(0);
   const [micActive, setMicActive] = useState(true);
   const [camActive, setCamActive] = useState(true);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+  const [isEndModalOpen, setIsEndModalOpen] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
 
   useEffect(() => {
-    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    let id;
+    if (sessionStarted && countdown === 0) {
+      id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    }
     return () => clearInterval(id);
-  }, []);
+  }, [sessionStarted, countdown]);
+
+  const handleStartInterview = () => {
+    setCountdown(5);
+  };
+
+  useEffect(() => {
+    let timer;
+    if (countdown !== null && countdown > 0) {
+      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    } else if (countdown === 0) {
+      setSessionStarted(true);
+    }
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   useEffect(() => {
     let stream = null;
@@ -82,6 +106,27 @@ export default function LiveSession() {
     return `${h}:${m}:${sec}`;
   };
 
+  const handleConfirmEnd = () => {
+    setIsEndModalOpen(false);
+    setIsFinishing(true);
+
+    // Turn off camera and mic
+    setCamActive(false);
+    setMicActive(false);
+
+    // Close the camera stream explicitly
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+
+    // Simulate a brief loading state before navigation
+    setTimeout(() => {
+      navigate('/user/interview-results');
+    }, 2000);
+  };
+
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -105,7 +150,45 @@ export default function LiveSession() {
             </div>
           </header>
 
-          <div className="flex flex-1 overflow-hidden min-h-0">
+          <div className="flex flex-1 overflow-hidden min-h-0 relative">
+            {/* Start Overlay / Countdown Overlay */}
+            {!sessionStarted && (
+              <div className="absolute inset-0 z-[100] bg-white flex flex-col items-center justify-center p-6 text-center">
+                <div className="max-w-4xl w-full px-4">
+                  {countdown === null ? (
+                    <>
+                      <h2 className="text-4xl sm:text-5xl md:text-6xl font-black font-Geist text-maroon mb-6 uppercase tracking-tighter text-center">
+                        Ready to Begin?
+                      </h2>
+                      <p className="text-gray-500 font-Inter text-base mb-12 leading-relaxed max-w-xl mx-auto text-center">
+                        The AI interviewer is ready. Please ensure you are in a quiet environment and your camera is properly positioned.
+                      </p>
+                      <div className="max-w-xs mx-auto">
+                        <button
+                          onClick={handleStartInterview}
+                          className="w-full py-4 bg-[#862334] text-white font-black font-Geist uppercase tracking-[0.2em] rounded-xl hover:bg-black transition-all"
+                        >
+                          Start Interview
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-6">
+                      <h2 className="text-xl font-black font-Geist text-gray-400 uppercase tracking-widest">
+                        Interview starts in
+                      </h2>
+                      <div className="text-9xl font-black font-Geist text-[#862334] leading-none animate-pulse">
+                        {countdown}
+                      </div>
+                      <p className="text-gray-400 font-Inter text-xs uppercase tracking-widest font-bold">
+                        Prepare yourself...
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Left: Video + Metrics */}
             <div className="flex-1 flex flex-col gap-5 p-6 min-w-0 overflow-hidden">
 
@@ -122,9 +205,9 @@ export default function LiveSession() {
                 {/* Listening badge (Enlarged) */}
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
                   <div className="flex items-center gap-3 px-6 py-2.5 bg-white/95 backdrop-blur-xl rounded-full shadow-2xl">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#862334] animate-pulse" />
+                    <span className={`w-2.5 h-2.5 rounded-full ${sessionStarted ? 'bg-[#862334] animate-pulse' : 'bg-gray-300'}`} />
                     <span className="text-[#862334] text-xs font-black tracking-widest uppercase font-[Inter,sans-serif]">
-                      ALVIN is listening...
+                      {sessionStarted ? "ALVIN is listening..." : "Session Paused"}
                     </span>
                   </div>
                 </div>
@@ -200,7 +283,10 @@ export default function LiveSession() {
                     {camActive ? <Video size={20} /> : <VideoOff size={20} />}
                   </button>
 
-                  <button className="ml-2 px-6 h-12 bg-[#862334] text-white font-bold rounded-full hover:bg-black transition-all flex items-center gap-2 shadow-lg">
+                  <button
+                    onClick={() => setIsEndModalOpen(true)}
+                    className="ml-2 px-6 h-12 bg-[#862334] text-white font-bold rounded-full hover:bg-black transition-all flex items-center gap-2 shadow-lg"
+                  >
                     <LogOut size={18} className="rotate-180" />
                     <span className="text-xs uppercase tracking-widest hidden sm:inline">End Session</span>
                   </button>
@@ -215,12 +301,12 @@ export default function LiveSession() {
                   Live Transcript
                 </h2>
                 <p className="text-[#888888] text-[11px] font-bold uppercase tracking-[0.15em] font-[Inter,sans-serif] mt-1">
-                  Active
+                  {sessionStarted ? "Active" : "Waiting for start"}
                 </p>
               </div>
 
               <div className="flex-1 overflow-y-auto px-8 py-4 custom-scrollbar space-y-8 min-h-0">
-                {transcript.map((msg, i) => (
+                {sessionStarted && transcript.map((msg, i) => (
                   <div key={i} className="space-y-2">
                     <div className="flex justify-between items-center px-1">
                       <span className={`text-[10px] font-black tracking-widest uppercase font-[Inter,sans-serif] ${msg.isAlvin ? "text-[#862334]" : "text-[#888888]"}`}>
@@ -238,15 +324,32 @@ export default function LiveSession() {
                   </div>
                 ))}
 
-                <div className="flex items-center gap-2 px-1">
-                  {[0, 0.1, 0.2].map((delay, i) => (
-                    <span key={i} className="w-1.5 h-1.5 bg-[#862334] rounded-full animate-bounce" style={{ animationDelay: `${delay}s` }} />
-                  ))}
-                  <span className="text-[10px] font-black text-[#888888] tracking-widest uppercase ml-2 font-[Inter,sans-serif]">
-                    Processing response...
-                  </span>
-                </div>
+                {sessionStarted && (
+                  <div className="flex items-center gap-2 px-1">
+                    {[0, 0.1, 0.2].map((delay, i) => (
+                      <span key={i} className="w-1.5 h-1.5 bg-[#862334] rounded-full animate-bounce" style={{ animationDelay: `${delay}s` }} />
+                    ))}
+                    <span className="text-[10px] font-black text-[#888888] tracking-widest uppercase ml-2 font-[Inter,sans-serif]">
+                      Processing response...
+                    </span>
+                  </div>
+                )}
+
+                {!sessionStarted && (
+                  <div className="h-full flex flex-col items-center justify-center opacity-30">
+                    <MessageSquare size={48} className="mb-4 text-gray-400" />
+                    <p className="text-xs font-bold uppercase tracking-widest text-center">Transcript will appear here once the session begins</p>
+                  </div>
+                )}
               </div>
+
+      <EndSessionModal
+        isOpen={isEndModalOpen}
+        onClose={() => setIsEndModalOpen(false)}
+        onConfirm={handleConfirmEnd}
+      />
+
+      {isFinishing && <Loading />}
             </div>
           </div>
 
