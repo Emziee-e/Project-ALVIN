@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import {LayoutDashboard,Mic,Video,VideoOff,ChevronRight,Lightbulb,Camera,CheckCircle,AlertCircle,KeyRound} from 'lucide-react';
+import {MonitorCheck,Mic,VideoOff,ChevronRight,Lightbulb,Camera,CheckCircle,AlertCircle,KeyRound} from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
+import SignOutModal from '../../Components/SignOutModal';
+import { supabase } from '../../lib/supabaseClient';
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard" },
+  { icon: MonitorCheck, label: "Hardware Setup" },
 ];
 
 export default function HardwareCheck() {
@@ -17,8 +19,14 @@ export default function HardwareCheck() {
 
   const [activeNav, setActiveNav] = useState(0);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [devices, setDevices] = useState({ video: [], audio: [] });
   const [selectedDevices, setSelectedDevices] = useState({ video: "", audio: "" });
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
 
   /* Camera Access Function */
   const startPreview = async (videoDeviceId) => {
@@ -200,24 +208,19 @@ export default function HardwareCheck() {
           <nav className="flex-1">
             <ul className="flex flex-col gap-1 list-none p-0 m-0">
               {navItems.map((item, i) => {
-                const isDashboard = i === 0;
-                const navLink = isDashboard ? '/user/dashboard' : isInterviews ? '/user/interviews' : isSettings ? '/user/settings' : '#';
-
                 return (
                   <li key={item.label}
                     className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
                   >
-                    <Link
-                      to={navLink}
-                      onClick={(e) => { setActiveNav(i); }}
-                      className={`flex items-center gap-4 px-4 py-3 no-underline transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
+                    <div
+                      className={`flex items-center gap-4 px-4 py-3 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
                         ${activeNav === i
                           ? "text-[#862334]"
-                          : "text-[#4a4a4a] hover:text-[#862334] hover:bg-[#f0f0f0]"}`}
+                          : "text-[#4a4a4a]"}`}
                     >
                       <item.icon size={20} />
                       <span>{item.label}</span>
-                    </Link>
+                    </div>
                   </li>
                 );
               })}
@@ -226,11 +229,21 @@ export default function HardwareCheck() {
 
           {/* Sign Out */}
           <div className="mt-auto">
-            <button className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Space_Grotesk,sans-serif] font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200">
+            <button
+              onClick={() => setIsSignOutModalOpen(true)}
+              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Geist] font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
+            >
               Sign Out
             </button>
           </div>
         </aside>
+
+        {/* Modal */}
+        <SignOutModal
+          isOpen={isSignOutModalOpen}
+          onClose={() => setIsSignOutModalOpen(false)}
+          onConfirm={handleSignOut}
+        />
 
         {/* ── Main ── */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
@@ -238,11 +251,11 @@ export default function HardwareCheck() {
           {/* Top Header */}
           <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-60">
-              <span>Dashboard</span>
+              <Link to="/user/dashboard">Dashboard</Link>
               <ChevronRight size={14} />
-              <span>Session Set Up</span>
+              <Link to="/user/resume-upload">Interview Setup</Link>
               <ChevronRight size={14} />
-              <span className="text-[#862334] font-bold opacity-100">Pre-Interview Lobby</span>
+              <span className="text-[#862334] font-bold opacity-100">Hardware Setup</span>
             </div>
             <div className="flex items-center gap-6">
               <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
@@ -258,7 +271,7 @@ export default function HardwareCheck() {
             {/* Page Header */}
             <header className="mb-12">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-black font-Geist tracking-tighter uppercase mb-4 text-black">
-                Pre-INTERVIEW Lobby
+                Interview Setup
               </h1>
               <p className="text-lg text-[#4a4a4a] font-medium font-Inter">
                 Ensure your hardware is ready before the interview session.

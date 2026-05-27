@@ -1,7 +1,9 @@
 import { Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useInView } from '../../lib/useInView';
 
-function Hero({ onOpenModal }) {
+function Hero() {
+  const navigate = useNavigate();
   const [ref, isInView] = useInView();
   return (
     <section id="hero" className="bg-white bg-grid-pattern py-16 md:py-24 px-6 mt-16">
@@ -36,7 +38,7 @@ function Hero({ onOpenModal }) {
         {/* --- Call to Action Buttons --- */}
         <div className="flex flex-col sm:flex-row items-center gap-6 mb-16">
           <button
-            onClick={onOpenModal}
+            onClick={() => navigate('/login/student')}
             className="bg-maroon text-white px-8 py-3.5 rounded-full font-bold text-lg hover:bg-ub-yellow transition-colors shadow-lg shadow-gray-200"
           >
             Use ALVIN

@@ -16,13 +16,13 @@ function Footer() {
 
           {/* Right Side: Links */}
           <div className="flex gap-x-8">
-            <a href="#" className="text-[10px] font-bold text-gray-400 hover:text-maroon transition-colors tracking-widest uppercase">
-              Privacy Policy
+            <a href="#features" className="text-[10px] font-bold text-gray-400 hover:text-maroon transition-colors tracking-widest uppercase">
+              Features
             </a>
-            <a href="#" className="text-[10px] font-bold text-gray-400 hover:text-maroon transition-colors tracking-widest uppercase">
-              Terms
+            <a href="#how-it-works" className="text-[10px] font-bold text-gray-400 hover:text-maroon transition-colors tracking-widest uppercase">
+              Guide
             </a>
-            <a href="#" className="text-[10px] font-bold text-gray-400 hover:text-maroon transition-colors tracking-widest uppercase">
+            <a href="mailto:admin.alvin01.com" className="text-[10px] font-bold text-gray-400 hover:text-maroon transition-colors tracking-widest uppercase">
               Contact
             </a>
           </div>

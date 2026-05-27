@@ -1,7 +1,9 @@
 import { useState} from "react";
 import { LayoutDashboard, Mic, Settings, Bot} from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
+import SignOutModal from '../../Components/SignOutModal';
+import { supabase } from '../../lib/supabaseClient';
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard" },
@@ -46,6 +48,13 @@ const mobileNav = [
 
 export default function InterviewResults() {
   const [activeNav, setActiveNav] = useState(1);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
 
   return (
     <>
@@ -114,11 +123,21 @@ export default function InterviewResults() {
           </nav>
 
           <div className="mt-auto">
-            <button className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200">
+            <button
+              onClick={() => setIsSignOutModalOpen(true)}
+              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
+            >
               Sign Out
             </button>
           </div>
         </aside>
+
+        {/* Modal */}
+        <SignOutModal
+          isOpen={isSignOutModalOpen}
+          onClose={() => setIsSignOutModalOpen(false)}
+          onConfirm={handleSignOut}
+        />
 
         {/* ── Main ── */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
@@ -164,7 +183,9 @@ export default function InterviewResults() {
                 <button className="px-8 py-4 border border-[#e5e5e5] text-black hover:bg-[#f8f8f8] transition-all font-bold uppercase text-sm tracking-widest font- Geist">
                   Download PDF
                 </button>
-                <button className="px-8 py-4 bg-[#862334] text-white hover:bg-[#ffb003] transition-all font-bold uppercase text-sm tracking-widest font- Geist">
+                <button
+                onClick={() => navigate('/user/resume-upload')}
+                className="px-8 py-4 bg-[#862334] text-white hover:bg-[#ffb003] transition-all font-bold uppercase text-sm tracking-widest font- Geist">
                   New Session
                 </button>
               </div>

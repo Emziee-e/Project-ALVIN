@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Users, FileBarChart, UserCircle, Mic, TrendingUp, LayoutGrid, Calendar, Clock, ChevronDown } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
 import BarCharts from './barChart';
+import SignOutModal from '../../Components/SignOutModal';
+import { supabase } from '../../lib/supabaseClient';
 
 const navItems = [
   { icon: Users, label: "User Management" },
@@ -13,6 +15,13 @@ const navItems = [
 export default function SystemReport() {
   const [activeNav, setActiveNav] = useState(1);
   const [reportType, setReportType] = useState("Weekly");
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
 
   return (
     <>
@@ -68,11 +77,21 @@ export default function SystemReport() {
           </nav>
 
           <div className="mt-auto">
-            <button className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200">
+            <button
+              onClick={() => setIsSignOutModalOpen(true)}
+              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
+            >
               Sign Out
             </button>
           </div>
         </aside>
+
+        {/* Modal */}
+        <SignOutModal
+          isOpen={isSignOutModalOpen}
+          onClose={() => setIsSignOutModalOpen(false)}
+          onConfirm={handleSignOut}
+        />
 
         {/* ── Main ── */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
