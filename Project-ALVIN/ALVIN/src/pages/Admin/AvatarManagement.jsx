@@ -161,7 +161,6 @@ export default function AvatarManagement() {
           {/* Top Header */}
           <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-100">
-              <span className=" text-[#862334] font-bold opacity-100">Avatar Management</span>
             </div>
             <div className="flex items-center gap-6">
               <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
@@ -173,16 +172,6 @@ export default function AvatarManagement() {
           {/* ── Content ── */}
           <div className="flex-1 overflow-y-auto w-full">
             <div className="px-4 md:px-6 lg:px-8 py-8 md:py-10 flex-1">
-
-            {/* Hero */}
-            <section className="text-left mb-8 md:mb-12">
-              <h2 className="font-[Geist,Inter] text-4xl md:text-6xl font-black tracking-tighter text-black uppercase mb-2">
-                Avatar Management
-              </h2>
-              <p className="text-gray-500 font-[Inter,sans-serif] text-sm md:text-base opacity-80">
-                Manage AI avatars and voice settings. Choose a primary avatar and voice model.Selected models will be applied to all users.
-              </p>
-            </section>
 
             {/* Bento Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">

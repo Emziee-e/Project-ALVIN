@@ -5,12 +5,12 @@ function Footer() {
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
 
           {/* Left Side: Logo & Name */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8">
+          <div className="flex items-center">
+            <div className="w-auto h-8">
               <img src="/images/Alvin-logo.png" alt="ALVIN Logo" className="w-full h-full object-contain" />
             </div>
-            <span className="font-Geist text-xl font-black text-maroon tracking-tighter">
-              ALVIN
+            <span className="font-Geist text-2xl font-bold text-maroon tracking-tighter leading-none">
+              LVIN
             </span>
           </div>
 

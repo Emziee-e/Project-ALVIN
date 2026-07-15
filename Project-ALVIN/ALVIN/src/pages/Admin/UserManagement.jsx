@@ -127,7 +127,6 @@ export default function UserManagement() {
           {/* Top Header */}
           <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-100">
-              <span className=" text-[#862334] font-Geist opacity-100">User Management</span>
             </div>
             <div className="flex items-center gap-6">
               <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
@@ -139,18 +138,6 @@ export default function UserManagement() {
           {/* ── Content ── */}
           <div className="flex-1 overflow-y-auto w-full">
             <section className="p-4 md:p-8 lg:p-10 flex-1">
-
-            {/* Hero Header */}
-            <div className="mb-8 md:mb-12 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
-              <div>
-                <h2 className="text-left font-Geist text-4xl md:text-6xl font-black tracking-tight text-black uppercase mb-2">
-                  User Management
-                </h2>
-                <p className="font-Inter text-gray-600 max-w-md text-sm md:text-base">
-                  Control user accounts and permissions.
-                </p>
-              </div>
-            </div>
 
             {/* ── Bento Grid ── */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">

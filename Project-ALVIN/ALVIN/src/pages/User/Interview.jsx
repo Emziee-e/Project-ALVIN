@@ -129,11 +129,12 @@ export default function InterviewHistory() {
         />
 
         {/* ── Main ── */}
-        <main className="md:ml-64 flex-1 pb-20 md:pb-0 bg-white min-w-0">
+        <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
 
           {/* ── Top Header ── */}
-          <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md flex justify-between items-center px-4 md:px-8 py-4 border-b border-[#e5e5e5]">
+          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             <div className="flex items-center gap-3">
+              <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-sm sm:text-base md:text-lg text-[#862334] uppercase tracking-tight truncate">ALVIN</span>
             </div>
 
             <div className="flex items-center gap-3 md:gap-4">
@@ -144,19 +145,9 @@ export default function InterviewHistory() {
           </header>
 
           {/* ── Page Content ── */}
-          <div className="pt-8 pb-16 px-4 md:px-8 max-w-6xl mx-auto">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full">
 
-            {/* Editorial Header */}
-            <div className="mb-10 md:mb-16">
-              <div className="max-w-3xl">
-                <h1 className="text-left font-Geist text-5xl md:text-7xl font-bold text-black tracking-tight leading-none mb-2">
-                  Interview <span className="text-[#862334]">History</span>
-                </h1>
-                <p className="text-left font-Inter text-gray-400 text-sm md:text-lg leading-relaxed max-w-2xl">
-                  Track your previous interviews and how your performance has improved over time.
-                </p>
-              </div>
-            </div>
+
 
             {/* ── Data Table ── */}
             <div className="bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm">

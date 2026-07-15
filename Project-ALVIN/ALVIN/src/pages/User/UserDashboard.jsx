@@ -26,7 +26,16 @@ const assets = [
 export default function StaffDashboard() {
   const [activeNav, setActiveNav] = useState(0);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const navigate = useNavigate();
+
+  const handleStartInterview = () => {
+    setIsStarting(true);
+    // Short delay to allow animation to play before navigating
+    setTimeout(() => {
+      navigate('/user/resume-upload');
+    }, 800);
+  };
 
   const handleSignOut = async () => {
     try {
@@ -45,7 +54,7 @@ export default function StaffDashboard() {
             `}
         </style>
 
-      <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Manrope,sans-serif]">
+      <div className={`flex h-screen w-full overflow-hidden bg-white text-black font-[Manrope,sans-serif] transition-opacity duration-500 ${isStarting ? 'opacity-0' : 'opacity-100'}`}>
 
         {/* ── Sidebar ── */}
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
@@ -136,29 +145,37 @@ export default function StaffDashboard() {
             </div>
           </header>
 
-          {/* Page inner */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full relative">
 
-            {/* ── Hero ── */}
-            <section className="mb-8 md:mb-12 grid grid-cols-1 lg:grid-cols-[8fr_4fr] gap-6 md:gap-12 items-start lg:items-end">
+            {/* ── Start Interview Floating Action Button ── */}
+            <div className={`fixed bottom-8 right-8 z-[60] flex items-center group`}>
+              {/* Tooltip Label - Dark background like the reference image */}
+              {!isStarting && (
+                <div className="mr-3 bg-[maroon] text-white text-[12px] font-normal px-3 py-1.5 rounded-[4px] opacity-0 -translate-x-2 transition-all duration-300 whitespace-nowrap shadow-lg pointer-events-none group-hover:opacity-100 group-hover:translate-x-0 relative flex items-center h-9">
+                  Start Interview
+                  <div className="absolute left-full top-1/2 -translate-y-1/2 border-y-[6px] border-y-transparent border-l-[6px] border-l-[#2d2e32]"></div>
+                </div>
+              )}
+
+              <button
+                onClick={handleStartInterview}
+                disabled={isStarting}
+                className={`w-14 h-14 sm:w-16 sm:h-16 bg-white text-[#862334] rounded-full shadow-[0_1px_3px_rgba(60,64,67,0.3),0_4px_8px_3px_rgba(60,64,67,0.15)] flex items-center justify-center hover:bg-gray-50 transition-all duration-300 relative ${isStarting ? 'scale-[60] bg-[maroon] text-maroon opacity-100 !pointer-events-none' : ''}`}
+                title="Start Interview"
+              >
+                <Mic size={28} className={`relative z-10 ${isStarting ? 'opacity-0 scale-0' : 'group-hover:animate-pulse'} transition-all duration-300`} />
+              </button>
+            </div>
+
+            <section className="mb-8 md:mb-12">
               <div className="text-left">
                 <h2 className="font-[Geist,Inter] text-xl sm:text-3xl md:text-5xl lg:text-6xl font-bold tracking-[-0.04em] text-black leading-tight mb-3 md:mb-4">
-                  Welcome back, <span className="text-maroon">Vin!</span>
+                  Welcome, <span className="text-maroon">Vin!</span>
                 </h2>
                 <p className="text-[#4a4a4a] font-[Inter] text-xs sm:text-sm md:text-base lg:text-lg leading-relaxed max-w-2xl">
                   Your interview performance indicates a{" "}
                   <span className="text-maroon font-bold">3% improvement</span> since your last session.
                 </p>
-              </div>
-
-              <div className="flex flex-col gap-2 w-full lg:w-auto">
-                <button
-                  onClick={() => navigate('/user/resume-upload')}
-                  className="group w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Geist,Inter] font-bold uppercase tracking-[0.1em] text-xs sm:text-sm rounded-[2px] flex items-center justify-center sm:justify-between px-4 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 lg:py-5 transition-all duration-200 gap-2"
-                >
-                  <span>START NEW INTERVIEW</span>
-                  <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
-                </button>
               </div>
             </section>
 

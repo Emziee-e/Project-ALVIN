@@ -39,9 +39,9 @@ const StaffLogin = () => {
     return (
         <div className="min-h-screen flex items-center justify-center p-4 relative bg-grid-pattern">
             {/* Top Left Logo Link */}
-            <Link to="/" className="fixed top-10 left-30 flex items-center gap-2 group transition-all">
+            <Link to="/" className="fixed top-10 left-30 flex items-center gap-1 group transition-all">
                 <img src="/images/Alvin-logo.png" alt="ALVIN Logo" className="w-10 h-10 object-contain" />
-                <span className="font-Geist text-2xl tracking-tight text-maroon ">ALVIN</span>
+                <span className="font-Geist text-2xl font-bold tracking-tighter text-maroon leading-none">LVIN</span>
             </Link>
 
             <div className="w-full max-w-[450px] bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100" ref={ref}>
@@ -49,7 +49,7 @@ const StaffLogin = () => {
                     <div className="w-20 h-20 flex items-center justify-center mb-1">
                         <img src="../images/Alvin-logo.png" alt="Logo" className="w-15 h-15" />
                     </div>
-                    <h1 className="font-Geist text-2xl font-bold text-gray-900">Sign in</h1>
+                    <h1 className="font-Geist text-2xl font-bold text-gray-900">Log in</h1>
                     <p className="text-gray-500 mt-1 text-sm">Access your account</p>
                 </div>
 

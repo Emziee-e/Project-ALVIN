@@ -1,16 +1,11 @@
 import { useState } from "react";
-import {MessagesSquare,ChevronRight,FileText,UploadCloud,Target,Briefcase,AlertCircle} from 'lucide-react';
+import {ChevronRight,FileText,UploadCloud,Target,Briefcase,AlertCircle} from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
 import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
-const navItems = [
-  { icon: MessagesSquare, label: "Interview Setup" },
-];
-
 export default function ResumeUpload() {
-  const [activeNav, setActiveNav] = useState(0);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
   const [role, setRole] = useState("");
@@ -48,70 +43,28 @@ export default function ResumeUpload() {
       {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
-
       <div className="flex min-h-screen bg-white text-black font-Geist">
-
-        {/* ── Sidebar ── */}
-         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
-
-           {/* Logo */}
-           <div className="mb-6 px-4 flex flex-col items-center">
-             <img src={Logo} alt="Alvin logo" className="mb-[-10px] h-24" />
-             <div className="text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-               ALVIN
-             </div>
-           </div>
-
-           {/* Nav */}
-           <nav className="flex-1">
-             <ul className="flex flex-col gap-1 list-none">
-               {navItems.map((item, i) => {
-                 return (
-                   <li key={item.label}
-                     className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
-                   >
-                     <div
-                       className={`flex items-center gap-4 px-4 py-3 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
-                         ${activeNav === i
-                           ? "text-[#862334]"
-                           : "text-[#4a4a4a]"}`}
-                     >
-                       <item.icon size={20} />
-                       <span>{item.label}</span>
-                     </div>
-                   </li>
-                 );
-               })}
-             </ul>
-           </nav>
-
-           <div className="mt-auto">
-             <button
-               onClick={() => setIsSignOutModalOpen(true)}
-               className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
-             >
-               Sign Out
-             </button>
-           </div>
-         </aside>
-
-         {/* Modal */}
-         <SignOutModal
-           isOpen={isSignOutModalOpen}
-           onClose={() => setIsSignOutModalOpen(false)}
-           onConfirm={handleSignOut}
-         />
+        {/* Modal */}
+        <SignOutModal
+          isOpen={isSignOutModalOpen}
+          onClose={() => setIsSignOutModalOpen(false)}
+          onConfirm={handleSignOut}
+        />
 
         {/* ── Main ── */}
-        <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
+        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
 
           {/* Top Header */}
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
-            <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-60">
-              <Link to="/user/dashboard">Dashboard</Link>
-              <ChevronRight size={14} />
-              <span className="text-[#862334] font-bold opacity-100">Interview Setup</span>
+          <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
+            <div className="flex items-center">
+              <Link to="/user/dashboard" className="flex items-center">
+                <img src={Logo} alt="Alvin logo" className="h-12 mb-[-8px]" />
+                <div className="text-maroon text-[1.5rem] font-Geist tracking-[-0.05em] uppercase hidden sm:block">
+                  LVIN
+                </div>
+              </Link>
             </div>
+
             <div className="flex items-center gap-6">
               <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
                 VN
@@ -120,18 +73,11 @@ export default function ResumeUpload() {
           </header>
 
           {/* ── SessionSetup Main Content ── */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-10 w-full">
+          <div className="flex-1 overflow-y-auto px-8 md:px-24 py-12 w-full">
             <div className="max-w-[1200px] mx-auto">
 
               {/* Hero */}
-              <div className="mb-12">
-                <h2 className="font-Geist text-4xl md:text-5xl lg:text-6xl font-bold text-black tracking-tight mb-4">
-                  Get Started!
-                </h2>
-                <p className="font-Inter text-base md:text-lg text-[#4a4a4a] max-w-2xl leading-relaxed">
-                  This information enables the system to generate more relevant and realistic interview questions tailored to your experience.
-                </p>
-              </div>
+
 
               {/* Bento Grid */}
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
@@ -246,29 +192,6 @@ export default function ResumeUpload() {
                     <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-gradient-to-br from-[#862334] via-transparent to-[#ffb003]" />
                   </section>
                 </div>
-              </div>
-
-              {/* Supplemental Info */}
-              <div className="mt-16 border-t border-[#e5e5e5] pt-10 grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
-                {[
-                  {
-                    title: "Machine Learning Analysis",
-                    body: "ALVIN uses machine learning models to analyze your resume, understand your career path, and identify key skills based on your experience and target role.",
-                  },
-                  {
-                    title: "Real-time Feedback",
-                    body: "During the interview, ALVIN reviews your answers in real time, tracking your tone, pacing, and accuracy to give clear performance feedback.",
-                  },
-                  {
-                    title: "Privacy Protection",
-                    body: "Your resume is processed only within the current session. ALVIN does not permanently store your unencrypted files, keeping your data private.",
-                  },
-                ].map(({ title, body }) => (
-                  <div key={title}>
-                    <h5 className="font-Geist text-sm font-bold uppercase tracking-widest mb-4 text-black">{title}</h5>
-                    <p className="font-Inter text-sm text-[#4a4a4a] leading-relaxed">{body}</p>
-                  </div>
-                ))}
               </div>
 
             </div>
