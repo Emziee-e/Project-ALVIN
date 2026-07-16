@@ -47,7 +47,7 @@ const StaffLogin = () => {
             <div className="w-full max-w-[450px] bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100" ref={ref}>
                 <div className={`pt-8 pb-4 flex flex-col items-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
                     <div className="w-20 h-20 flex items-center justify-center mb-1">
-                        <img src="../images/Alvin-logo.png" alt="Logo" className="w-15 h-15" />
+                        <img src="/images/Alvin-logo.png" alt="Logo" className="w-15 h-15" />
                     </div>
                     <h1 className="font-Geist text-2xl font-bold text-gray-900">Sign in</h1>
                     <p className="text-gray-500 mt-1 text-sm">Access your account</p>

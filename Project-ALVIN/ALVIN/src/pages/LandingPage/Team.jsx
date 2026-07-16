@@ -4,17 +4,17 @@ const teamMembers = [
   {
     name: "John Manuel Policarpio III",
     role: "Project Manager & Quality Assurance",
-    image: "./public/images/Poli.jpg"
+    image: "/images/Poli.jpg"
   },
   {
     name: "John Ashley Alday",
     role: "Frontend Developer & UI/UX Designer",
-    image: "./public/images/Ashley.jpg"
+    image: "/images/Ashley.jpg"
   },
   {
     name: "Vin Vernon Perez",
     role: "Backend Developer & AI Specialist",
-    image: "./public/images/Vin.png"
+    image: "/images/Vin.png"
   }
 ]
 

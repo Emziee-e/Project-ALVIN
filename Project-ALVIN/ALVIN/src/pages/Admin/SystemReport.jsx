@@ -99,7 +99,6 @@ export default function SystemReport() {
           {/* Top Header (Shared with UserDashboard) */}
           <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-100">
-              <span className="text-[#862334] font-bold opacity-100">System Report</span>
             </div>
             <div className="flex items-center gap-6">
               <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
@@ -112,104 +111,95 @@ export default function SystemReport() {
           <div className="flex-1 overflow-y-auto w-full">
             <div className="p-4 sm:p-6 md:p-8 lg:p-12 space-y-8 max-w-7xl mx-auto">
 
-              {/* Page Header */}
-              <section className="text-left flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
-                <div className="w-full md:w-auto">
-                  <h2 className="text-left font-Geist text-4xl md:text-6xl font-black tracking-tight text-black uppercase mb-2">
-                    System Reports
-                  </h2>
-                  <p className="text-gray-500 font-[Inter,sans-serif] text-sm md:text-base opacity-80">
-                    Monitor system performance and user engagement metrics.
-                  </p>
-                </div>
-              </section>
-
-              {/* KPI Cards Grid - Top Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              {/* KPI Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {/* Total Interviews */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                  <div className="flex justify-between items-center mb-2">
                     <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Total Interviews</p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <Mic className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-3xl font-bold text-black font-[Geist,Inter]">12,842</h3>
+                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">12,842</h3>
                 </div>
 
                 {/* Avg. Performance */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                  <div className="flex justify-between items-center mb-2">
                     <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Avg. Performance</p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <FileBarChart className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-3xl font-bold text-black font-[Geist,Inter]">94.8%</h3>
+                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">94.8%</h3>
                 </div>
 
                 {/* Active Users */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                  <div className="flex justify-between items-center mb-2">
                     <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Active Users</p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <TrendingUp className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-3xl font-bold text-black font-[Geist,Inter]">3,205</h3>
+                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">3,205</h3>
                 </div>
-              </div>
 
-              {/* KPI Cards Grid - Middle Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                 {/* Daily Users */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                  <div className="flex justify-between items-center mb-2">
                     <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Daily Users</p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <Clock className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-3xl font-bold text-black mb-4 font-[Geist,Inter]">10</h3>
-                  <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                    <Clock className="w-4 h-4" />
-                    <span>Last 24 hours</span>
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">10</h3>
+                    <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+                      <Clock className="w-4 h-4" />
+                      <span>Last 24 hours</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Weekly Users */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                  <div className="flex justify-between items-center mb-2">
                     <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Weekly Users</p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <Users className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-3xl font-bold text-black mb-4 font-[Geist,Inter]">20</h3>
-                  <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                    <LayoutGrid className="w-4 h-4" />
-                    <span>Last 7 days</span>
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">20</h3>
+                    <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+                      <LayoutGrid className="w-4 h-4" />
+                      <span>Last 7 days</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Monthly Users */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                  <div className="flex justify-between items-center mb-2">
                     <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Monthly Users</p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <Calendar className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-3xl font-bold text-black mb-4 font-[Geist,Inter]">40</h3>
-                  <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                    <Calendar className="w-4 h-4" />
-                    <span>Last 30 days</span>
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">40</h3>
+                    <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+                      <Calendar className="w-4 h-4" />
+                      <span>Last 30 days</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Total Users Graph Section */}
-              <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm mb-12">
+              <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm mb-10">
                 <div className="flex justify-between items-center mb-10">
                   <div className="flex items-center gap-4">
                     <h3 className="text-2xl font-bold font-[Geist,Inter] text-black">
