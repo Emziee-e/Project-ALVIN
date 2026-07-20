@@ -71,10 +71,10 @@ export default function InterviewResults() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className="mb-[-10px] h-24" />
-            <div className="text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -143,7 +143,7 @@ export default function InterviewResults() {
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
 
           {/* Top Header */}
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
+          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 h-16 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 border-b border-[#e5e5e5]">
             <div className="flex items-center gap-3">
             </div>
             <div className="flex items-center gap-3 sm:gap-4 md:gap-6 flex-shrink-0">

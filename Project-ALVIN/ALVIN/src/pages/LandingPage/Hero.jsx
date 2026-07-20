@@ -35,18 +35,9 @@ function Hero() {
           ALVIN uses Vision Based Intelligence to analyze your performance in real-time. Refine your body language, tone, and technical responses with the University of Batangas' dedicated career readiness system.
         </p>
 
-        {/* --- Call to Action Buttons --- */}
-        <div className="flex flex-col sm:flex-row items-center gap-6 mb-16">
-          <button
-            onClick={() => navigate('/login/student')}
-            className="bg-maroon text-white px-8 py-3.5 rounded-full font-bold text-lg hover:bg-ub-yellow transition-colors shadow-lg shadow-gray-200"
-          >
-            Use ALVIN
-          </button>
-        </div>
 
         {/* --- Laptop Mockup Image (Simplified Placeholder) --- */}
-        <div className="w-full max-w-6xl relative">
+        <div className="mt-30 w-full max-w-6xl relative">
           {/* Subtle glow effect behind the laptop */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-1/2 bg-amber-200/40 rounded-full blur-[100px] -z-10"></div>
           <img

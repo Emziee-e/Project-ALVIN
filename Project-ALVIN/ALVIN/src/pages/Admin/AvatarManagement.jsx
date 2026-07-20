@@ -1,14 +1,16 @@
-import { useState } from "react";
-import { Users, FileBarChart, UserCircle, LogOut, ChevronDown, Play, Pause, CheckCircle, Plus } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { Users, FileBarChart, UserCircle, Play, Mic, CheckCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
 import SignOutModal from '../../Components/SignOutModal';
+import VoiceConfigModal from '../../Components/VoiceConfigModal';
+import AvatarPreviewModal from '../../Components/AvatarPreviewModal';
 import { supabase } from '../../lib/supabaseClient';
 
 const navItems = [
   { icon: Users, label: "User Management" },
   { icon: FileBarChart, label: "System Report" },
-  { icon: UserCircle, label: "Avatar Management" },
+  { icon: UserCircle, label: "Avatar" },
 ];
 
 const footerLinks = [
@@ -19,59 +21,69 @@ const footerLinks = [
 const avatarModels = [
   {
     id: 1,
-    name: "Alvin 1",
-    placeholder: "A1",
+    name: "Tristan",
+    image: "/images/Alvin.png",
+    video: "/videos/tristan-preview.mp4",
     selected: true,
   },
   {
     id: 2,
-    name: "Alvin 2",
-    placeholder: "A2",
+    name: "Marcus",
+    image: "/images/Alvin.png",
+    video: "/videos/marcus-preview.mp4",
     selected: false,
   },
   {
     id: 3,
-    name: "Alvin 3",
-    placeholder: "A3",
+    name: "Elena",
+    image: "/images/Alvin.png",
+    video: "/videos/elena-preview.mp4",
     selected: false,
   },
   {
     id: 4,
-    name: "Alvin 4",
-    placeholder: "A4",
+    name: "Nova",
+    image: "/images/Alvin.png",
+    video: "/videos/nova-preview.mp4",
     selected: false,
   },
 ];
 
-const voiceClips = [
-  { label: "Standard Greeting",  duration: "0:04s", primary: true  },
-  { label: "Technical Analysis", duration: "0:12s", primary: false },
-];
-
-const compatStats = [
-  { label: "Lip-Sync Precision", value: "99.8%",   accent: true  },
-  { label: "Emotion Mapping",    value: "Enabled",  accent: false },
-  { label: "Edge Processing",    value: "Active",   accent: false },
-];
-
-const mobileNav = [
-  { icon: "group",       label: "Accounts" },
-  { icon: "monitoring",  label: "Stats"    },
-  { icon: "psychology",  label: "Models",  fab: true },
-  { icon: "terminal",    label: "Logs"     },
-  { icon: "settings",    label: "System"   },
-];
-
 export default function AvatarManagement() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeNav, setActiveNav] = useState(2); // Avatars active
-  const [models,      setModels]      = useState(avatarModels);
-  const [playing,     setPlaying]     = useState(null);
-  const [voice,       setVoice]       = useState("Nova-Seraph (Alt-Alto)");
-  const [pitch,       setPitch]       = useState(60);
-  const [latency,     setLatency]     = useState(45);
+  const [models, setModels] = useState(avatarModels);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [activeVoiceModel, setActiveVoiceModel] = useState(null);
+  const [previewModel, setPreviewModel] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUserAvatar = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+      }
+    };
+
+    loadUserAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -81,14 +93,20 @@ export default function AvatarManagement() {
   const selectModel = (id) =>
     setModels(prev => prev.map(m => ({ ...m, selected: m.id === id })));
 
+  const openVoiceModal = (model) => {
+    setActiveVoiceModel(model);
+    setIsVoiceModalOpen(true);
+  };
+
+  const closeVoiceModal = () => {
+    setIsVoiceModalOpen(false);
+    setActiveVoiceModel(null);
+  };
+
   const selected = models.find(m => m.selected);
 
   return (
     <>
-      <style> {`
-                html, body, #root { height: 100%; margin: 0; width: 100%; }
-            `}
-        </style>
 
       <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Manrope,sans-serif]">
 
@@ -96,10 +114,10 @@ export default function AvatarManagement() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className="mb-[-10px] h-24" />
-            <div className="text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -155,6 +173,19 @@ export default function AvatarManagement() {
           onConfirm={handleSignOut}
         />
 
+        <VoiceConfigModal
+          isOpen={isVoiceModalOpen}
+          modelName={activeVoiceModel?.name}
+          onClose={closeVoiceModal}
+          onUpdate={closeVoiceModal}
+        />
+
+        <AvatarPreviewModal
+          isOpen={Boolean(previewModel)}
+          model={previewModel}
+          onClose={() => setPreviewModel(null)}
+        />
+
         {/* ── Main ── */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen min-w-0">
 
@@ -163,153 +194,97 @@ export default function AvatarManagement() {
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-100">
             </div>
             <div className="flex items-center gap-6">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
-                VN
-              </div>
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </header>
 
           {/* ── Content ── */}
           <div className="flex-1 overflow-y-auto w-full">
             <div className="px-4 md:px-6 lg:px-8 py-8 md:py-10 flex-1">
-
-            {/* Bento Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
-
-              {/* ── Left: Avatar Gallery ── */}
-              <div className="lg:col-span-8 space-y-6">
-                {/* Gallery header */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <h3 className="font-[Geist,Inter] text-xl md:text-2xl font-bold uppercase tracking-tight">
-                    Avatar Models
+              <div className="max-w-7xl mx-auto space-y-8">
+                <div className="space-y-2">
+                  <h3 className="font-[Geist,Inter] text-2xl md:text-3xl font-bold tracking-tight mb-3 text-maroon">
+                    Choose Avatar Model
                   </h3>
+                  <p className="text-sm md:text-base text-gray-600 font-[Inter,sans-serif] leading-6 mb-3">
+                    Select the persona for next AI-driven interview session. Each model has a distinct visual identity and conversational style.
+                  </p>
+                  {selected && (
+                    <div className="inline-flex items-center gap-2 rounded-full border border-[#862334]/15 bg-[#862334]/5 px-4 py-1.5 text-sm font-semibold text-[#862334]">
+                      <CheckCircle className="h-5 w-5" />
+                      Current Interviewer: {selected.name}
+                    </div>
+                  )}
                 </div>
 
-                {/* Avatar Cards Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                   {models.map(model => (
-                    <div
+                    <article
                       key={model.id}
-                      onClick={() => selectModel(model.id)}
-                      className={`group relative overflow-hidden cursor-pointer transition-all duration-300 rounded-lg
-                        ${model.selected
-                          ? "border-2 border-[#862334] shadow-[0_0_40px_rgba(134,35,52,0.15)]"
-                          : "border border-gray-200 hover:border-[#862334]/50"}`}
+                      className={`group overflow-hidden rounded-2xl border bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition-all duration-300 ease-out ${model.selected ? "border-[#862334] ring-1 ring-[#862334]/20" : "border-[#e8e8e8]"} hover:-translate-y-1 hover:shadow-[0_24px_50px_rgba(15,23,42,0.16)] hover:border-[#862334]/40`}
                     >
-                      {/* Avatar placeholder */}
-                      <div className="aspect-[4/5] overflow-hidden bg-gradient-to-br from-gray-200 to-gray-300 relative">
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className={`text-6xl font-[Space_Grotesk,sans-serif] font-black transition-all duration-700
-                            ${model.selected ? "text-[#862334]" : "text-gray-400 group-hover:text-[#862334]/60"}`}
-                          >
-                            {model.placeholder}
+                      <div className="relative aspect-[4/3] overflow-hidden bg-slate-200">
+                        <img
+                          src={model.image}
+                          alt={model.name}
+                          className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-transparent transition-opacity duration-300 group-hover:from-black/70 group-hover:via-black/10" />
+
+                        {model.selected ? (
+                          <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#862334] text-white shadow-lg">
+                            <CheckCircle className="h-5 w-5" />
+                          </div>
+                        ) : null}
+
+                        <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3 transition-transform duration-300 group-hover:-translate-y-0.5">
+                          <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                            <p className="truncate text-lg font-bold text-white md:text-xl">
+                              {model.name}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewModel(model)}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/20 px-3 py-2 text-xs font-semibold text-white backdrop-blur-md opacity-90 transition-all duration-300 hover:bg-white/30 hover:opacity-100"
+                            >
+                              <Play className="h-4 w-4 fill-current" />
+                              Preview
+                            </button>
                           </div>
                         </div>
-                        {/* Gradient overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                       </div>
 
-                      {/* Card footer */}
-                      <div className="absolute bottom-0 left-0 p-4 md:p-6 w-full">
-                        <div className="flex justify-between items-end gap-2">
-                          <div className="min-w-0">
-                            {model.selected && (
-                              <span className="text-[#862334] font-[Inter,sans-serif] text-[10px] uppercase tracking-widest mb-1 block bg-white/90 px-1.5 py-0.5 w-fit rounded-sm font-bold">
-                                Active Selection
-                              </span>
-                            )}
-                            <h4 className="text-lg md:text-2xl font-[Geist,Inter] font-bold text-white truncate uppercase">
-                              {model.name}
-                            </h4>
-                          </div>
-                          {model.selected ? (
-                            <div className="bg-[#862334] text-white p-2 flex-shrink-0 rounded-full">
-                              <CheckCircle className="w-5 h-5" />
-                            </div>
-                          ) : (
-                            <button
-                              onClick={e => { e.stopPropagation(); selectModel(model.id); }}
-                              className="bg-white/90 text-black px-2 md:px-4 py-1.5 md:py-2 text-[10px] md:text-xs font-[Geist,Inter] font-bold uppercase tracking-widest hover:bg-[#862334] hover:text-white transition-all flex-shrink-0 whitespace-nowrap rounded-sm"
-                            >
-                              Select
-                            </button>
-                          )}
-                        </div>
+                      <div className="space-y-3 p-4 md:p-5">
+                        <button
+                          type="button"
+                          onClick={() => openVoiceModal(model)}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#862334]/15 bg-[#f7fbfc] px-4 py-3 text-sm font-Geist text-maroon transition-all duration-300 hover:border-[#862334]/25 hover:bg-[#eef7f8]"
+                        >
+                          <Mic className="h-4 w-4 text-maroon" />
+                          Configure Voice
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => selectModel(model.id)}
+                          className="flex w-full items-center justify-center rounded-xl bg-maroon px-4 py-3 text-sm font-Geist text-white shadow-[0_10px_20px_rgba(15,76,92,0.18)] transition-all duration-300 hover:bg-[#862334] hover:shadow-[0_14px_26px_rgba(134,35,52,0.25)]"
+                        >
+                          Select for Session
+                        </button>
                       </div>
-                    </div>
+                    </article>
                   ))}
                 </div>
               </div>
-
-              {/* ── Right: Voice Matrix ── */}
-              <div className="lg:col-span-4 space-y-6">
-
-                {/* Voice panel */}
-                <div className="bg-gray-50 border border-gray-200 p-5 md:p-8 rounded-lg">
-                  <h3 className="font-[Geist,Inter] text-xl md:text-2xl font-bold uppercase tracking-tight mb-6 md:mb-8">
-                    Voice Models
-                  </h3>
-
-                  <div className="space-y-5 md:space-y-6">
-                    {/* Voice select */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-[Inter,sans-serif] uppercase tracking-widest text-[#862334] block font-bold">
-                        Primary Voice
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={voice}
-                          onChange={e => setVoice(e.target.value)}
-                          className="w-full bg-white border border-gray-200 text-black py-3 md:py-4 pl-4 pr-12 focus:ring-1 focus:ring-[#862334] appearance-none font-[Manrope,sans-serif] outline-none text-sm rounded cursor-pointer"
-                        >
-                          <option>ALVIN VOICE 1 (Alt-Alto)</option>
-                          <option>ALVIN VOICE 2 (Deep Bass)</option>
-                          <option>ALVIN VOICE 3 (Neutral Mid)</option>
-                        </select>
-                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 w-4 h-4" />
-                      </div>
-                    </div>
-
-                    {/* Preview clips */}
-                    <div className="bg-white p-4 md:p-6 space-y-4 border border-gray-100 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <span className="font-[Inter,sans-serif] font-bold text-sm tracking-widest uppercase">Preview Clips</span>
-                      </div>
-                      <div className="space-y-2">
-                        {voiceClips.map((clip, i) => (
-                          <div
-                            key={i}
-                            onClick={() => setPlaying(playing === i ? null : i)}
-                            className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer group rounded"
-                          >
-                            <div className="flex items-center gap-3 md:gap-4">
-                              <button
-                                className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0
-                                  ${clip.primary || playing === i
-                                    ? "border border-[#862334] text-[#862334] hover:bg-[#862334] hover:text-white"
-                                    : "border border-gray-300 text-gray-500 hover:border-[#862334] hover:text-[#862334]"}`}
-                              >
-                                {playing === i ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                              </button>
-                              <div>
-                                <p className="text-sm font-bold text-black font-[Geist,Inter]">{clip.label}</p>
-                                <p className="text-[10px] text-gray-400 uppercase font-[Inter,sans-serif]">{clip.duration}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* CTA */}
-                    <button className="w-full bg-[#862334] text-white py-4 md:py-5 font-[Geist,Inter] font-bold text-sm uppercase tracking-[0.2em] hover:bg-[#ffb003] hover: transition-all shadow-[0_10px_30px_rgba(134,35,52,0.2)] rounded-sm">
-                      Update Voice Model
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
-          </div>
           </div>
         </main>
       </div>

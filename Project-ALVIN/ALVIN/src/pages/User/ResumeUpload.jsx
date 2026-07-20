@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {ChevronRight,FileText,UploadCloud,Target,Briefcase,AlertCircle} from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
@@ -12,6 +12,33 @@ export default function ResumeUpload() {
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState(null);
   const [error, setError] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUserAvatar = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+      }
+    };
+
+    loadUserAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -57,18 +84,24 @@ export default function ResumeUpload() {
           {/* Top Header */}
           <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
             <div className="flex items-center">
-              <Link to="/user/dashboard" className="flex items-center">
-                <img src={Logo} alt="Alvin logo" className="h-12 mb-[-8px]" />
-                <div className="text-maroon text-[1.5rem] font-Geist tracking-[-0.05em] uppercase hidden sm:block">
+              <Link to="/user/dashboard" className="inline-flex items-center gap-0">
+                <img src={Logo} alt="Alvin logo" className="h-9 w-auto flex-shrink-0 block" />
+                <div className="hidden sm:flex h-9 items-center text-maroon font-Geist text-[2rem] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
                   LVIN
                 </div>
               </Link>
             </div>
 
             <div className="flex items-center gap-6">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
-                VN
-              </div>
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </header>
 

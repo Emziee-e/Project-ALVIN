@@ -13,7 +13,7 @@ const SignOutModal = ({ isOpen, onClose, onConfirm }) => {
                     onClick={onClose}
                     className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001]"
                 >
-                    <X className="w-5 h-5 text-maroon group-hover:rotate-90 transition-transform duration-200" />
+                    <X className="w-5 h-5 text-maroon" />
                 </button>
 
                 {/* Header/Icon */}

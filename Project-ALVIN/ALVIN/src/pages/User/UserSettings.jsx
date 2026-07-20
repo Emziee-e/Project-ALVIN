@@ -30,6 +30,7 @@ export default function UserSettings() {
   const [activeNav, setActiveNav]     = useState(2); // Settings active
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -54,6 +55,36 @@ export default function UserSettings() {
   const analyzerRef = useRef(null);
   const animationFrameRef = useRef(null);
   const canvasRef = useRef(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSignedInUserProfile = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+        const nextName = metadata.full_name || metadata.name || "Vin Perez";
+        const nextEmail = user?.email || "";
+        setName(nextName);
+        setEmail(nextEmail);
+      }
+    };
+
+    loadSignedInUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const startMicTest = async () => {
     try {
@@ -155,45 +186,7 @@ export default function UserSettings() {
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-      <style>{`
-        * { box-sizing: border-box; }
-        .audio-level-anim { width: 50% !important; }
-        .custom-scrollbar::-webkit-scrollbar { width: 0.25rem; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #fff; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 0.125rem; }
-        html, body, #root {
-          height: 100%;
-          margin: 0;
-          width: 100%;
-          overflow: hidden;
-        }
 
-        /* Hide scrollbar for Chrome, Safari and Opera */
-        ::-webkit-scrollbar {
-          display: none;
-        }
-
-        /* Hide scrollbar for IE, Edge and Firefox */
-        * {
-          -ms-overflow-style: none;  /* IE and Edge */
-          scrollbar-width: none;  /* Firefox */
-        }
-
-        /* Responsive font scaling */
-        @media (max-width: 640px) { html { font-size: 14px; } }
-        @media (max-width: 480px) { html { font-size: 13px; } }
-
-        /* Smooth overflow handling */
-        body { overflow: hidden; }
-
-        /* Better input scaling */
-        input, select, textarea { font-size: 1rem; }
-
-        /* Prevent zoom issues */
-        @media (max-width: 768px) {
-          input, select, button { font-size: 16px !important; }
-        }
-      `}</style>
 
       <div className="flex h-screen w-screen bg-white text-black font-[Manrope,sans-serif] overflow-hidden">
 
@@ -208,10 +201,10 @@ export default function UserSettings() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className=" mb-[-10px] h-24" />
-            <div className=" text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -284,16 +277,21 @@ export default function UserSettings() {
         <main className="flex-1 md:ml-60 lg:ml-64 bg-white w-full h-screen overflow-hidden flex flex-col">
 
           {/* Top Header */}
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
+          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 h-16 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 border-b border-[#e5e5e5]">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-sm sm:text-base md:text-lg text-[#862334] uppercase tracking-tight truncate">ALVIN</span>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4 md:gap-6 flex-shrink-0">
-
-              <div className="w-7 sm:w-8 h-7 sm:h-8 rounded-full border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-[9px] sm:text-xs font-bold font-[Space_Grotesk,sans-serif] flex-shrink-0">
-                VN
-              </div>
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full border border-[#e5e5e5] bg-[#862334]/20 overflow-hidden flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </header>
 
@@ -324,33 +322,18 @@ export default function UserSettings() {
                     <div className="relative group">
                       <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-50 border border-gray-200 flex items-center justify-center relative overflow-hidden rounded-xl shadow-sm">
                         <div className="w-full h-full flex items-center justify-center">
-                          {avatar ? (
-                            <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
+                          {avatarUrl || avatar ? (
+                            <img
+                              src={avatarUrl || avatar}
+                              alt="Profile"
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
                             <Icon name="person" className="text-slate-400 text-5xl" />
                           )}
                         </div>
-                        <label
-                          className="absolute inset-0 bg-[#862334]/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                          htmlFor="avatar-upload"
-                        >
-                          <Icon name="upload" className="text-white text-2xl" />
-                        </label>
-                        <input
-                          type="file"
-                          id="avatar-upload"
-                          className="hidden"
-                          accept="image/*"
-                          onChange={handleAvatarChange}
-                        />
                       </div>
                     </div>
-                    <button
-                      onClick={() => document.getElementById('avatar-upload').click()}
-                      className="mt-3 px-4 py-1.5 text-[10px] uppercase tracking-widest font-bold font-Inter text-[#862334] hover:text-[#ffb003] transition-all bg-white border border-gray-200 rounded-md"
-                    >
-                      Change Photo
-                    </button>
                   </div>
 
                   {/* Fields Section */}
@@ -416,13 +399,13 @@ export default function UserSettings() {
 
                   {/* Mic Sensitivity */}
                   <div className="mt-auto space-y-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <h4 className="font-Geist font-bold text-black uppercase tracking-tight text-xs">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <h4 className="font-Geist font-bold text-black uppercase tracking-tight text-xs shrink-0">
                         Mic Sensitivity
                       </h4>
                       <button
                         onClick={isTestingMic ? stopMicTest : startMicTest}
-                        className={`flex items-center gap-2 px-4 py-2 rounded font-Geist text-[10px] font-bold uppercase tracking-widest transition-all shadow-sm ${
+                        className={`inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 my-3 sm:my-4 rounded font-Geist text-[10px] font-bold uppercase tracking-widest transition-all shadow-sm whitespace-nowrap ${
                           isTestingMic
                           ? "bg-red-50 text-red-600 border border-red-200"
                           : "bg-[#862334] text-white hover:bg-ub-yellow"

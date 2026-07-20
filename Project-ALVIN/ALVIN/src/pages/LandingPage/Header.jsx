@@ -30,13 +30,10 @@ function Header() {
       <div className="max-w-7xl mx-auto flex items-center justify-between">
 
         {/* Left: Logo Section */}
-        <a href="#hero" className="flex items-center gap-0.5 hover:opacity-80 transition-opacity">
-          <img
-            src="/images/Alvin-logo.png"
-            alt="ALVIN logo"
-            className="h-11 w-auto object-contain"
+        <a href="#hero" className="inline-flex items-center gap-0 hover:opacity-80 transition-opacity">
+          <img src="/images/Alvin-logo.png" alt="ALVIN logo" className="h-11 w-auto object-contain"
           />
-          <span className="font-Geist text-[37px] font-bold text-maroon tracking-tighter leading-none">
+          <span className="ml-[-2px] font-Geist text-[37px] font-bold text-maroon tracking-tighter leading-none">
             LVIN
           </span>
         </a>

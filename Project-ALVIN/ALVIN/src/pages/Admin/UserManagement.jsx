@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Users, FileBarChart, UserCircle, LogOut, Search, ChevronLeft, ChevronRight, User, Filter, ChevronDown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
@@ -8,7 +8,7 @@ import { supabase } from '../../lib/supabaseClient';
 const navItems = [
   { icon: Users, label: "User Management" },
   { icon: FileBarChart, label: "System Report" },
-  { icon: UserCircle, label: "Avatar Management" },
+  { icon: UserCircle, label: "Avatar" },
 ];
 
 const initialAccounts = [
@@ -29,7 +29,34 @@ export default function UserManagement() {
   const [page,        setPage]        = useState(1);
   const [roleFilter,  setRoleFilter]  = useState("All Roles");
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUserAvatar = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+      }
+    };
+
+    loadUserAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -62,10 +89,10 @@ export default function UserManagement() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className="mb-[-10px] h-24" />
-            <div className="text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -129,19 +156,23 @@ export default function UserManagement() {
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-100">
             </div>
             <div className="flex items-center gap-6">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
-                VN
-              </div>
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </header>
 
           {/* ── Content ── */}
           <div className="flex-1 overflow-y-auto w-full">
             <section className="p-4 md:p-8 lg:p-10 flex-1">
-
             {/* ── Bento Grid ── */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
-
               {/* ── Main Table ── */}
               <div className="md:col-span-12 bg-white border border-gray-200 relative overflow-hidden rounded-lg">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 gap-4 border-b border-gray-100 bg-gray-50/50">
@@ -180,7 +211,7 @@ export default function UserManagement() {
                   <table className="w-full text-left border-collapse min-w-[600px]">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
-                        {["User", "Role", "Status", "Created", ""].map((h, i) => (
+                        {["User", "Role", "Account Status", "Created", ""].map((h, i) => (
                           <th
                             key={i}
                             className={`px-4 md:px-6 py-4 md:py-5 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 font-Geist ${i === 4 ? "text-right" : ""}`}
@@ -239,7 +270,9 @@ export default function UserManagement() {
                           {/* Actions */}
                           <td className="px-4 md:px-6 py-4 md:py-5 text-right">
                             <div className="flex items-center justify-end gap-2 md:gap-3 flex-wrap">
-                              <button className="text-[8px] font-bold uppercase tracking-widest text-gray-600 hover:text-[#ffb003] transition-colors whitespace-nowrap font-Geist">
+                              <button
+                                className="bg-[#862334] text-white px-3 md:px-4 py-1.5 md:py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#ffb003] transition-all whitespace-nowrap font-Geist rounded-[2px]"
+                              >
                                 Deactivate
                               </button>
                               <button

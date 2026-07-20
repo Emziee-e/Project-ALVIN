@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LayoutDashboard, Mic, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
@@ -28,7 +28,34 @@ export default function InterviewHistory() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [page,        setPage]        = useState(1);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUserAvatar = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+      }
+    };
+
+    loadUserAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -56,10 +83,10 @@ export default function InterviewHistory() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className=" mb-[-10px] h-24" />
-            <div className=" text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -132,15 +159,21 @@ export default function InterviewHistory() {
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
 
           {/* ── Top Header ── */}
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
+          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 h-16 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 border-b border-[#e5e5e5]">
             <div className="flex items-center gap-3">
               <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-sm sm:text-base md:text-lg text-[#862334] uppercase tracking-tight truncate">ALVIN</span>
             </div>
 
             <div className="flex items-center gap-3 md:gap-4">
-              <div className="w-8 h-8 rounded-full border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
-                VN
-              </div>
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </header>
 
@@ -158,7 +191,7 @@ export default function InterviewHistory() {
                       {["Target Role", "Date", "Readiness Score", ""].map((h, i) => (
                         <th
                           key={i}
-                          className={`px-4 md:px-6 py-4 font-[Space_Grotesk,sans-serif] text-xs md:text-sm uppercase tracking-widest text-gray-500 font-bold ${i === 3 ? "text-right" : ""}`}
+                          className={`px-4 md:px-6 py-4 font-Geist text-xs md:text-sm uppercase tracking-widest text-maroon font-bold ${i === 3 ? "text-right" : ""}`}
                         >
                           {h}
                         </th>
@@ -196,7 +229,7 @@ export default function InterviewHistory() {
                                 navigate('/user/interview-results');
                               }
                             }}
-                            className="bg-[#862334] text-white hover:bg-[#ffb003] transition-all duration-300 px-3 md:px-5 py-1.5 md:py-2 text-xs md:text-sm font-bold uppercase tracking-wider rounded active:scale-95 whitespace-nowrap font-[Space_Grotesk,sans-serif]"
+                            className="bg-[#862334] text-white hover:bg-[#ffb003] transition-all duration-300 px-3 md:px-5 py-1.5 md:py-2 text-xs md:text-sm font-bold uppercase tracking-wider rounded active:scale-95 whitespace-nowrap font-Geist"
                           >
                             View Report
                           </button>
