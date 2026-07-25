@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import {MonitorCheck,Mic,VideoOff,ChevronRight,Lightbulb,Camera,CheckCircle,AlertCircle,KeyRound} from 'lucide-react';
+import { MonitorCheck, Mic, VideoOff, ChevronRight, Lightbulb, Camera, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -11,8 +11,14 @@ const navItems = [
 
 export default function HardwareCheck() {
   const navigate = useNavigate();
+  const location = useLocation(); // ── Captures incoming state from ResumeUpload ──
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  
+  // Track streams & contexts to handle cleanups reliably
+  const videoStreamRef = useRef(null);
+  const audioStreamRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyzerRef = useRef(null);
   const animationFrameRef = useRef(null);
@@ -28,21 +34,45 @@ export default function HardwareCheck() {
     navigate('/');
   };
 
-  /* Camera Access Function */
+  /* Helper Teardown Functions */
+  const stopVideoStream = () => {
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach(track => track.stop());
+      videoStreamRef.current = null;
+    }
+  };
+
+  const stopAudioStream = () => {
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  };
+
+  /* Camera Preview Handler */
   const startPreview = async (videoDeviceId) => {
+    stopVideoStream(); // Clean up existing video stream first
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
         audio: false
       });
+      videoStreamRef.current = stream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
-      console.error("Error starting preview:", err);
+      console.error("Error starting video preview:", err);
     }
   };
 
+  /* Device Enumeration */
   const getDevices = async () => {
     try {
       const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -51,70 +81,43 @@ export default function HardwareCheck() {
 
       setDevices({ video: videoDevices, audio: audioDevices });
 
-      let currentVideoId = selectedDevices.video;
-      if (videoDevices.length > 0 && !currentVideoId) {
-        currentVideoId = videoDevices[0].deviceId;
-        setSelectedDevices(prev => ({ ...prev, video: currentVideoId }));
-      }
-      if (audioDevices.length > 0 && !selectedDevices.audio) {
-        setSelectedDevices(prev => ({ ...prev, audio: audioDevices[0].deviceId }));
-      }
-
-      if (currentVideoId) {
-        startPreview(currentVideoId);
-      }
+      // Default selection setup
+      setSelectedDevices(prev => ({
+        video: prev.video || (videoDevices[0]?.deviceId ?? ""),
+        audio: prev.audio || (audioDevices[0]?.deviceId ?? "")
+      }));
     } catch (err) {
       console.error("Error enumerating devices:", err);
     }
   };
 
+  /* Request Permissions */
   const requestPermissions = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // Stop temporary stream immediately after acquiring permissions
+      tempStream.getTracks().forEach(track => track.stop());
       setPermissionsGranted(true);
-      // Stop the initial stream
-      stream.getTracks().forEach(track => track.stop());
-      getDevices();
+      // getDevices() will automatically fire via the useEffect hook
     } catch (err) {
       console.error("Permission denied:", err);
       setPermissionsGranted(false);
     }
   };
 
-  useEffect(() => {
-    if (permissionsGranted) {
-      getDevices();
-    }
-    return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        videoRef.current.srcObject.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [permissionsGranted]);
-
-  useEffect(() => {
-    if (permissionsGranted && selectedDevices.video) {
-      startPreview(selectedDevices.video);
-    }
-  }, [selectedDevices.video]);
-/*                            */
-
-/* Microphone Waveform Visualization */
-  useEffect(() => {
-    if (permissionsGranted && selectedDevices.audio) {
-      startMicTest(selectedDevices.audio);
-    }
-  }, [selectedDevices.audio, permissionsGranted]);
-
+  /* Microphone Waveform Visualizer */
   const startMicTest = async (audioDeviceId) => {
+    stopAudioStream(); // Clean up previous mic stream & animation loops
+
     try {
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        await audioContextRef.current.close();
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
       });
+      audioStreamRef.current = stream;
 
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioContextRef.current.createMediaStreamSource(stream);
@@ -175,11 +178,45 @@ export default function HardwareCheck() {
     renderFrame();
   };
 
-  /*                            */
+  /* --- Lifecycle Hooks --- */
+
+  // On Permission Change: Query Devices
+  useEffect(() => {
+    if (permissionsGranted) {
+      getDevices();
+    }
+    return () => {
+      stopVideoStream();
+      stopAudioStream();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
+    };
+  }, [permissionsGranted]);
+
+  // Handle Video Device Changes
+  useEffect(() => {
+    if (permissionsGranted && selectedDevices.video) {
+      startPreview(selectedDevices.video);
+    }
+  }, [selectedDevices.video, permissionsGranted]);
+
+  // Handle Audio Device Changes
+  useEffect(() => {
+    if (permissionsGranted && selectedDevices.audio) {
+      startMicTest(selectedDevices.audio);
+    }
+  }, [selectedDevices.audio, permissionsGranted]);
+
+  // Handle Navigation to Live Session while preserving interview state
+  const handleProceedToInterview = () => {
+    navigate('/user/live-session', { 
+      state: location.state 
+    });
+  };
 
   return (
     <>
-      {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
       <style>{`
@@ -207,23 +244,21 @@ export default function HardwareCheck() {
           {/* Nav */}
           <nav className="flex-1">
             <ul className="flex flex-col gap-1 list-none p-0 m-0">
-              {navItems.map((item, i) => {
-                return (
-                  <li key={item.label}
-                    className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
+              {navItems.map((item, i) => (
+                <li key={item.label}
+                  className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
+                >
+                  <div
+                    className={`flex items-center gap-4 px-4 py-3 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
+                      ${activeNav === i
+                        ? "text-[#862334]"
+                        : "text-[#4a4a4a]"}`}
                   >
-                    <div
-                      className={`flex items-center gap-4 px-4 py-3 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
-                        ${activeNav === i
-                          ? "text-[#862334]"
-                          : "text-[#4a4a4a]"}`}
-                    >
-                      <item.icon size={20} />
-                      <span>{item.label}</span>
-                    </div>
-                  </li>
-                );
-              })}
+                    <item.icon size={20} />
+                    <span>{item.label}</span>
+                  </div>
+                </li>
+              ))}
             </ul>
           </nav>
 
@@ -285,7 +320,6 @@ export default function HardwareCheck() {
 
                 {/* Webcam Preview */}
                 <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-2xl">
-                  {/* Dark BG placeholder */}
                   <div className="absolute inset-0 bg-slate-900" />
 
                   {/* Video Element */}
@@ -310,8 +344,8 @@ export default function HardwareCheck() {
                   {/* Top Badge */}
                   {permissionsGranted && (
                     <div className="absolute top-4 left-4 z-10 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2">
-                       <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                       <span className="text-[10px] text-white font-bold uppercase tracking-widest font-Inter">Live Preview</span>
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-[10px] text-white font-bold uppercase tracking-widest font-Inter">Live Preview</span>
                     </div>
                   )}
 
@@ -332,7 +366,7 @@ export default function HardwareCheck() {
                 <div className="bg-[#8e0f28]/10 p-6 flex gap-4 items-start border-l-4 border-[#ff989d]">
                   <Lightbulb size={24} className="text-[#ff989d] flex-shrink-0" />
                   <div className="space-y-1">
-                    <h4 className="font-bold text-[#8e0f28] font-Geist">Camera & Lighting Check</h4>
+                    <h4 className="font-bold text-[#8e0f28] font-Geist">Camera &amp; Lighting Check</h4>
                     <p className="text-slate-700 text-sm font-Inter">
                       Position your camera to show your face and chest, and ensure good lighting.
                     </p>
@@ -418,12 +452,12 @@ export default function HardwareCheck() {
                   </div>
                 </section>
 
-                {/* Buttons */}
+                {/* Action Buttons */}
                 <div className="space-y-4">
                   {!permissionsGranted && (
                     <button
                       onClick={requestPermissions}
-                      className="w-full bg-[#862334] text-white font-Geist font-bold py-6 px-8 flex items-center justify-center gap-3 transition-all hover:bg-[#ffb003] active:scale-[0.98] uppercase tracking-wider"
+                      className="w-full bg-[#862334] text-white font-Geist font-bold py-6 px-8 flex items-center justify-center gap-3 transition-all hover:bg-[#ffb003] active:scale-[0.98] uppercase tracking-wider cursor-pointer"
                     >
                       <KeyRound size={20} />
                       ALLOW CAMERA &amp; MIC ACCESS
@@ -431,7 +465,7 @@ export default function HardwareCheck() {
                   )}
 
                   <button
-                    onClick={() => navigate('/user/live-session')}
+                    onClick={handleProceedToInterview}
                     disabled={!permissionsGranted}
                     className={`w-full font-Geist font-black py-6 px-8 uppercase tracking-widest text-lg border transition-all
                       ${permissionsGranted
@@ -451,7 +485,7 @@ export default function HardwareCheck() {
         </div>
         </main>
 
-        {/* Decorative glow */}
+        {/* Decorative Glow */}
         <div className="fixed bottom-0 right-0 w-1/3 h-1/2 -z-10 pointer-events-none overflow-hidden opacity-5">
           <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-[#862334] rounded-full blur-[100px]" />
           <div className="absolute top-0 right-20 w-64 h-64 bg-[#e9c400] rounded-full blur-[80px]" />
