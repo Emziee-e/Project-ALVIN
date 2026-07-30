@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Mic, MicOff, Video, VideoOff, Smartphone, LogOut, MessageSquare, Send } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Smartphone, LogOut, MessageSquare } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { useNavigate, useLocation } from 'react-router-dom';
 import EndSessionModal from "../../Components/EndSessionModal";
@@ -10,6 +10,7 @@ export default function LiveSession() {
   const location = useLocation();
   const videoRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const inactivityTimerRef = useRef(null);
 
   // Data passed from setup flow
   const sessionData = location.state?.sessionData || null;
@@ -29,7 +30,37 @@ export default function LiveSession() {
   // Speech Recognition States
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [candidateHasStartedSpeaking, setCandidateHasStartedSpeaking] = useState(false);
   const recognitionRef = useRef(null);
+
+  // Persistent accumulator buffer for long multi-sentence answers
+  const accumulatedTranscriptRef = useRef("");
+
+  // Refs to track states inside async event listeners safely
+  const isProcessingRef = useRef(isProcessing);
+  const micActiveRef = useRef(micActive);
+  const sessionStartedRef = useRef(sessionStarted);
+
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+    micActiveRef.current = micActive;
+    sessionStartedRef.current = sessionStarted;
+
+    if (isProcessing) {
+      accumulatedTranscriptRef.current = "";
+      setTranscript("");
+    }
+  }, [isProcessing, micActive, sessionStarted]);
+
+  // Reset "started speaking" tracker whenever ALVIN finishes a turn
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.isAlvin) {
+      setCandidateHasStartedSpeaking(false);
+      accumulatedTranscriptRef.current = "";
+      setTranscript("");
+    }
+  }, [messages]);
 
   // Auto-scroll transcript to bottom
   useEffect(() => {
@@ -68,7 +99,7 @@ export default function LiveSession() {
     }
   }, [sessionStarted]);
 
-  // ── 2. Speech-to-Text (Mic Listener Setup) ──
+  // ── 2. Speech-to-Text (Continuous Accumulating Mic Listener) ──
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -83,11 +114,25 @@ export default function LiveSession() {
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      let currentTranscript = "";
+      if (isProcessingRef.current) return;
+
+      let currentInterim = "";
+
       for (let i = event.resultIndex; i < event.results.length; ++i) {
-        currentTranscript += event.results[i][0].transcript;
+        const result = event.results[i];
+        if (result.isFinal) {
+          accumulatedTranscriptRef.current += result[0].transcript + " ";
+        } else {
+          currentInterim += result[0].transcript;
+        }
       }
-      setTranscript(currentTranscript);
+
+      const fullAnswerText = (accumulatedTranscriptRef.current + currentInterim).trim();
+
+      if (fullAnswerText) {
+        setTranscript(fullAnswerText);
+        setCandidateHasStartedSpeaking(true);
+      }
     };
 
     recognition.onerror = (event) => {
@@ -95,22 +140,29 @@ export default function LiveSession() {
       setIsListening(false);
     };
 
+    // Keep listener alive across silence drops
     recognition.onend = () => {
       setIsListening(false);
+      if (sessionStartedRef.current && micActiveRef.current && !isProcessingRef.current) {
+        try {
+          recognition.start();
+          setIsListening(true);
+        } catch (e) {
+          // Engine restarting
+        }
+      }
     };
 
     recognitionRef.current = recognition;
   }, []);
 
-  // Control Mic Listening based on micActive state & session state
+  // Control Mic Listening state
   useEffect(() => {
     if (sessionStarted && micActive && !isProcessing && recognitionRef.current) {
       try {
         recognitionRef.current.start();
         setIsListening(true);
-      } catch (err) {
-        // Recognition already running or starting
-      }
+      } catch (err) {}
     } else if ((!micActive || isProcessing) && recognitionRef.current) {
       recognitionRef.current.stop();
       setIsListening(false);
@@ -123,7 +175,7 @@ export default function LiveSession() {
     if (!textToSend.trim()) return;
 
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try { recognitionRef.current.stop(); } catch (e) {}
     }
     setIsListening(false);
 
@@ -136,7 +188,11 @@ export default function LiveSession() {
 
     const updatedHistory = [...messages, userMsg];
     setMessages(updatedHistory);
+    
+    // Clear state & accumulator buffer
+    accumulatedTranscriptRef.current = "";
     setTranscript("");
+    setCandidateHasStartedSpeaking(false);
     setIsProcessing(true);
 
     try {
@@ -167,6 +223,86 @@ export default function LiveSession() {
       setIsProcessing(false);
     }
   };
+
+  // ── 4. Trigger Silence Nudge ──
+  const triggerInactivityNudge = async () => {
+    if (isProcessing) return;
+
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (e) {}
+    }
+    setIsListening(false);
+    setIsProcessing(true);
+
+    const nudgeInstruction = {
+      speaker: "System",
+      text: "[Note: The candidate was silent for 12 seconds without responding. Kindly ask if they need clarification, or rephrase/simplify the last question.]"
+    };
+
+    const promptHistory = [...messages, nudgeInstruction];
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/interview/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: targetRole,
+          history: promptHistory.map(m => ({ speaker: m.speaker, text: m.text }))
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to get response from ALVIN");
+
+      const data = await response.json();
+
+      const alvinReply = {
+        speaker: "ALVIN",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: data.response,
+        isAlvin: true,
+      };
+
+      setMessages(prev => [...prev, alvinReply]);
+    } catch (err) {
+      console.error("Inactivity nudge error:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ── 5. Timers: 8s Pause Auto-Submit & 12s Silence Nudge ──
+  useEffect(() => {
+    const stopTimer = () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+    };
+
+    const lastMsg = messages[messages.length - 1];
+    const isCandidateTurn = sessionStarted && micActive && !isProcessing && lastMsg?.isAlvin;
+
+    if (!isCandidateTurn) {
+      stopTimer();
+      return;
+    }
+
+    stopTimer();
+
+    if (transcript.trim().length > 0) {
+      // User HAS spoken -> Wait 5 seconds of continuous silence to finalize answer submission
+      inactivityTimerRef.current = setTimeout(() => {
+        handleSendSpokenResponse(transcript);
+      }, 5000);
+    } else if (!candidateHasStartedSpeaking) {
+      // User HAS NOT spoken -> Wait 10 seconds of total silence before AI nudge
+      inactivityTimerRef.current = setTimeout(() => {
+        triggerInactivityNudge();
+      }, 10000);
+    }
+
+    return () => stopTimer();
+  }, [sessionStarted, micActive, isProcessing, messages, transcript, candidateHasStartedSpeaking]);
 
   // Camera Management
   useEffect(() => {
@@ -311,11 +447,23 @@ export default function LiveSession() {
                   )}
                 </div>
 
-                {/* Spoken Live Speech Overlay */}
-                {transcript && (
-                  <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 max-w-xl w-full px-6 py-3 bg-black/80 backdrop-blur-md rounded-xl text-white text-sm text-center border border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-green-400 block mb-1 tracking-widest">Live Voice Capture</span>
+                {/* 1. Live Candidate Answer Overlay (Persists continuous transcript through pauses) */}
+                {transcript.trim() && (
+                  <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 max-w-6xl w-full px-6 py-3 bg-black/80 backdrop-blur-md rounded-xl text-white text-sm text-center border border-white/10">
+                    <span className="text-[10px] uppercase font-bold text-green-400 block mb-1 tracking-widest">
+                      Live Voice Capture
+                    </span>
                     "{transcript}"
+                  </div>
+                )}
+
+                {/* 2. ALVIN Question Overlay (Hidden once candidate starts speaking) */}
+                {sessionStarted && !candidateHasStartedSpeaking && !transcript.trim() && messages[messages.length - 1]?.isAlvin && (
+                  <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 max-w-6xl w-full px-6 py-3 bg-black/80 backdrop-blur-md rounded-xl text-white text-sm text-center border border-white/10">
+                    <span className="text-[10px] uppercase font-bold text-[#862334] block mb-1 tracking-widest">
+                      ALVIN
+                    </span>
+                    "{messages[messages.length - 1]?.text}"
                   </div>
                 )}
 
@@ -335,18 +483,6 @@ export default function LiveSession() {
                     {camActive ? <Video size={20} /> : <VideoOff size={20} />}
                   </button>
 
-                  {/* Manual Send Answer button for speech */}
-                  {sessionStarted && (
-                    <button
-                      onClick={() => handleSendSpokenResponse(transcript)}
-                      disabled={!transcript.trim() || isProcessing}
-                      className="px-5 h-12 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-full transition-all flex items-center gap-2 cursor-pointer text-xs uppercase tracking-wider"
-                    >
-                      <Send size={16} />
-                      <span>Submit Answer</span>
-                    </button>
-                  )}
-
                   <button
                     onClick={() => setIsEndModalOpen(true)}
                     className="ml-2 px-6 h-12 bg-[#862334] text-white font-bold rounded-full hover:bg-black transition-all flex items-center gap-2 shadow-lg cursor-pointer"
@@ -356,69 +492,6 @@ export default function LiveSession() {
                   </button>
                 </div>
               </div>
-            </div>
-
-            {/* Transcript Drawer */}
-            <div className="w-[400px] flex-shrink-0 bg-[#f9f9f9] flex flex-col border-l border-[#e5e5e5] overflow-hidden">
-              <div className="flex-shrink-0 px-8 pt-8 pb-4">
-                <h2 className="text-xl font-[Space_Grotesk,sans-serif] font-black text-black tracking-tight">
-                  Live Transcript
-                </h2>
-                <p className="text-[#888888] text-[11px] font-bold uppercase tracking-[0.15em] font-[Inter,sans-serif] mt-1">
-                  {sessionStarted ? "Active Session" : "Waiting for start"}
-                </p>
-              </div>
-
-              {/* Dynamic Transcript Messages */}
-              <div className="flex-1 overflow-y-auto px-8 py-4 custom-scrollbar space-y-6 min-h-0">
-                {sessionStarted && messages.map((msg, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="flex justify-between items-center px-1">
-                      <span className={`text-[10px] font-black tracking-widest uppercase font-[Inter,sans-serif] ${msg.isAlvin ? "text-[#862334]" : "text-emerald-700"}`}>
-                        {msg.speaker}
-                      </span>
-                      <span className="text-[10px] text-[#aaa] font-bold">{msg.time}</span>
-                    </div>
-                    <p className={`text-sm leading-relaxed font-semibold p-4 shadow-sm font-[Manrope,sans-serif]
-                      ${msg.isAlvin
-                        ? "bg-white rounded-2xl rounded-tl-none border-l-4 border-[#862334]"
-                        : "bg-emerald-50 rounded-2xl rounded-tr-none border-r-4 border-emerald-500 text-slate-800"}`}
-                    >
-                      {msg.text}
-                    </p>
-                  </div>
-                ))}
-
-                {/* Gemini Processing State */}
-                {isProcessing && (
-                  <div className="flex items-center gap-2 px-1 py-2">
-                    {[0, 0.1, 0.2].map((delay, i) => (
-                      <span key={i} className="w-1.5 h-1.5 bg-[#862334] rounded-full animate-bounce" style={{ animationDelay: `${delay}s` }} />
-                    ))}
-                    <span className="text-[10px] font-black text-[#888888] tracking-widest uppercase ml-2 font-[Inter,sans-serif]">
-                      ALVIN is analyzing response...
-                    </span>
-                  </div>
-                )}
-
-                {/* Empty State */}
-                {!sessionStarted && (
-                  <div className="h-full flex flex-col items-center justify-center opacity-30">
-                    <MessageSquare size={48} className="mb-4 text-gray-400" />
-                    <p className="text-xs font-bold uppercase tracking-widest text-center">Transcript will appear here once the session begins</p>
-                  </div>
-                )}
-
-                <div ref={messagesEndRef} />
-              </div>
-
-              <EndSessionModal
-                isOpen={isEndModalOpen}
-                onClose={() => setIsEndModalOpen(false)}
-                onConfirm={handleConfirmEnd}
-              />
-
-              {isFinishing && <Loading />}
             </div>
           </div>
 
