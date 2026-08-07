@@ -1,71 +1,36 @@
 import { useState, useEffect, useRef } from "react";
-import { Mic, MicOff, Video, VideoOff, Smartphone, LogOut, MessageSquare } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, LogOut, Sparkles, AlertCircle } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { useNavigate, useLocation } from 'react-router-dom';
+import DailyIframe from '@daily-co/daily-js';
 import EndSessionModal from "../../Components/EndSessionModal";
 import Loading from "../../Components/Loading";
 
 export default function LiveSession() {
   const navigate = useNavigate();
   const location = useLocation();
-  const videoRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const inactivityTimerRef = useRef(null);
+
+  // Video Refs
+  const tavusVideoRef = useRef(null);
+  const tavusAudioRef = useRef(null);
+  const localVideoRef = useRef(null);
+  const dailyCallRef = useRef(null);
 
   // Data passed from setup flow
   const sessionData = location.state?.sessionData || null;
+  const conversationUrl = sessionData?.conversation_url || sessionData?.data?.conversation_url || null;
+  const conversationId = sessionData?.conversation_id || sessionData?.data?.conversation_id || null;
   const targetRole = location.state?.role || "Software Engineer";
   const candidateName = sessionData?.candidate_name || "Candidate";
 
-  // Dynamic States
-  const [messages, setMessages] = useState([]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  // States
   const [micActive, setMicActive] = useState(true);
   const [camActive, setCamActive] = useState(true);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [countdown, setCountdown] = useState(null);
   const [isEndModalOpen, setIsEndModalOpen] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
-
-  // Speech Recognition States
-  const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [candidateHasStartedSpeaking, setCandidateHasStartedSpeaking] = useState(false);
-  const recognitionRef = useRef(null);
-
-  // Persistent accumulator buffer for long multi-sentence answers
-  const accumulatedTranscriptRef = useRef("");
-
-  // Refs to track states inside async event listeners safely
-  const isProcessingRef = useRef(isProcessing);
-  const micActiveRef = useRef(micActive);
-  const sessionStartedRef = useRef(sessionStarted);
-
-  useEffect(() => {
-    isProcessingRef.current = isProcessing;
-    micActiveRef.current = micActive;
-    sessionStartedRef.current = sessionStarted;
-
-    if (isProcessing) {
-      accumulatedTranscriptRef.current = "";
-      setTranscript("");
-    }
-  }, [isProcessing, micActive, sessionStarted]);
-
-  // Reset "started speaking" tracker whenever ALVIN finishes a turn
-  useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.isAlvin) {
-      setCandidateHasStartedSpeaking(false);
-      accumulatedTranscriptRef.current = "";
-      setTranscript("");
-    }
-  }, [messages]);
-
-  // Auto-scroll transcript to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isProcessing, transcript]);
+  const [avatarConnected, setAvatarConnected] = useState(false);
 
   // Countdown controller
   const handleStartInterview = () => {
@@ -82,295 +47,119 @@ export default function LiveSession() {
     return () => clearTimeout(timer);
   }, [countdown]);
 
-  // ── 1. ALVIN Opening Statement ──
+  // Join Tavus WebRTC Room natively via Daily JS SDK
   useEffect(() => {
-    if (sessionStarted && messages.length === 0) {
-      const openingQuestion = sessionData?.opening_question 
-        || "To start off, could you briefly introduce yourself and highlight your relevant experience?";
+    if (!sessionStarted || !conversationUrl) return;
 
-      const openingMsg = {
-        speaker: "ALVIN",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `Hello ${candidateName}! Welcome to your mock interview session for the ${targetRole} position. I've thoroughly reviewed your resume, and I'm excited to get to know you better. ${openingQuestion}`,
-        isAlvin: true,
-      };
+    // Create Daily Call Object (Headless WebRTC mode)
+    const call = DailyIframe.createCallObject({
+      audioSource: true,
+      videoSource: true,
+    });
 
-      setMessages([openingMsg]);
-    }
-  }, [sessionStarted]);
+    dailyCallRef.current = call;
 
-  // ── 2. Speech-to-Text (Continuous Accumulating Mic Listener) ──
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // Listen for incoming media tracks from Tavus AI Avatar
+    call.on("track-started", (event) => {
+      if (event.participant && !event.participant.local) {
+        setAvatarConnected(true);
 
-    if (!SpeechRecognition) {
-      console.warn("Speech Recognition API is not supported in this browser. Switch to Chrome or Edge.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    recognition.onresult = (event) => {
-      if (isProcessingRef.current) return;
-
-      let currentInterim = "";
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          accumulatedTranscriptRef.current += result[0].transcript + " ";
-        } else {
-          currentInterim += result[0].transcript;
+        // Attach Tavus Video Stream
+        if (event.track.kind === "video" && tavusVideoRef.current) {
+          tavusVideoRef.current.srcObject = new MediaStream([event.track]);
+        }
+        // Attach Tavus Audio Stream
+        if (event.track.kind === "audio" && tavusAudioRef.current) {
+          tavusAudioRef.current.srcObject = new MediaStream([event.track]);
         }
       }
 
-      const fullAnswerText = (accumulatedTranscriptRef.current + currentInterim).trim();
-
-      if (fullAnswerText) {
-        setTranscript(fullAnswerText);
-        setCandidateHasStartedSpeaking(true);
+      // Render local candidate stream in PiP
+      if (event.participant?.local && event.track.kind === "video" && localVideoRef.current) {
+        localVideoRef.current.srcObject = new MediaStream([event.track]);
       }
-    };
+    });
 
-    recognition.onerror = (event) => {
-      console.error("Speech recognition error:", event.error);
-      setIsListening(false);
-    };
+    // Handle Call Ended
+    call.on("left-meeting", () => {
+      handleConfirmEnd();
+    });
 
-    // Keep listener alive across silence drops
-    recognition.onend = () => {
-      setIsListening(false);
-      if (sessionStartedRef.current && micActiveRef.current && !isProcessingRef.current) {
-        try {
-          recognition.start();
-          setIsListening(true);
-        } catch (e) {
-          // Engine restarting
-        }
-      }
-    };
-
-    recognitionRef.current = recognition;
-  }, []);
-
-  // Control Mic Listening state
-  useEffect(() => {
-    if (sessionStarted && micActive && !isProcessing && recognitionRef.current) {
-      try {
-        recognitionRef.current.start();
-        setIsListening(true);
-      } catch (err) {}
-    } else if ((!micActive || isProcessing) && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-  }, [sessionStarted, micActive, isProcessing]);
-
-  // ── 3. Send Candidate Answer to Gemini Chat Endpoint ──
-  const handleSendSpokenResponse = async (spokenText) => {
-    const textToSend = spokenText || transcript;
-    if (!textToSend.trim()) return;
-
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) {}
-    }
-    setIsListening(false);
-
-    const userMsg = {
-      speaker: candidateName,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: textToSend.trim(),
-      isAlvin: false,
-    };
-
-    const updatedHistory = [...messages, userMsg];
-    setMessages(updatedHistory);
-    
-    // Clear state & accumulator buffer
-    accumulatedTranscriptRef.current = "";
-    setTranscript("");
-    setCandidateHasStartedSpeaking(false);
-    setIsProcessing(true);
-
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/interview/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: targetRole,
-          history: updatedHistory.map(m => ({ speaker: m.speaker, text: m.text }))
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to get response from ALVIN");
-
-      const data = await response.json();
-
-      const alvinReply = {
-        speaker: "ALVIN",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: data.response,
-        isAlvin: true,
-      };
-
-      setMessages(prev => [...prev, alvinReply]);
-    } catch (err) {
-      console.error("Chat API error:", err);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // ── 4. Trigger Silence Nudge ──
-  const triggerInactivityNudge = async () => {
-    if (isProcessing) return;
-
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) {}
-    }
-    setIsListening(false);
-    setIsProcessing(true);
-
-    const nudgeInstruction = {
-      speaker: "System",
-      text: "[Note: The candidate was silent for 12 seconds without responding. Kindly ask if they need clarification, or rephrase/simplify the last question.]"
-    };
-
-    const promptHistory = [...messages, nudgeInstruction];
-
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/interview/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: targetRole,
-          history: promptHistory.map(m => ({ speaker: m.speaker, text: m.text }))
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to get response from ALVIN");
-
-      const data = await response.json();
-
-      const alvinReply = {
-        speaker: "ALVIN",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: data.response,
-        isAlvin: true,
-      };
-
-      setMessages(prev => [...prev, alvinReply]);
-    } catch (err) {
-      console.error("Inactivity nudge error:", err);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // ── 5. Timers: 8s Pause Auto-Submit & 12s Silence Nudge ──
-  useEffect(() => {
-    const stopTimer = () => {
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-        inactivityTimerRef.current = null;
-      }
-    };
-
-    const lastMsg = messages[messages.length - 1];
-    const isCandidateTurn = sessionStarted && micActive && !isProcessing && lastMsg?.isAlvin;
-
-    if (!isCandidateTurn) {
-      stopTimer();
-      return;
-    }
-
-    stopTimer();
-
-    if (transcript.trim().length > 0) {
-      // User HAS spoken -> Wait 5 seconds of continuous silence to finalize answer submission
-      inactivityTimerRef.current = setTimeout(() => {
-        handleSendSpokenResponse(transcript);
-      }, 5000);
-    } else if (!candidateHasStartedSpeaking) {
-      // User HAS NOT spoken -> Wait 10 seconds of total silence before AI nudge
-      inactivityTimerRef.current = setTimeout(() => {
-        triggerInactivityNudge();
-      }, 10000);
-    }
-
-    return () => stopTimer();
-  }, [sessionStarted, micActive, isProcessing, messages, transcript, candidateHasStartedSpeaking]);
-
-  // Camera Management
-  useEffect(() => {
-    let stream = null;
-    const startCamera = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        console.error("Error accessing media devices:", err);
-      }
-    };
-
-    if (camActive) {
-      startCamera();
-    } else if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
+    // Join room
+    call.join({ url: conversationUrl }).catch((err) => {
+      console.error("Error joining Tavus WebRTC call:", err);
+    });
 
     return () => {
-      if (stream) stream.getTracks().forEach(track => track.stop());
+      if (dailyCallRef.current) {
+        dailyCallRef.current.leave();
+        dailyCallRef.current.destroy();
+      }
     };
+  }, [sessionStarted, conversationUrl]);
+
+  // Toggle Mute/Unmute
+  useEffect(() => {
+    if (dailyCallRef.current) {
+      dailyCallRef.current.setLocalAudio(micActive);
+    }
+  }, [micActive]);
+
+  // Toggle Video On/Off
+  useEffect(() => {
+    if (dailyCallRef.current) {
+      dailyCallRef.current.setLocalVideo(camActive);
+    }
   }, [camActive]);
 
   const handleConfirmEnd = () => {
     setIsEndModalOpen(false);
     setIsFinishing(true);
-    setCamActive(false);
-    setMicActive(false);
 
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
+    if (dailyCallRef.current) {
+      dailyCallRef.current.leave();
     }
 
     setTimeout(() => {
-      navigate('/user/interview-results');
+      navigate('/user/interview-results', {
+        state: {
+          conversationId: conversationId,
+          candidateName: candidateName,
+          targetRole: targetRole
+        }
+      });
     }, 2000);
   };
+
+  if (isFinishing) {
+    return <Loading message="Finalizing interview evaluation with Gemini AI..." />;
+  }
 
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f3f3f3; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #862334; border-radius: 10px; }
         html, body, #root { height: 100%; overflow: hidden; margin: 0; width: 100%; }
       `}</style>
+
+      {/* Hidden Audio Tag for Tavus Avatar Voice */}
+      <audio ref={tavusAudioRef} autoPlay />
 
       <div className="h-screen w-screen bg-white text-black font-[Manrope,sans-serif] overflow-hidden">
         <div className="mx-auto flex flex-col w-full h-full overflow-hidden">
 
           {/* Header */}
           <header className="flex-shrink-0 h-[70px] bg-white flex justify-between items-center px-8 border-b border-[#e5e5e5] z-40">
-            <div className="hidden md:flex items-center gap-3 text-sm font-[Inter,sans-serif] opacity-100">
+            <div className="hidden md:flex items-center gap-3 text-sm font-[Inter,sans-serif]">
               <img src={Logo} alt="Alvin logo" className="w-[55px] mb-[-10px]" />
-              <span className="text-[#862334] font-bold pt-2">Live Session • {targetRole}</span>
+              <span className="text-[#862334] font-bold pt-2">Live Tavus Native WebRTC • {targetRole}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-3 py-1 bg-green-100 text-green-800 rounded-full flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                Direct WebRTC Connected
+              </span>
             </div>
           </header>
 
@@ -382,20 +171,18 @@ export default function LiveSession() {
                 <div className="max-w-4xl w-full px-4">
                   {countdown === null ? (
                     <>
-                      <h2 className="text-4xl sm:text-5xl md:text-6xl font-black font-Geist text-[#862334] mb-6 uppercase tracking-tighter text-center">
+                      <h2 className="text-4xl sm:text-5xl md:text-6xl font-black font-Geist text-[#862334] mb-6 uppercase tracking-tighter">
                         Ready to Begin?
                       </h2>
-                      <p className="text-gray-500 font-Inter text-base mb-12 leading-relaxed max-w-xl mx-auto text-center">
-                        ALVIN will greet you with an opening statement before starting the interview questions. Speak clearly into your microphone when answering.
+                      <p className="text-gray-500 font-Inter text-base mb-12 leading-relaxed max-w-xl mx-auto">
+                        You are about to enter a live video interview with <strong>ALVIN</strong>. Make sure your camera and microphone are turned on.
                       </p>
-                      <div className="max-w-xs mx-auto">
-                        <button
-                          onClick={handleStartInterview}
-                          className="w-full py-4 bg-[#862334] text-white font-black font-Geist uppercase tracking-[0.2em] rounded-xl hover:bg-black transition-all cursor-pointer"
-                        >
-                          Start Interview
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleStartInterview}
+                        className="px-8 py-4 bg-[#862334] text-white font-black font-Geist uppercase tracking-[0.2em] rounded-xl hover:bg-black transition-all shadow-xl"
+                      >
+                        Start Video Interview
+                      </button>
                     </>
                   ) : (
                     <div className="space-y-6">
@@ -405,9 +192,6 @@ export default function LiveSession() {
                       <div className="text-9xl font-black font-Geist text-[#862334] leading-none animate-pulse">
                         {countdown}
                       </div>
-                      <p className="text-gray-400 font-Inter text-xs uppercase tracking-widest font-bold">
-                        Prepare yourself...
-                      </p>
                     </div>
                   )}
                 </div>
@@ -416,87 +200,93 @@ export default function LiveSession() {
 
             {/* Main Stage */}
             <div className="flex-1 flex flex-col gap-5 p-6 min-w-0 overflow-hidden">
-              <div className="flex-[3] relative rounded-2xl overflow-hidden bg-slate-900 shadow-2xl min-h-0">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent z-10" />
+              <div className="flex-[3] relative rounded-2xl overflow-hidden bg-slate-950 shadow-2xl min-h-0 border border-slate-800">
                 
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-white/20 text-center">
-                    <Smartphone className="w-[100px] h-[100px] mx-auto animate-pulse text-[#862334]" />
-                    <p className="font-[Space_Grotesk,sans-serif] text-xs uppercase tracking-[0.2em] mt-4 text-white/50">ALVIN AI Interactive Voice</p>
+                {/* 1. Tavus Native Avatar Video Element */}
+                {sessionStarted && conversationUrl ? (
+                  <div className="relative w-full h-full">
+                    <video
+                      ref={tavusVideoRef}
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-cover rounded-2xl"
+                    />
+                    {!avatarConnected && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white">
+                        <Sparkles className="w-12 h-12 animate-spin text-[#862334] mb-3" />
+                        <p className="text-xs uppercase tracking-widest text-slate-400">Connecting to Tavus AI Avatar Stream...</p>
+                      </div>
+                    )}
                   </div>
-                </div>
-
-                {/* Status Badge */}
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
-                  <div className="flex items-center gap-3 px-6 py-2.5 bg-white/95 backdrop-blur-xl rounded-full shadow-2xl">
-                    <span className={`w-2.5 h-2.5 rounded-full ${sessionStarted ? (isProcessing ? 'bg-amber-500 animate-ping' : isListening ? 'bg-green-500 animate-pulse' : 'bg-[#862334]') : 'bg-gray-300'}`} />
-                    <span className="text-[#862334] text-xs font-black tracking-widest uppercase font-[Inter,sans-serif]">
-                      {!sessionStarted ? "Session Paused" : isProcessing ? "ALVIN is thinking..." : isListening ? "Listening to you..." : "Mic Paused"}
-                    </span>
+                ) : sessionStarted && !conversationUrl ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-slate-900">
+                    <AlertCircle className="w-16 h-16 text-red-500 mb-4 animate-bounce" />
+                    <h3 className="text-xl font-bold text-white mb-2 uppercase">Missing Conversation Link</h3>
+                    <button
+                      onClick={() => navigate('/user/setup')}
+                      className="px-6 py-2.5 bg-[#862334] text-white text-xs font-bold uppercase rounded-lg hover:bg-black"
+                    >
+                      Return to Setup
+                    </button>
                   </div>
-                </div>
+                ) : null}
 
-                {/* Candidate Video */}
-                <div className="absolute top-8 left-8 w-64 aspect-video rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl z-20 bg-slate-800 backdrop-blur-md">
-                  {camActive ? (
-                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-900/50">
-                      <VideoOff className="text-white/20 text-4xl" />
-                    </div>
-                  )}
-                </div>
-
-                {/* 1. Live Candidate Answer Overlay (Persists continuous transcript through pauses) */}
-                {transcript.trim() && (
-                  <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 max-w-6xl w-full px-6 py-3 bg-black/80 backdrop-blur-md rounded-xl text-white text-sm text-center border border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-green-400 block mb-1 tracking-widest">
-                      Live Voice Capture
+                {/* 2. Candidate PiP Video Overlay */}
+                {sessionStarted && (
+                  <div className="absolute top-6 left-6 w-56 aspect-video rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl z-30 bg-slate-900">
+                    {camActive ? (
+                      <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-900/80">
+                        <VideoOff className="text-white/20 text-3xl" />
+                      </div>
+                    )}
+                    <span className="absolute bottom-1.5 left-2 text-[10px] bg-black/60 px-2 py-0.5 rounded text-white font-medium">
+                      {candidateName} (You)
                     </span>
-                    "{transcript}"
                   </div>
                 )}
 
-                {/* 2. ALVIN Question Overlay (Hidden once candidate starts speaking) */}
-                {sessionStarted && !candidateHasStartedSpeaking && !transcript.trim() && messages[messages.length - 1]?.isAlvin && (
-                  <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 max-w-6xl w-full px-6 py-3 bg-black/80 backdrop-blur-md rounded-xl text-white text-sm text-center border border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-[#862334] block mb-1 tracking-widest">
-                      ALVIN
-                    </span>
-                    "{messages[messages.length - 1]?.text}"
-                  </div>
-                )}
-
-                {/* Action Controls */}
-                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-[#202124]/90 backdrop-blur-xl px-5 py-3 rounded-full border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
+                {/* 3. Action Controls */}
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-[#111827]/90 backdrop-blur-xl px-5 py-3 rounded-full border border-white/10 shadow-2xl">
                   <button
                     onClick={() => setMicActive(m => !m)}
-                    className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-200 border cursor-pointer ${micActive ? "bg-transparent border-white/20 text-white hover:bg-white/10" : "bg-[#862334] border-[#862334] text-white"}`}
+                    className={`flex items-center justify-center w-12 h-12 rounded-full border ${micActive ? "bg-transparent border-white/20 text-white hover:bg-white/10" : "bg-[#862334] border-[#862334] text-white"}`}
                   >
                     {micActive ? <Mic size={20} /> : <MicOff size={20} />}
                   </button>
 
                   <button
                     onClick={() => setCamActive(c => !c)}
-                    className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-200 border cursor-pointer ${camActive ? "bg-transparent border-white/20 text-white hover:bg-white/10" : "bg-[#862334] border-[#862334] text-white"}`}
+                    className={`flex items-center justify-center w-12 h-12 rounded-full border ${camActive ? "bg-transparent border-white/20 text-white hover:bg-white/10" : "bg-[#862334] border-[#862334] text-white"}`}
                   >
                     {camActive ? <Video size={20} /> : <VideoOff size={20} />}
                   </button>
 
                   <button
                     onClick={() => setIsEndModalOpen(true)}
-                    className="ml-2 px-6 h-12 bg-[#862334] text-white font-bold rounded-full hover:bg-black transition-all flex items-center gap-2 shadow-lg cursor-pointer"
+                    className="ml-2 px-6 h-12 bg-[#862334] text-white font-bold rounded-full hover:bg-black flex items-center gap-2 shadow-lg"
                   >
                     <LogOut size={18} className="rotate-180" />
                     <span className="text-xs uppercase tracking-widest hidden sm:inline">End Session</span>
                   </button>
                 </div>
+
               </div>
             </div>
+
           </div>
 
         </div>
       </div>
+
+      {isEndModalOpen && (
+        <EndSessionModal
+          isOpen={isEndModalOpen}
+          onClose={() => setIsEndModalOpen(false)}
+          onConfirm={handleConfirmEnd}
+        />
+      )}
     </>
   );
 }

@@ -10,16 +10,15 @@ const navItems = [
 ];
 
 export default function ResumeUpload() {
-  const [activeNav, setActiveNav] = useState(0);
+  const [activeNav] = useState(0);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
   
-  // ── State updates for FastAPI integration ──
   const [role, setRole] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [file, setFile] = useState(null); // Keeps raw File object for FormData
+  const [file, setFile] = useState(null);
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false); // API Loading State
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -31,17 +30,15 @@ export default function ResumeUpload() {
     setDragOver(false);
     setError("");
     
-    // Support drop event or standard file picker click
     const uploadedFile = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
     
     if (uploadedFile && uploadedFile.type === "application/pdf") {
-      setFile(uploadedFile); // Store the File object
+      setFile(uploadedFile);
     } else if (uploadedFile) {
       setError("Please upload a PDF file.");
     }
   };
 
-  // ── Call FastAPI Endpoint to Analyze Resume via Gemini 3.5 Flash ──
   const handleInitialize = async () => {
     if (!file) {
       setError("Please upload your resume before proceeding to the interview.");
@@ -60,19 +57,24 @@ export default function ResumeUpload() {
       formData.append("resume", file);
       formData.append("job_description", role);
 
-      // Post to FastAPI backend
-      const response = await fetch("http://localhost:8000/api/interview/start-session", {
+      // Call FastAPI endpoint that creates the Tavus conversation
+      const response = await fetch("http://localhost:8000/api/interview/start-tavus-session", {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error("Failed to process resume with Gemini. Please try again.");
+        throw new Error("Failed to initialize session. Please check backend logs.");
       }
 
-      const sessionData = await response.json(); // Gemini's parsed evaluation & initial questions
+      const sessionData = await response.json();
 
-      // Navigate to hardware-check while passing Gemini's initial response data
+      // Ensure conversation_url exists in the response
+      if (!sessionData?.conversation_url && !sessionData?.data?.conversation_url) {
+        throw new Error("Backend did not return a valid Tavus conversation URL.");
+      }
+
+      // Navigate to Hardware Check, passing sessionData along
       navigate('/user/hardware-check', { 
         state: { 
           sessionData, 
@@ -95,7 +97,7 @@ export default function ResumeUpload() {
 
       <div className="flex min-h-screen bg-white text-black font-Geist">
 
-        {/* ── Sidebar ── */}
+        {/* Sidebar */}
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
           <div className="mb-6 px-4 flex flex-col items-center">
             <img src={Logo} alt="Alvin logo" className="mb-[-10px] h-24" />
@@ -133,7 +135,7 @@ export default function ResumeUpload() {
           onConfirm={handleSignOut}
         />
 
-        {/* ── Main Section ── */}
+        {/* Main Section */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
 
           <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
@@ -250,7 +252,7 @@ export default function ResumeUpload() {
                     </div>
                   </section>
 
-                  {/* CTA with Loading state handling */}
+                  {/* CTA */}
                   <section className="bg-[#f9f9f9] border border-[#e5e5e5] p-6 md:p-8 rounded-[4px] relative overflow-hidden">
                     <div className="relative z-10">
                       {error && (
