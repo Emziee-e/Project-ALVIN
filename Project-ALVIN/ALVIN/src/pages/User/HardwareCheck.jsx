@@ -16,7 +16,6 @@ export default function HardwareCheck() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   
-  // Track streams & contexts to handle cleanups reliably
   const videoStreamRef = useRef(null);
   const audioStreamRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -29,7 +28,6 @@ export default function HardwareCheck() {
   const [devices, setDevices] = useState({ video: [], audio: [] });
   const [selectedDevices, setSelectedDevices] = useState({ video: "", audio: "" });
 
-  // Guard against missing session state (e.g. page refresh)
   useEffect(() => {
     if (!location.state?.sessionData) {
       console.warn("No session data found in HardwareCheck. Redirecting to setup.");
@@ -43,7 +41,6 @@ export default function HardwareCheck() {
     navigate('/');
   };
 
-  /* Helper Teardown Functions */
   const stopVideoStream = () => {
     if (videoStreamRef.current) {
       videoStreamRef.current.getTracks().forEach(track => track.stop());
@@ -70,7 +67,6 @@ export default function HardwareCheck() {
     }
   };
 
-  /* Camera Preview Handler */
   const startPreview = async (videoDeviceId) => {
     stopVideoStream();
 
@@ -89,7 +85,6 @@ export default function HardwareCheck() {
     }
   };
 
-  /* Device Enumeration */
   const getDevices = async () => {
     try {
       const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -107,7 +102,6 @@ export default function HardwareCheck() {
     }
   };
 
-  /* Request Permissions */
   const requestPermissions = async () => {
     try {
       const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -119,7 +113,6 @@ export default function HardwareCheck() {
     }
   };
 
-  /* Microphone Waveform Visualizer */
   const startMicTest = async (audioDeviceId) => {
     stopAudioStream();
 
@@ -192,7 +185,6 @@ export default function HardwareCheck() {
     renderFrame();
   };
 
-  /* Lifecycle Hooks */
   useEffect(() => {
     if (permissionsGranted) {
       getDevices();
@@ -214,12 +206,15 @@ export default function HardwareCheck() {
     }
   }, [selectedDevices.audio, permissionsGranted]);
 
-  // Clean up streams explicitly BEFORE moving to LiveSession to avoid hardware lock issues
   const handleProceedToInterview = () => {
     stopAllTracks();
     
+    // Pass along session state and exact selected device IDs to LiveSession
     navigate('/user/live-session', { 
-      state: location.state 
+      state: { 
+        ...location.state,
+        selectedDevices 
+      } 
     });
   };
 

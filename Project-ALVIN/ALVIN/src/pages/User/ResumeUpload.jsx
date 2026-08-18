@@ -5,6 +5,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
+
 const navItems = [
   { icon: MessagesSquare, label: "Interview Setup" },
 ];
@@ -57,9 +60,10 @@ export default function ResumeUpload() {
       formData.append("resume", file);
       formData.append("job_description", role);
 
-      // Call FastAPI endpoint that creates the Tavus conversation
-      const response = await fetch("http://localhost:8000/api/interview/start-tavus-session", {
+      // Call FastAPI endpoint that creates the NavTalk session configuration
+      const response = await fetch(`${API_BASE_URL}/api/interview/start-navtalk-session`, {
         method: "POST",
+        headers: { "X-API-Key": APP_API_KEY },
         body: formData,
       });
 
@@ -69,9 +73,9 @@ export default function ResumeUpload() {
 
       const sessionData = await response.json();
 
-      // Ensure conversation_url exists in the response
-      if (!sessionData?.conversation_url && !sessionData?.data?.conversation_url) {
-        throw new Error("Backend did not return a valid Tavus conversation URL.");
+      // Ensure session_id exists in the response
+      if (!sessionData?.session_id) {
+        throw new Error("Backend did not return a valid NavTalk session configuration.");
       }
 
       // Navigate to Hardware Check, passing sessionData along
@@ -287,12 +291,12 @@ export default function ResumeUpload() {
               <div className="mt-16 border-t border-[#e5e5e5] pt-10 grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
                 {[
                   {
-                    title: "Gemini 3.6 Multimodal Analysis",
+                    title: "Gemini Multimodal Analysis",
                     body: "ALVIN parses your PDF resume natively to extract technical background, projects, and key competencies to tailor the interview simulation.",
                   },
                   {
                     title: "Real-time Voice Scoring",
-                    body: "During the interview, Gemini 3.6 Flash evaluates your spoken answers, tracking clarity, delivery, and STAR method alignment.",
+                    body: "During the interview, Gemini evaluates your spoken answers, tracking clarity, delivery, and rubric alignment.",
                   },
                   {
                     title: "Privacy First",
