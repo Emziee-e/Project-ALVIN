@@ -178,24 +178,6 @@ export default function StaffDashboard() {
 
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full relative">
 
-            {/* ── Start Interview Floating Action Button ── */}
-            <div className={`fixed bottom-8 right-8 z-[60] flex items-center group`}>
-              {!isStarting && (
-                <div className="mr-3 bg-[maroon] text-white text-[12px] font-normal px-3 py-1.5 rounded-[4px] opacity-0 -translate-x-2 transition-all duration-300 whitespace-nowrap shadow-lg pointer-events-none group-hover:opacity-100 group-hover:translate-x-0 relative flex items-center h-9">
-                  <div className="absolute left-full top-1/2 -translate-y-1/2 border-y-[6px] border-y-transparent border-l-[6px] border-l-[#2d2e32]"></div>
-                </div>
-              )}
-
-              <button
-                onClick={handleStartInterview}
-                disabled={isStarting}
-                className={`w-14 h-14 sm:w-16 sm:h-16 bg-white text-[#862334] rounded-full shadow-[0_1px_3px_rgba(60,64,67,0.3),0_4px_8px_3px_rgba(60,64,67,0.15)] flex items-center justify-center hover:bg-gray-50 transition-all duration-300 relative ${isStarting ? 'scale-[60] bg-[maroon] text-maroon opacity-100 !pointer-events-none' : ''}`}
-                title="Start Interview"
-              >
-                <Mic size={28} className={`relative z-10 ${isStarting ? 'opacity-0 scale-0' : 'group-hover:animate-pulse'} transition-all duration-300`} />
-              </button>
-            </div>
-
             <section className="mb-8 md:mb-12">
               <div className="text-left">
                 <h2 className="font-[Geist,Inter] text-xl sm:text-3xl md:text-5xl lg:text-6xl font-bold tracking-[-0.04em] text-black leading-tight mb-3 md:mb-4">

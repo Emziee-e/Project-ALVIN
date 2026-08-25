@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Users, FileBarChart, UserCircle, LogOut, Search, ChevronLeft, ChevronRight, User, Filter, ChevronDown } from 'lucide-react';
+import { Users, FileBarChart, UserCircle, Search, ChevronLeft, ChevronRight, User, Filter, ChevronDown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
 import SignOutModal from '../../Components/SignOutModal';
+import AccountActionModal from '../../Components/AccountActionModal';
+import AccountActionToast from '../../Components/AccountActionToast';
 import { supabase } from '../../lib/supabaseClient';
 
 const navItems = [
@@ -18,9 +20,7 @@ const initialAccounts = [
   { name: "Tristan Jay Mirano",       email: "4444444@ub.edu.ph", role: "User",  active: true,  date: "Feb 14, 2024", primary: false },
 ];
 
-const TOTAL    = initialAccounts.length;
 const PER_PAGE = 5;
-const PAGES    = Math.ceil(TOTAL / PER_PAGE);
 
 export default function UserManagement() {
   const [activeNav, setActiveNav] = useState(0);
@@ -30,6 +30,8 @@ export default function UserManagement() {
   const [roleFilter,  setRoleFilter]  = useState("All Roles");
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [accountAction, setAccountAction] = useState(null);
+  const [toast, setToast] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,16 +72,48 @@ export default function UserManagement() {
     return matchesSearch && matchesRole;
   });
 
-  const paginatedAccounts = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalFilteredPAGES = Math.ceil(filtered.length / PER_PAGE);
+  const displayedPage = Math.min(page, Math.max(totalFilteredPAGES, 1));
+  const paginatedAccounts = filtered.slice((displayedPage - 1) * PER_PAGE, displayedPage * PER_PAGE);
 
-  const deleteAccount = (email) =>
-    setAccounts(prev => prev.filter(a => a.email !== email));
+  const openAccountAction = (action, account) => setAccountAction({ action, account });
+
+  const closeAccountAction = () => setAccountAction(null);
+
+  const confirmAccountAction = () => {
+    if (!accountAction) return;
+
+    const { action, account } = accountAction;
+    if (action === "delete") {
+      setAccounts(previous => previous.filter(item => item.email !== account.email));
+      setToast({
+        id: Date.now(),
+        title: "Account Deleted",
+        message: `${account.name} has been permanently removed.`,
+      });
+    } else {
+      const isActive = action === "activate";
+      setAccounts(previous => previous.map(item =>
+        item.email === account.email ? { ...item, active: isActive } : item
+      ));
+      setToast({
+        id: Date.now(),
+        title: isActive ? "Account Activated" : "Account Deactivated",
+        message: isActive
+          ? `${account.name} can now access the ALVIN AI Mock Interview platform.`
+          : `${account.name} has been deactivated successfully.`,
+      });
+    }
+
+    closeAccountAction();
+  };
 
   return (
     <>
       <style> {`
                 html, body, #root { height: 100%; margin: 0; width: 100%; }
+                @keyframes toast-fade { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes toast-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
             `}
         </style>
 
@@ -147,6 +181,15 @@ export default function UserManagement() {
           onClose={() => setIsSignOutModalOpen(false)}
           onConfirm={handleSignOut}
         />
+        <AccountActionModal
+          key={accountAction ? `${accountAction.action}-${accountAction.account.email}` : "closed"}
+          isOpen={Boolean(accountAction)}
+          action={accountAction?.action ?? null}
+          account={accountAction?.account ?? null}
+          onClose={closeAccountAction}
+          onConfirm={confirmAccountAction}
+        />
+        <AccountActionToast toast={toast} onClose={() => setToast(null)} />
 
         {/* ── Main ── */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen min-w-0">
@@ -271,12 +314,22 @@ export default function UserManagement() {
                           <td className="px-4 md:px-6 py-4 md:py-5 text-right">
                             <div className="flex items-center justify-end gap-2 md:gap-3 flex-wrap">
                               <button
-                                className="bg-[#862334] text-white px-3 md:px-4 py-1.5 md:py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#ffb003] transition-all whitespace-nowrap font-Geist rounded-[2px]"
+                                type="button"
+                                onClick={() => openAccountAction(acc.active ? "deactivate" : "activate", acc)}
+                                aria-label={`${acc.active ? "Deactivate" : "Activate"} ${acc.name}`}
+                                className={`inline-flex w-28 items-center justify-center rounded-[2px] border px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap font-Geist focus:outline-none ${
+                                  acc.active
+                                    ? "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 focus:ring-amber-400"
+                                    : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 focus:ring-emerald-400"
+                                }`}
                               >
-                                Deactivate
+                                {acc.active ? "Deactivate" : "Activate"}
                               </button>
                               <button
-                                className="bg-[#862334] text-white px-3 md:px-4 py-1.5 md:py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#ffb003] transition-all whitespace-nowrap font-Geist rounded-[2px]"
+                                type="button"
+                                onClick={() => openAccountAction("delete", acc)}
+                                aria-label={`Delete ${acc.name}`}
+                                className="inline-flex w-28 items-center justify-center rounded-[2px] bg-[#8B1C2C] px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition-all hover:bg-[#711724] whitespace-nowrap font-Geist focus:outline-none focus:ring-2"
                               >
                                 Delete
                               </button>
@@ -294,19 +347,19 @@ export default function UserManagement() {
                 <div className="flex items-center gap-3 md:gap-4">
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
+                    disabled={displayedPage === 1}
                     className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30"
                   >
                     <ChevronLeft className="w-4 h-4" /> Previous
                   </button>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-[#862334] text-sm">{totalFilteredPAGES > 0 ? page : 0}</span>
+                    <span className="font-bold text-[#862334] text-sm">{totalFilteredPAGES > 0 ? displayedPage : 0}</span>
                     <span className="text-gray-400 text-sm">/</span>
                     <span className="text-gray-500 text-sm">{totalFilteredPAGES}</span>
                   </div>
                   <button
                     onClick={() => setPage(p => Math.min(totalFilteredPAGES, p + 1))}
-                    disabled={page === totalFilteredPAGES || totalFilteredPAGES === 0}
+                    disabled={displayedPage === totalFilteredPAGES || totalFilteredPAGES === 0}
                     className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30"
                   >
                     Next <ChevronRight className="w-4 h-4" />
