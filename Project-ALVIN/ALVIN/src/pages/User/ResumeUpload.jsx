@@ -6,7 +6,7 @@ import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
+const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "6d97711b9f2dc929bba9df972cca981c42f929c6a96861b205dac5b762d04ebd";
 
 const navItems = [
   { icon: MessagesSquare, label: "Interview Setup" },
