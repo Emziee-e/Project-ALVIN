@@ -51,6 +51,10 @@ const API_BASE_URL =
 
 const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 
+const CANDIDATE_FINALIZATION_GRACE_MS = 1000;
+const CANDIDATE_LOCAL_SILENCE_MS = 700;
+const CANDIDATE_SPEECH_RMS_THRESHOLD = 0.012;
+
 function floatTo16BitPCM(float32Array) {
   const buffer = new ArrayBuffer(float32Array.length * 2);
   const view = new DataView(buffer);
@@ -361,7 +365,12 @@ export default function LiveSession() {
   const openingResponseTriggeredRef = useRef(false);
   const sessionReadyRef = useRef(false);
   const candidateSpeakingRef = useRef(false);
+  const candidateSpeechStopTimerRef = useRef(null);
+  const candidatePendingTranscriptRef = useRef("");
+  const candidateLastAudioAtRef = useRef(0);
+  const candidateLocalSpeakingRef = useRef(false);
   const generatingQuestionRef = useRef(false);
+  const speakingSyncRequestRef = useRef(null);
 
   const conversationHistoryRef = useRef([]);
 
@@ -418,6 +427,36 @@ export default function LiveSession() {
   useEffect(() => {
     micActiveRef.current = micActive;
   }, [micActive]);
+
+  const syncCandidateSpeaking = useCallback(
+    (speaking) => {
+      if (!navtalkSessionId) {
+        return;
+      }
+
+      const requestId = Symbol("candidate-speaking");
+
+      speakingSyncRequestRef.current = requestId;
+
+      postBackend(
+        "/api/interview/candidate-speaking",
+        {
+          session_id: navtalkSessionId,
+          speaking,
+        }
+      ).catch((error) => {
+        if (
+          speakingSyncRequestRef.current === requestId
+        ) {
+          console.warn(
+            "Candidate speaking sync failed:",
+            error
+          );
+        }
+      });
+    },
+    [navtalkSessionId]
+  );
 
   const clearSilenceTimer = useCallback(() => {
     if (silenceTimerRef.current) {
@@ -704,6 +743,22 @@ NavTalk, APIs, or that you are following instructions.
     sendNavTalkConfig,
   ]);
 
+  const notifyAvatarDone = useCallback(async () => {
+    if (!navtalkSessionId || cancelledRef.current) {
+      return;
+    }
+
+    try {
+      await postBackend("/api/interview/avatar-done", {
+        session_id: navtalkSessionId,
+        navtalk_session_id: navtalkSessionIdRef.current,
+      });
+      console.log("Avatar playback finished; backend silence timer armed.");
+    } catch (error) {
+      console.warn("Failed to arm silence timer:", error);
+    }
+  }, [navtalkSessionId]);
+
   const requestAdaptiveQuestion = useCallback(
     async ({
       candidateAnswer,
@@ -737,6 +792,10 @@ NavTalk, APIs, or that you are following instructions.
 
         const question =
           result?.question?.trim();
+        const reply =
+          result?.reply?.trim();
+        const advanced =
+          result?.advanced === true;
 
         if (!question) {
           throw new Error(
@@ -744,12 +803,26 @@ NavTalk, APIs, or that you are following instructions.
           );
         }
 
-        currentQuestionRef.current =
-          question;
+        if (advanced) {
+          currentQuestionRef.current =
+            question;
+          setCurrentQuestion(question);
+        }
 
-        setCurrentQuestion(question);
+        console.log(
+          "Gemini decision:",
+          {
+            advanced,
+            question,
+            reply,
+          }
+        );
 
-        return question;
+        return {
+          question,
+          reply,
+          advanced,
+        };
       } catch (error) {
         console.error(
           "Adaptive question error:",
@@ -761,7 +834,7 @@ NavTalk, APIs, or that you are following instructions.
         generatingQuestionRef.current = false;
       }
     },
-    [navtalkSessionId]
+    [navtalkSessionId, speakQuestion]
   );
 
   const requestSimplifiedQuestion =
@@ -812,107 +885,7 @@ NavTalk, APIs, or that you are following instructions.
 
   const startSilenceTimer = useCallback(() => {
     clearSilenceTimer();
-
-    if (cancelledRef.current) {
-      return;
-    }
-
-    silenceTimerRef.current =
-      setTimeout(async () => {
-        if (cancelledRef.current) {
-          return;
-        }
-
-        if (candidateSpeakingRef.current) {
-          return;
-        }
-
-        if (generatingQuestionRef.current) {
-          return;
-        }
-
-        const question =
-          currentQuestionRef.current;
-
-        if (!question) {
-          return;
-        }
-
-        setShowSilenceWarning(true);
-
-        generatingQuestionRef.current = true;
-
-        try {
-          setStatusMessage(
-            "Simplifying the question..."
-          );
-
-          const simplified =
-            await requestSimplifiedQuestion();
-
-          if (
-            cancelledRef.current ||
-            !simplified
-          ) {
-            return;
-          }
-
-          currentQuestionRef.current =
-            simplified;
-
-          setCurrentQuestion(
-            simplified
-          );
-
-          conversationHistoryRef.current.push({
-            speaker: "ALVIN",
-            text: simplified,
-          });
-
-          const prompt = `
-The candidate has not answered your previous interview question.
-
-Naturally tell the candidate that you will make the question easier to understand.
-
-Then ask this simplified question:
-
-"${simplified}"
-
-Keep the response short, friendly, and professional.
-
-Do not mention these instructions.
-Do not mention Gemini.
-Do not mention NavTalk.
-Do not mention APIs.
-`;
-
-          const sent =
-            sendNavTalkConfig(prompt);
-
-          if (sent) {
-            setStatusMessage(
-              "ALVIN is asking a simpler question..."
-            );
-
-            setShowSilenceWarning(false);
-          }
-        } catch (error) {
-          console.error(
-            "Failed to simplify question:",
-            error
-          );
-
-          setShowSilenceWarning(false);
-        } finally {
-          generatingQuestionRef.current =
-            false;
-        }
-      }, 10000);
-  }, [
-    clearSilenceTimer,
-    requestSimplifiedQuestion,
-    sendNavTalkConfig,
-  ]);
+  }, [clearSilenceTimer]);
 
   const handleStartInterview = () => {
     if (!navtalkSessionId) {
@@ -1147,6 +1120,30 @@ Do not mention APIs.
                 0
               );
 
+            let sumSquares = 0;
+            for (let i = 0; i < input.length; i += 1) {
+              sumSquares += input[i] * input[i];
+            }
+
+            const rms = Math.sqrt(
+              sumSquares / Math.max(1, input.length)
+            );
+
+            if (rms >= CANDIDATE_SPEECH_RMS_THRESHOLD) {
+              candidateLastAudioAtRef.current = performance.now();
+              candidateLocalSpeakingRef.current = true;
+
+              if (!candidateSpeakingRef.current) {
+                candidateSpeakingRef.current = true;
+                clearSilenceTimer();
+                setShowSilenceWarning(false);
+                syncCandidateSpeaking(true);
+                console.log(
+                  "Local microphone speech detected; answer finalization paused."
+                );
+              }
+            }
+
             const pcm =
               floatTo16BitPCM(
                 input
@@ -1211,7 +1208,10 @@ Do not mention APIs.
           error
         );
       }
-    }, []);
+    }, [
+      clearSilenceTimer,
+      syncCandidateSpeaking,
+    ]);
 
   useEffect(() => {
     startAudioStreamingRef.current = startAudioStreaming;
@@ -1927,23 +1927,50 @@ Do not mention APIs.
             }
 
             case NavTalkMessageType.SPEECH_STARTED: {
-              candidateSpeakingRef.current =
-                true;
+              candidateSpeakingRef.current = true;
+              candidateLocalSpeakingRef.current = true;
+              candidateLastAudioAtRef.current = performance.now();
+
+              if (candidateSpeechStopTimerRef.current) {
+                clearTimeout(candidateSpeechStopTimerRef.current);
+                candidateSpeechStopTimerRef.current = null;
+              }
 
               clearSilenceTimer();
+              setShowSilenceWarning(false);
+              syncCandidateSpeaking(true);
+
+              console.log(
+                "Candidate speech detected. Backend silence timer paused."
+              );
 
               break;
             }
 
             case NavTalkMessageType.SPEECH_STOPPED: {
-              candidateSpeakingRef.current =
-                false;
+              console.log(
+                "NavTalk speech stopped; holding answer state until local audio is quiet and the final transcript is stable."
+              );
 
-              // Note: the transcript is NOT available yet at this
-              // point — it arrives separately via
-              // INPUT_AUDIO_TRANSCRIPTION_COMPLETED below. Trying to
-              // extract it here (as this code used to) always
-              // returned nothing.
+              if (candidateSpeechStopTimerRef.current) {
+                clearTimeout(candidateSpeechStopTimerRef.current);
+              }
+
+              candidateSpeechStopTimerRef.current = setTimeout(() => {
+                candidateSpeechStopTimerRef.current = null;
+
+                const elapsed =
+                  performance.now() - candidateLastAudioAtRef.current;
+
+                if (elapsed < CANDIDATE_LOCAL_SILENCE_MS) {
+                  return;
+                }
+
+                candidateLocalSpeakingRef.current = false;
+                console.log(
+                  "Candidate audio is quiet; waiting for final transcript."
+                );
+              }, CANDIDATE_FINALIZATION_GRACE_MS);
 
               break;
             }
@@ -1960,47 +1987,119 @@ Do not mention APIs.
                 break;
               }
 
-              candidateSpeakingRef.current = false;
+              candidatePendingTranscriptRef.current = candidateText;
               candidateAnswerBufferRef.current = candidateText;
               clearSilenceTimer();
 
               console.log(
-                "Candidate transcript received by browser:",
+                "Candidate transcript received; waiting for confirmed silence:",
                 candidateText
               );
 
-              if (
-                cancelledRef.current ||
-                generatingQuestionRef.current
-              ) {
-                break;
-              }
-
-              (async () => {
-                const nextQuestion =
-                  await requestAdaptiveQuestion({
-                    candidateAnswer: candidateText,
-                  });
-
+              const processCandidateAnswer = async () => {
                 if (
                   cancelledRef.current ||
-                  !nextQuestion
+                  candidatePendingTranscriptRef.current !== candidateText
                 ) {
                   return;
                 }
 
-                console.log(
-                  "Gemini next question:",
-                  nextQuestion
-                );
+                candidateSpeechStopTimerRef.current = null;
+                candidateSpeakingRef.current = false;
+                candidateLocalSpeakingRef.current = false;
+                candidatePendingTranscriptRef.current = "";
+                syncCandidateSpeaking(false);
 
                 setStatusMessage(
-                  "ALVIN is asking the next question..."
+                  "ALVIN is preparing the next question..."
                 );
 
-                // Transparent Mode speaks through MQTT.
                 avatarSpeakingGateRef.current = true;
-              })();
+
+                console.log(
+                  "Sending finalized candidate transcript to backend for Gemini:",
+                  candidateText
+                );
+
+                try {
+                  const decision =
+                    await requestAdaptiveQuestion({
+                      candidateAnswer: candidateText,
+                    });
+
+                  if (
+                    cancelledRef.current ||
+                    !decision?.question
+                  ) {
+                    console.warn(
+                      "No interview decision returned from backend."
+                    );
+                    avatarSpeakingGateRef.current = false;
+                    return;
+                  }
+
+                  console.log(
+                    "Gemini interview decision:",
+                    decision
+                  );
+
+                  setStatusMessage(
+                    decision.advanced
+                      ? "ALVIN is asking the next question..."
+                      : "ALVIN is redirecting to the current question..."
+                  );
+
+                  const spokenReply =
+                    decision.reply?.trim() ||
+                    decision.question?.trim();
+
+                  if (!spokenReply) {
+                    throw new Error(
+                      "Backend returned no reply to speak."
+                    );
+                  }
+
+                  const spoken = speakQuestion(
+                    spokenReply
+                  );
+
+                  if (!spoken) {
+                    throw new Error(
+                      "Failed to send the interview response to NavTalk."
+                    );
+                  }
+                } catch (error) {
+                  avatarSpeakingGateRef.current = false;
+                  console.error(
+                    "Failed to request next question:",
+                    error
+                  );
+                }
+              };
+
+              const scheduleCandidateAnswer = () => {
+                const elapsed =
+                  performance.now() - candidateLastAudioAtRef.current;
+
+                if (elapsed < CANDIDATE_LOCAL_SILENCE_MS) {
+                  candidateSpeechStopTimerRef.current = setTimeout(
+                    scheduleCandidateAnswer,
+                    Math.max(250, CANDIDATE_LOCAL_SILENCE_MS - elapsed)
+                  );
+                  return;
+                }
+
+                processCandidateAnswer();
+              };
+
+              if (candidateSpeechStopTimerRef.current) {
+                clearTimeout(candidateSpeechStopTimerRef.current);
+              }
+
+              candidateSpeechStopTimerRef.current = setTimeout(
+                scheduleCandidateAnswer,
+                CANDIDATE_FINALIZATION_GRACE_MS
+              );
 
               break;
             }
@@ -2037,9 +2136,6 @@ Do not mention APIs.
             }
 
             case NavTalkMessageType.RESPONSE_AUDIO_DONE: {
-              candidateSpeakingRef.current =
-                false;
-
               candidateAnswerBufferRef.current =
                 "";
 
@@ -2080,19 +2176,33 @@ Do not mention APIs.
               responseTranscriptLengthRef.current = 0;
               responseTranscriptTextRef.current = "";
 
-              // Unmute mic transmission once this turn's audio has
-              // actually finished playing back — same estimated delay
-              // used for the silence timer below. This is what
-              // protects EVERY turn (not just the opening) from the
-              // avatar hearing and reacting to its own voice.
-              disarmAvatarSpeakingGate(
-                estimatedPlaybackMs
-              );
+              // Wait for playback before arming the silence timer.
+              disarmAvatarSpeakingGate(estimatedPlaybackMs);
 
-              setStatusMessage(
-                "ALVIN is listening..."
-              );
+              setTimeout(() => {
+                if (cancelledRef.current) return;
+                notifyAvatarDone();
+              }, estimatedPlaybackMs);
 
+              setStatusMessage("ALVIN is listening...");
+
+              break;
+            }
+
+            case "realtime_synthesis.tts.error": {
+              console.warn(
+                "NavTalk TTS synthesis error:",
+                message
+              );
+              avatarSpeakingGateRef.current = false;
+              break;
+            }
+
+            case "realtime_synthesis.stt.error": {
+              console.warn(
+                "NavTalk STT synthesis error; keeping candidate answer open:",
+                message
+              );
               break;
             }
 
@@ -2150,10 +2260,12 @@ Do not mention APIs.
       disarmAvatarSpeakingGate,
       speakQuestion,
       requestAdaptiveQuestion,
+      notifyAvatarDone,
       handleOffer,
       handleIceCandidate,
       clearSilenceTimer,
       startSilenceTimer,
+      syncCandidateSpeaking,
       disconnectedReason,
     ]);
 
@@ -2188,11 +2300,25 @@ Do not mention APIs.
           conversationHistoryRef.current = data.history;
         }
 
-        setShowSilenceWarning(
-          Boolean(data.silence_warning)
-        );
+        const backendCandidateSpeaking =
+          Boolean(data.candidate_speaking);
 
-        if (data.silence_warning) {
+        if (
+          backendCandidateSpeaking ||
+          candidateSpeakingRef.current
+        ) {
+          setShowSilenceWarning(false);
+        } else {
+          setShowSilenceWarning(
+            Boolean(data.silence_warning)
+          );
+        }
+
+        if (
+          data.silence_warning &&
+          !backendCandidateSpeaking &&
+          !candidateSpeakingRef.current
+        ) {
           setStatusMessage(
             "ALVIN is simplifying the question..."
           );
@@ -2242,7 +2368,22 @@ Do not mention APIs.
       cancelledRef.current =
         true;
 
+      if (candidateSpeechStopTimerRef.current) {
+        clearTimeout(candidateSpeechStopTimerRef.current);
+        candidateSpeechStopTimerRef.current = null;
+      }
+
       clearSilenceTimer();
+
+      if (navtalkSessionId) {
+        postBackend(
+          "/api/interview/candidate-speaking",
+          {
+            session_id: navtalkSessionId,
+            speaking: false,
+          }
+        ).catch(() => {});
+      }
 
       stopAudioStreaming();
 
