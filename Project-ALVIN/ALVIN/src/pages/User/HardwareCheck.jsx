@@ -1,13 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { MonitorCheck, Mic, VideoOff, ChevronRight, Lightbulb, Camera, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
+import { Mic, VideoOff, Lightbulb, Camera, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
-
-const navItems = [
-  { icon: MonitorCheck, label: "Hardware Setup" },
-];
 
 export default function HardwareCheck() {
   const navigate = useNavigate();
@@ -22,12 +18,33 @@ export default function HardwareCheck() {
   const analyzerRef = useRef(null);
   const animationFrameRef = useRef(null);
 
-  const [activeNav] = useState(0);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [devices, setDevices] = useState({ video: [], audio: [] });
   const [selectedDevices, setSelectedDevices] = useState({ video: "", audio: "" });
+  
+  // FIXED: State for avatarUrl added here
+  const [avatarUrl, setAvatarUrl] = useState(null);
 
+  // FIXED: Fetch avatar from Supabase user metadata on mount
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          // Checks user metadata first (Google OAuth/Supabase Auth), or defaults to null
+          const url = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+          setAvatarUrl(url);
+        }
+      } catch (err) {
+        console.error("Error fetching user profile:", err);
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
+
+  // Preserved session check validation
   useEffect(() => {
     if (!location.state?.sessionData) {
       console.warn("No session data found in HardwareCheck. Redirecting to setup.");
@@ -35,12 +52,14 @@ export default function HardwareCheck() {
     }
   }, [location.state, navigate]);
 
+  // Preserved user authentication & sign out handling
   const handleSignOut = async () => {
     stopAllTracks();
     await supabase.auth.signOut();
     navigate('/');
   };
 
+  // Preserved media track cleanup handlers
   const stopVideoStream = () => {
     if (videoStreamRef.current) {
       videoStreamRef.current.getTracks().forEach(track => track.stop());
@@ -67,6 +86,7 @@ export default function HardwareCheck() {
     }
   };
 
+  // Preserved camera start logic
   const startPreview = async (videoDeviceId) => {
     stopVideoStream();
 
@@ -85,6 +105,7 @@ export default function HardwareCheck() {
     }
   };
 
+  // Preserved device enumeration logic
   const getDevices = async () => {
     try {
       const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -102,6 +123,7 @@ export default function HardwareCheck() {
     }
   };
 
+  // Preserved permissions logic
   const requestPermissions = async () => {
     try {
       const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -113,6 +135,7 @@ export default function HardwareCheck() {
     }
   };
 
+  // Preserved microphone test logic
   const startMicTest = async (audioDeviceId) => {
     stopAudioStream();
 
@@ -206,10 +229,10 @@ export default function HardwareCheck() {
     }
   }, [selectedDevices.audio, permissionsGranted]);
 
+  // Preserved interview navigation & payload state delivery
   const handleProceedToInterview = () => {
     stopAllTracks();
     
-    // Pass along session state and exact selected device IDs to LiveSession
     navigate('/user/live-session', { 
       state: { 
         ...location.state,
@@ -231,39 +254,7 @@ export default function HardwareCheck() {
         }
       `}</style>
 
-      <div className="flex min-h-screen bg-white text-black font-[Manrope,sans-serif]">
-
-        {/* Sidebar */}
-        <aside className="fixed w-64 min-h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex flex-col py-8 px-4 z-50">
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className=" mb-[-10px] h-24" />
-            <div className=" text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
-            </div>
-          </div>
-
-          <nav className="flex-1">
-            <ul className="flex flex-col gap-1 list-none p-0 m-0">
-              {navItems.map((item, i) => (
-                <li key={item.label} className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}>
-                  <div className={`flex items-center gap-4 px-4 py-3 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px] ${activeNav === i ? "text-[#862334]" : "text-[#4a4a4a]"}`}>
-                    <item.icon size={20} />
-                    <span>{item.label}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          <div className="mt-auto">
-            <button
-              onClick={() => setIsSignOutModalOpen(true)}
-              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Geist] font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
-            >
-              Sign Out
-            </button>
-          </div>
-        </aside>
+      <div className="flex min-h-screen bg-white text-black font-[Manrope,sans-serif] overflow-hidden">
 
         <SignOutModal
           isOpen={isSignOutModalOpen}
@@ -271,41 +262,48 @@ export default function HardwareCheck() {
           onConfirm={handleSignOut}
         />
 
-        {/* Main */}
-        <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
+        {/* Main Section */}
+        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
 
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
-            <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-60">
-              <Link to="/user/dashboard">Dashboard</Link>
-              <ChevronRight size={14} />
-              <Link to="/user/resume-upload">Interview Setup</Link>
-              <ChevronRight size={14} />
-              <span className="text-[#862334] font-bold opacity-100">Hardware Setup</span>
+          {/* Top Header */}
+          <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
+            <div className="flex items-center">
+              <Link to="/user/dashboard" className="inline-flex items-center gap-0">
+                <img src={Logo} alt="Alvin logo" className="h-9 w-auto flex-shrink-0 block" />
+                  <div className="hidden sm:flex h-9 items-center text-[#862334] font-Geist text-[2rem] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+                    LVIN
+                  </div>
+              </Link>
             </div>
+
             <div className="flex items-center gap-6">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
-                VN
-              </div>
+              {avatarUrl ? (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
+                  VN
+                </div>
+              )}
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-10 w-full">
-            <div className="max-w-[1200px] mx-auto">
-
-              <header className="mb-12">
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-black font-Geist tracking-tighter uppercase mb-4 text-black">
-                  Interview Setup
-                </h1>
-                <p className="text-lg text-[#4a4a4a] font-medium font-Inter">
-                  Ensure your hardware is ready before the interview session.
-                </p>
-              </header>
+          {/* Pre-Flight Lobby Content */}
+          <div className="flex-1 overflow-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full flex items-center">
+            <div className="max-w-[1200px] mx-auto w-full">
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
 
-                {/* Left: Video */}
+                {/* Left: Webcam & Waveform */}
                 <div className="lg:col-span-7 space-y-8">
-                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-2xl">
+
+                  {/* Webcam Preview */}
+                  <div className="relative h-72 md:h-96 bg-black rounded-lg overflow-hidden shadow-2xl">
                     <div className="absolute inset-0 bg-slate-900" />
 
                     <video
@@ -336,15 +334,16 @@ export default function HardwareCheck() {
                       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[95%] h-11 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center px-6 border border-white/10 shadow-lg">
                         <canvas
                           ref={canvasRef}
-                          width={600}
-                          height={80}
+                          width={480}
+                          height={60}
                           className="w-full h-full"
                         />
                       </div>
                     )}
                   </div>
 
-                  <div className="bg-[#8e0f28]/10 p-6 flex gap-4 items-start border-l-4 border-[#ff989d]">
+                  {/* Environment Warning */}
+                  <div className="bg-[#8e0f28]/10 p-4 flex gap-4 items-start border-l-4 border-[#ff989d]">
                     <Lightbulb size={24} className="text-[#ff989d] flex-shrink-0" />
                     <div className="space-y-1">
                       <h4 className="font-bold text-[#8e0f28] font-Geist">Camera &amp; Lighting Check</h4>
@@ -355,16 +354,17 @@ export default function HardwareCheck() {
                   </div>
                 </div>
 
-                {/* Right: Controls */}
+                {/* Right: Device Dropdowns & Action CTAs */}
                 <div className="lg:col-span-5 space-y-10">
+
                   <section className="space-y-6">
                     <h3 className="text-maroon text-xl font-bold font-Geist uppercase tracking-tight flex items-center gap-3">
                       Hardware Check
                     </h3>
 
                     <div className="space-y-4">
-                      {/* Video Device Picker */}
-                      <div className="p-6 bg-slate-50 rounded-lg flex flex-col gap-4 border-b border-slate-200">
+                      {/* Video Source */}
+                      <div className="p-4 bg-slate-50 rounded-lg flex flex-col gap-4 border-b border-slate-200">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 flex items-center justify-center bg-white rounded shadow-sm">
@@ -396,8 +396,8 @@ export default function HardwareCheck() {
                         </select>
                       </div>
 
-                      {/* Audio Device Picker */}
-                      <div className="p-6 bg-slate-50 rounded-lg flex flex-col gap-4 border-b border-slate-200">
+                      {/* Audio Input */}
+                      <div className="p-4 bg-slate-50 rounded-lg flex flex-col gap-4 border-b border-slate-200">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 flex items-center justify-center bg-white rounded shadow-sm">
@@ -431,14 +431,14 @@ export default function HardwareCheck() {
                     </div>
                   </section>
 
-                  {/* Actions */}
-                  <div className="space-y-4">
+                  {/* Action Controls */}
+                  <div className="space-y-3">
                     {!permissionsGranted && (
                       <button
                         onClick={requestPermissions}
-                        className="w-full bg-[#862334] text-white font-Geist font-bold py-6 px-8 flex items-center justify-center gap-3 transition-all hover:bg-[#ffb003] active:scale-[0.98] uppercase tracking-wider cursor-pointer"
+                        className="w-full bg-[#862334] text-white font-Geist font-bold py-3 px-6 flex items-center justify-center gap-3 transition-all hover:bg-[#ffb003] active:scale-[0.98] uppercase tracking-wider cursor-pointer"
                       >
-                        <KeyRound size={20} />
+                        <KeyRound size={18} />
                         ALLOW CAMERA &amp; MIC ACCESS
                       </button>
                     )}
@@ -446,7 +446,7 @@ export default function HardwareCheck() {
                     <button
                       onClick={handleProceedToInterview}
                       disabled={!permissionsGranted}
-                      className={`w-full font-Geist font-black py-6 px-8 uppercase tracking-widest text-lg border transition-all
+                      className={`w-full font-Geist font-black py-3 px-6 uppercase tracking-widest text-base border transition-all
                         ${permissionsGranted
                           ? "bg-[#862334] text-white border-[#862334] hover:bg-[#ffb003] hover:border-[#ffb003] cursor-pointer active:scale-[0.98]"
                           : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"}`}
@@ -458,13 +458,15 @@ export default function HardwareCheck() {
                       By entering, you consent to our data processing and automated evaluation. We ensure that your data is safe and secure.
                     </p>
                   </div>
-                </div>
 
+                </div>
               </div>
+
             </div>
           </div>
         </main>
 
+        {/* Decorative background glow */}
         <div className="fixed bottom-0 right-0 w-1/3 h-1/2 -z-10 pointer-events-none overflow-hidden opacity-5">
           <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-[#862334] rounded-full blur-[100px]" />
           <div className="absolute top-0 right-20 w-64 h-64 bg-[#e9c400] rounded-full blur-[80px]" />

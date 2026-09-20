@@ -1,14 +1,16 @@
-import { useState } from "react";
-import { Users, FileBarChart, UserCircle, LogOut, Search, ChevronLeft, ChevronRight, User, Filter, ChevronDown } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { Users, FileBarChart, UserCircle, Search, ChevronLeft, ChevronRight, User, Filter, ChevronDown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
 import SignOutModal from '../../Components/SignOutModal';
+import AccountActionModal from '../../Components/AccountActionModal';
+import AccountActionToast from '../../Components/AccountActionToast';
 import { supabase } from '../../lib/supabaseClient';
 
 const navItems = [
   { icon: Users, label: "User Management" },
   { icon: FileBarChart, label: "System Report" },
-  { icon: UserCircle, label: "Avatar Management" },
+  { icon: UserCircle, label: "Avatar" },
 ];
 
 const initialAccounts = [
@@ -18,9 +20,7 @@ const initialAccounts = [
   { name: "Tristan Jay Mirano",       email: "4444444@ub.edu.ph", role: "User",  active: true,  date: "Feb 14, 2024", primary: false },
 ];
 
-const TOTAL    = initialAccounts.length;
 const PER_PAGE = 5;
-const PAGES    = Math.ceil(TOTAL / PER_PAGE);
 
 export default function UserManagement() {
   const [activeNav, setActiveNav] = useState(0);
@@ -29,7 +29,36 @@ export default function UserManagement() {
   const [page,        setPage]        = useState(1);
   const [roleFilter,  setRoleFilter]  = useState("All Roles");
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [accountAction, setAccountAction] = useState(null);
+  const [toast, setToast] = useState(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUserAvatar = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+      }
+    };
+
+    loadUserAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -43,16 +72,48 @@ export default function UserManagement() {
     return matchesSearch && matchesRole;
   });
 
-  const paginatedAccounts = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalFilteredPAGES = Math.ceil(filtered.length / PER_PAGE);
+  const displayedPage = Math.min(page, Math.max(totalFilteredPAGES, 1));
+  const paginatedAccounts = filtered.slice((displayedPage - 1) * PER_PAGE, displayedPage * PER_PAGE);
 
-  const deleteAccount = (email) =>
-    setAccounts(prev => prev.filter(a => a.email !== email));
+  const openAccountAction = (action, account) => setAccountAction({ action, account });
+
+  const closeAccountAction = () => setAccountAction(null);
+
+  const confirmAccountAction = () => {
+    if (!accountAction) return;
+
+    const { action, account } = accountAction;
+    if (action === "delete") {
+      setAccounts(previous => previous.filter(item => item.email !== account.email));
+      setToast({
+        id: Date.now(),
+        title: "Account Deleted",
+        message: `${account.name} has been permanently removed.`,
+      });
+    } else {
+      const isActive = action === "activate";
+      setAccounts(previous => previous.map(item =>
+        item.email === account.email ? { ...item, active: isActive } : item
+      ));
+      setToast({
+        id: Date.now(),
+        title: isActive ? "Account Activated" : "Account Deactivated",
+        message: isActive
+          ? `${account.name} can now access the ALVIN AI Mock Interview platform.`
+          : `${account.name} has been deactivated successfully.`,
+      });
+    }
+
+    closeAccountAction();
+  };
 
   return (
     <>
       <style> {`
                 html, body, #root { height: 100%; margin: 0; width: 100%; }
+                @keyframes toast-fade { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes toast-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
             `}
         </style>
 
@@ -62,10 +123,10 @@ export default function UserManagement() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className="mb-[-10px] h-24" />
-            <div className="text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -120,6 +181,15 @@ export default function UserManagement() {
           onClose={() => setIsSignOutModalOpen(false)}
           onConfirm={handleSignOut}
         />
+        <AccountActionModal
+          key={accountAction ? `${accountAction.action}-${accountAction.account.email}` : "closed"}
+          isOpen={Boolean(accountAction)}
+          action={accountAction?.action ?? null}
+          account={accountAction?.account ?? null}
+          onClose={closeAccountAction}
+          onConfirm={confirmAccountAction}
+        />
+        <AccountActionToast toast={toast} onClose={() => setToast(null)} />
 
         {/* ── Main ── */}
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen min-w-0">
@@ -127,34 +197,25 @@ export default function UserManagement() {
           {/* Top Header */}
           <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
             <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-100">
-              <span className=" text-[#862334] font-Geist opacity-100">User Management</span>
             </div>
             <div className="flex items-center gap-6">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
-                VN
-              </div>
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </header>
 
           {/* ── Content ── */}
           <div className="flex-1 overflow-y-auto w-full">
             <section className="p-4 md:p-8 lg:p-10 flex-1">
-
-            {/* Hero Header */}
-            <div className="mb-8 md:mb-12 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
-              <div>
-                <h2 className="text-left font-Geist text-4xl md:text-6xl font-black tracking-tight text-black uppercase mb-2">
-                  User Management
-                </h2>
-                <p className="font-Inter text-gray-600 max-w-md text-sm md:text-base">
-                  Control user accounts and permissions.
-                </p>
-              </div>
-            </div>
-
             {/* ── Bento Grid ── */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
-
               {/* ── Main Table ── */}
               <div className="md:col-span-12 bg-white border border-gray-200 relative overflow-hidden rounded-lg">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 gap-4 border-b border-gray-100 bg-gray-50/50">
@@ -193,7 +254,7 @@ export default function UserManagement() {
                   <table className="w-full text-left border-collapse min-w-[600px]">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
-                        {["User", "Role", "Status", "Created", ""].map((h, i) => (
+                        {["User", "Role", "Account Status", "Created", ""].map((h, i) => (
                           <th
                             key={i}
                             className={`px-4 md:px-6 py-4 md:py-5 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 font-Geist ${i === 4 ? "text-right" : ""}`}
@@ -252,11 +313,23 @@ export default function UserManagement() {
                           {/* Actions */}
                           <td className="px-4 md:px-6 py-4 md:py-5 text-right">
                             <div className="flex items-center justify-end gap-2 md:gap-3 flex-wrap">
-                              <button className="text-[8px] font-bold uppercase tracking-widest text-gray-600 hover:text-[#ffb003] transition-colors whitespace-nowrap font-Geist">
-                                Deactivate
+                              <button
+                                type="button"
+                                onClick={() => openAccountAction(acc.active ? "deactivate" : "activate", acc)}
+                                aria-label={`${acc.active ? "Deactivate" : "Activate"} ${acc.name}`}
+                                className={`inline-flex w-28 items-center justify-center rounded-[2px] border px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap font-Geist focus:outline-none ${
+                                  acc.active
+                                    ? "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 focus:ring-amber-400"
+                                    : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 focus:ring-emerald-400"
+                                }`}
+                              >
+                                {acc.active ? "Deactivate" : "Activate"}
                               </button>
                               <button
-                                className="bg-[#862334] text-white px-3 md:px-4 py-1.5 md:py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#ffb003] transition-all whitespace-nowrap font-Geist rounded-[2px]"
+                                type="button"
+                                onClick={() => openAccountAction("delete", acc)}
+                                aria-label={`Delete ${acc.name}`}
+                                className="inline-flex w-28 items-center justify-center rounded-[2px] bg-[#8B1C2C] px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition-all hover:bg-[#711724] whitespace-nowrap font-Geist focus:outline-none focus:ring-2"
                               >
                                 Delete
                               </button>
@@ -274,19 +347,19 @@ export default function UserManagement() {
                 <div className="flex items-center gap-3 md:gap-4">
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
+                    disabled={displayedPage === 1}
                     className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30"
                   >
                     <ChevronLeft className="w-4 h-4" /> Previous
                   </button>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-[#862334] text-sm">{totalFilteredPAGES > 0 ? page : 0}</span>
+                    <span className="font-bold text-[#862334] text-sm">{totalFilteredPAGES > 0 ? displayedPage : 0}</span>
                     <span className="text-gray-400 text-sm">/</span>
                     <span className="text-gray-500 text-sm">{totalFilteredPAGES}</span>
                   </div>
                   <button
                     onClick={() => setPage(p => Math.min(totalFilteredPAGES, p + 1))}
-                    disabled={page === totalFilteredPAGES || totalFilteredPAGES === 0}
+                    disabled={displayedPage === totalFilteredPAGES || totalFilteredPAGES === 0}
                     className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30"
                   >
                     Next <ChevronRight className="w-4 h-4" />

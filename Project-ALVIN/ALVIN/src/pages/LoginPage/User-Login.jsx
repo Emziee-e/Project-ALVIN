@@ -38,11 +38,6 @@ const UserLogin = () => {
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4 relative bg-grid-pattern">
-            {/* Top Left Logo Link */}
-            <Link to="/" className="fixed top-10 left-30 flex items-center gap-2 group transition-all">
-                <img src="/images/Alvin-logo.png" alt="ALVIN Logo" className="w-10 h-10 object-contain" />
-                <span className="font-Geist text-2xl tracking-tight text-maroon ">ALVIN</span>
-            </Link>
 
             <div className="w-full max-w-[450px] bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100" ref={ref}>
                 <div className={`pt-8 pb-4 flex flex-col items-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>

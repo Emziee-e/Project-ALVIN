@@ -20,6 +20,7 @@ import StaffSettings from './pages/Staff/StaffSettings.jsx';
 import SystemReport from './pages/Admin/SystemReport.jsx';
 import UserManagement from './pages/Admin/UserManagement.jsx';
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx';
+import FloatingButton from './Components/FloatingButton.jsx';
 
 // Email-based role assignment
 const ADMIN_EMAILS = ["2204421@ub.edu.ph"];
@@ -94,7 +95,19 @@ function App() {
         <Route path="/login/staff" element={session && role === 'admin' ? <Navigate to="/admin/reports" /> : session && role === 'staff' ? <Navigate to="/staff/dashboard" /> : session && (role === 'user' || role === 'student') ? <Navigate to="/user/dashboard" /> : <StaffLogin />} />
 
         {/* Protected User Routes: Check for session and user role */}
-        <Route path="/user/dashboard" element={session && (role === 'user' || role === 'student') ? <UserDashboard /> : <Navigate to="/login/student" />} />
+        <Route
+  path="/user/dashboard"
+  element={
+    session && (role === 'user' || role === 'student') ? (
+      <div className="relative min-h-screen w-full">
+        <UserDashboard />
+        <FloatingButton />
+      </div>
+    ) : (
+      <Navigate to="/login/student" />
+    )
+  }
+/>
         <Route path="/user/interviews" element={session && (role === 'user' || role === 'student') ? <InterviewHistory /> : <Navigate to="/login/student" />} />
         <Route path="/user/interview-results" element={session && (role === 'user' || role === 'student') ? <InterviewResults /> : <Navigate to="/login/student" />} />
         <Route path="/user/settings" element={session && (role === 'user' || role === 'student') ? <UserSettings /> : <Navigate to="/login/student" />} />

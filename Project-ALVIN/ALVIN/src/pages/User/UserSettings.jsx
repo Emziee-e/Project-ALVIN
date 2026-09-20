@@ -30,6 +30,7 @@ export default function UserSettings() {
   const [activeNav, setActiveNav]     = useState(2); // Settings active
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -54,6 +55,36 @@ export default function UserSettings() {
   const analyzerRef = useRef(null);
   const animationFrameRef = useRef(null);
   const canvasRef = useRef(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSignedInUserProfile = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+        const nextName = metadata.full_name || metadata.name || "Vin Perez";
+        const nextEmail = user?.email || "";
+        setName(nextName);
+        setEmail(nextEmail);
+      }
+    };
+
+    loadSignedInUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const startMicTest = async () => {
     try {
@@ -155,31 +186,9 @@ export default function UserSettings() {
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-      <style>{`
-        * { box-sizing: border-box; }
-        .audio-level-anim { width: 50% !important; }
-        .custom-scrollbar::-webkit-scrollbar { width: 0.25rem; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #fff; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 0.125rem; }
-        html, body, #root { height: 100%; margin: 0; width: 100%; }
 
-        /* Responsive font scaling */
-        @media (max-width: 640px) { html { font-size: 14px; } }
-        @media (max-width: 480px) { html { font-size: 13px; } }
 
-        /* Smooth overflow handling */
-        body { overflow-x: hidden; }
-
-        /* Better input scaling */
-        input, select, textarea { font-size: 1rem; }
-
-        /* Prevent zoom issues */
-        @media (max-width: 768px) {
-          input, select, button { font-size: 16px !important; }
-        }
-      `}</style>
-
-      <div className="flex min-h-screen w-screen bg-white text-black font-[Manrope,sans-serif]">
+      <div className="flex h-screen w-screen bg-white text-black font-[Manrope,sans-serif] overflow-hidden">
 
         {/* ── Sidebar overlay (mobile) ── */}
         {sidebarOpen && (
@@ -192,10 +201,10 @@ export default function UserSettings() {
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className=" mb-[-10px] h-24" />
-            <div className=" text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -265,137 +274,102 @@ export default function UserSettings() {
         />
 
         {/* ── Main ── */}
-        <main className="flex-1 md:ml-60 lg:ml-64 pb-24 sm:pb-20 md:pb-0 bg-white w-full min-h-screen">
+        <main className="flex-1 md:ml-60 lg:ml-64 bg-white w-full h-screen overflow-hidden flex flex-col">
 
           {/* Top Header */}
-          <header className="sticky top-0 z-[100] bg-white/90 backdrop-blur-md flex justify-between items-center px-3 sm:px-4 md:px-8 py-3 sm:py-4 border-b border-[#e5e5e5] gap-2 sm:gap-4">
+          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 h-16 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 border-b border-[#e5e5e5]">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-sm sm:text-base md:text-lg text-[#862334] uppercase tracking-tight truncate">ALVIN</span>
-              <span className="text-[#862334] font-bold pt-2 ">Settings</span>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4 md:gap-6 flex-shrink-0">
-
-              <div className="w-7 sm:w-8 h-7 sm:h-8 rounded-full border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-[9px] sm:text-xs font-bold font-[Space_Grotesk,sans-serif] flex-shrink-0">
-                VN
-              </div>
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full border border-[#e5e5e5] bg-[#862334]/20 overflow-hidden flex-shrink-0">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           </header>
 
           {/* ── Settings Content ── */}
-          <section className="p-3 sm:p-4 md:p-8 w-full overflow-x-hidden">
-            <div className="max-w-7xl mx-auto">
+          <section className="flex-1 overflow-hidden px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full">
+            <div className="h-full">
 
             {/* Page Header */}
-            <div className="mb-6 sm:mb-8 md:mb-12">
-              <h2 className="text-7xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-black font-Geist mb-2 sm:mb-3 md:mb-2 uppercase leading-tight text-left">
-                Settings
-              </h2>
-              <p className="text-left text-gray-600 max-w-2xl text-xs sm:text-sm md:text-base lg:text-lg font-Inter leading-relaxed">
-                Set up your personal details and devices.
-              </p>
-            </div>
+
 
             {/* Bento Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 md:gap-8 auto-rows-max">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 md:gap-8 items-stretch">
 
               {/* Left Column: Account Details & Danger Zone */}
-              <div className="md:col-span-5 flex flex-col gap-3 sm:gap-4 md:gap-5">
+              <div className="md:col-span-4 flex flex-col gap-3 sm:gap-4 md:gap-5">
 
                 {/* ── Profile Settings ── */}
-                <div className="p-3 sm:p-4 md:p-6 relative overflow-hidden bg-white border border-gray-100 shadow-sm rounded-lg h-fit">
+                <div className="p-3 sm:p-4 md:p-6 relative overflow-hidden bg-white border border-gray-100 shadow-sm rounded-lg h-full">
                 <div className="absolute top-0 right-0 w-20 sm:w-32 h-20 sm:h-32 bg-[#862334]/5 -mr-8 sm:-mr-16 -mt-8 sm:-mt-16 rounded-full blur-3xl pointer-events-none" />
 
                 <h3 className="text-base sm:text-lg font-black font-Geist tracking-tighter mb-3 border-b border-gray-100 pb-2 text-black uppercase relative z-10">
                   Account Details
                 </h3>
 
-                <div className="flex flex-row gap-3 sm:gap-4 items-start mb-3 relative z-10">
-                  {/* Avatar */}
-                  <div className="relative group flex-shrink-0 self-start">
-                    <div className="w-20 sm:w-24 md:w-32 h-20 sm:h-24 md:h-32 bg-gray-50 border border-gray-200 flex items-center justify-center relative overflow-hidden rounded">
-                      <div className="w-full h-full bg-slate-300 flex items-center justify-center">
-                        {avatar ? (
-                          <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
-                        ) : (
-                          <Icon name="person" className="text-slate-500 text-4xl sm:text-5xl" />
-                        )}
+                <div className="flex flex-col gap-6 relative z-10">
+                  {/* Avatar Section */}
+                  <div className="flex flex-col items-center justify-center pt-2">
+                    <div className="relative group">
+                      <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-50 border border-gray-200 flex items-center justify-center relative overflow-hidden rounded-xl shadow-sm">
+                        <div className="w-full h-full flex items-center justify-center">
+                          {avatarUrl || avatar ? (
+                            <img
+                              src={avatarUrl || avatar}
+                              alt="Profile"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Icon name="person" className="text-slate-400 text-5xl" />
+                          )}
+                        </div>
                       </div>
-                      <label
-                        className="absolute inset-0 bg-[#862334]/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                        htmlFor="avatar-upload"
-                      >
-                        <Icon name="upload" className="text-white text-xl sm:text-2xl" />
-                      </label>
-                      <input
-                        type="file"
-                        id="avatar-upload"
-                        className="hidden"
-                        accept="image/*"
-                        onChange={handleAvatarChange}
-                      />
                     </div>
-                    <button
-                      onClick={() => document.getElementById('avatar-upload').click()}
-                      className="w-full border border-[#862334] mt-2 sm:mt-3 px-2 py-1 text-[9px] sm:text-[10px] uppercase tracking-widest font-bold font-Inter text-[#862334] hover:text-[#ffb003] hover:border-[#ffb003] transition-all block whitespace-nowrap rounded"
-                    >
-                      Upload Avatar
-                    </button>
                   </div>
 
-                  {/* Fields */}
-                  <div className="flex-1 grid grid-cols-1 gap-2 w-full">
-                    <div className="space-y-1 sm:space-y-2">
-                      <label className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-gray-500 font-Geist">Full Name</label>
+                  {/* Fields Section */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold tracking-widest text-[#862334] font-Geist">Full Name</label>
                       <input
                         type="text"
                         value={name}
                         disabled
-                        className="w-full bg-gray-100 border border-gray-200 text-gray-600 font-Inter px-3 sm:px-4 py-2 sm:py-3 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded cursor-not-allowed"
+                        className="w-full bg-gray-50 border border-gray-100 text-gray-500 font-Inter px-4 py-3 focus:ring-1 focus:ring-[#862334] outline-none text-sm rounded-md cursor-not-allowed"
                       />
                     </div>
-                    <div className="space-y-1 sm:space-y-2">
-                      <label className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-gray-500 font-Geist">Email</label>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold tracking-widest text-[#862334] font-Geist">Email Address</label>
                       <input
                         type="email"
                         value={email}
                         disabled
-                        className="w-full bg-gray-100 border border-gray-200 text-gray-600 font-Inter px-3 sm:px-4 py-2 sm:py-3 focus:ring-1 focus:ring-[#862334] outline-none text-xs sm:text-sm rounded cursor-not-allowed"
+                        className="w-full bg-gray-50 border border-gray-100 text-gray-500 font-Inter px-4 py-3 focus:ring-1 focus:ring-[#862334] outline-none text-sm rounded-md cursor-not-allowed"
                       />
                     </div>
                   </div>
                 </div>
-
               </div>
-
-                {/* ── Danger Zone ── */}
-                <div className="p-4 md:p-6 bg-white border border-gray-100 shadow-sm rounded-lg h-fit">
-                  <h3 className="text-base sm:text-lg md:text-xl font-black font-Geist tracking-tighter mb-4 sm:mb-6 md:mb-8 border-b border-red-200 pb-3 sm:pb-4 text-red-600 uppercase">
-                    Terminate Account
-                  </h3>
-
-                  <div className="space-y-4 sm:space-y-6">
-                    <div>
-                      <p className="text-gray-500 text-xs sm:text-sm font-Inter leading-relaxed mb-4">
-                        This will permanently delete all your data and interview history. This action cannot be undone.
-                      </p>
-                    </div>
-                    <button className="w-full px-4 sm:px-6 py-2 sm:py-3 bg-transparent border-2 border-red-600 text-red-600 font-Geist font-black uppercase tracking-tighter hover:bg-red-600 hover:text-white transition-all rounded text-xs sm:text-sm">
-                      Terminate Account
-                    </button>
-                  </div>
-                </div>
-              </div>
+            </div>
 
               {/* Right Column: Hardware & Calibration */}
-              <div className="md:col-span-7 p-3 sm:p-5 md:p-8 bg-white border border-gray-100 shadow-sm rounded-lg h-fit">
-                <h3 className="text-base sm:text-lg md:text-xl font-black font-Geist tracking-tighter mb-4 sm:mb-6 md:mb-8 border-b border-gray-100 pb-3 sm:pb-4 text-black uppercase">
+              <div className="md:col-span-8 p-3 sm:p-4 md:p-6 bg-white border border-gray-100 shadow-sm rounded-lg h-full flex flex-col">
+                <h3 className="text-base sm:text-lg font-black font-Geist tracking-tighter mb-3 border-b border-gray-100 pb-2 text-black uppercase relative z-10">
                   Hardware &amp; Calibration
                 </h3>
 
-                <div className="space-y-6 sm:space-y-8 md:space-y-10">
+                <div className="flex-1 flex flex-col justify-between pt-2">
                   {/* Devices */}
-                  <div className="space-y-3 sm:space-y-4 md:space-y-6">
+                  <div className="space-y-4 sm:space-y-5">
                     <h4 className="font-Geist font-bold text-black uppercase tracking-tight text-xs sm:text-sm">
                       Default Input Devices
                     </h4>
@@ -424,17 +398,17 @@ export default function UserSettings() {
                   </div>
 
                   {/* Mic Sensitivity */}
-                  <div className="space-y-3 sm:space-y-4">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <h4 className="font-Geist font-bold text-black uppercase tracking-tight text-xs sm:text-sm">
+                  <div className="mt-auto space-y-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <h4 className="font-Geist font-bold text-black uppercase tracking-tight text-xs shrink-0">
                         Mic Sensitivity
                       </h4>
                       <button
                         onClick={isTestingMic ? stopMicTest : startMicTest}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded font-Geist text-[10px] font-bold uppercase tracking-widest transition-all ${
+                        className={`inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 my-3 sm:my-4 rounded font-Geist text-[10px] font-bold uppercase tracking-widest transition-all shadow-sm whitespace-nowrap ${
                           isTestingMic
                           ? "bg-red-50 text-red-600 border border-red-200"
-                          : "bg-[#862334] text-white hover:bg-[#ffb003]"
+                          : "bg-[#862334] text-white hover:bg-ub-yellow"
                         }`}
                       >
                         {isTestingMic ? (
@@ -451,7 +425,7 @@ export default function UserSettings() {
                       </button>
                     </div>
 
-                    <div className="relative w-full h-16 sm:h-20 bg-gray-50 border border-gray-100 overflow-hidden rounded">
+                    <div className="relative w-full aspect-[4/1] sm:aspect-[6/1] bg-gray-50 border border-gray-100 overflow-hidden rounded-md">
                       {!isTestingMic && (
                         <div className="absolute inset-0 flex items-center justify-center">
                           <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 font-Geist">
@@ -462,8 +436,8 @@ export default function UserSettings() {
                       <canvas
                         ref={canvasRef}
                         className="w-full h-full"
-                        width={600}
-                        height={100}
+                        width={800}
+                        height={150}
                       />
                     </div>
 

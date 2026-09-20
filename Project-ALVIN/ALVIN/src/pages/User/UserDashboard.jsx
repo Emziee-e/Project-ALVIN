@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LayoutDashboard, Mic, Settings, ArrowRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
@@ -26,7 +26,43 @@ const assets = [
 export default function StaffDashboard() {
   const [activeNav, setActiveNav] = useState(0);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUserAvatar = async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+      const metadata = user?.user_metadata ?? {};
+      const nextAvatarUrl =
+        metadata.avatar_url ||
+        metadata.picture ||
+        metadata.avatar ||
+        metadata.image ||
+        "";
+
+      if (isMounted) {
+        setAvatarUrl(nextAvatarUrl);
+      }
+    };
+
+    loadUserAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleStartInterview = () => {
+    setIsStarting(true);
+    // Short delay to allow animation to play before navigating
+    setTimeout(() => {
+      navigate('/user/resume-upload');
+    }, 800);
+  };
 
   const handleSignOut = async () => {
     try {
@@ -43,18 +79,18 @@ export default function StaffDashboard() {
       <style> {`
                 html, body, #root { height: 100%; margin: 0; width: 100%; }
             `}
-        </style>
+      </style>
 
-      <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Manrope,sans-serif]">
+      <div className={`flex h-screen w-full overflow-hidden bg-white text-black font-[Manrope,sans-serif] transition-opacity duration-500 ${isStarting ? 'opacity-0' : 'opacity-100'}`}>
 
         {/* ── Sidebar ── */}
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
 
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className=" mb-[-10px] h-24" />
-            <div className=" text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -120,7 +156,7 @@ export default function StaffDashboard() {
         <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
 
           {/* Top Header */}
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
+          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 h-16 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 border-b border-[#e5e5e5]">
             {/* Search */}
             <div className="relative w-40 sm:w-48 md:w-56 lg:w-64 flex-shrink-0">
 
@@ -128,37 +164,29 @@ export default function StaffDashboard() {
 
             {/* Right actions */}
             <div className="flex items-center gap-3 sm:gap-4 md:gap-6 flex-shrink-0">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0">
-                <div className="w-full h-full bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
-                  VN
+              {avatarUrl && (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0 bg-[#862334]/20">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
-              </div>
+              )}
             </div>
           </header>
 
-          {/* Page inner */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full relative">
 
-            {/* ── Hero ── */}
-            <section className="mb-8 md:mb-12 grid grid-cols-1 lg:grid-cols-[8fr_4fr] gap-6 md:gap-12 items-start lg:items-end">
+            <section className="mb-8 md:mb-12">
               <div className="text-left">
                 <h2 className="font-[Geist,Inter] text-xl sm:text-3xl md:text-5xl lg:text-6xl font-bold tracking-[-0.04em] text-black leading-tight mb-3 md:mb-4">
-                  Welcome back, <span className="text-maroon">Vin!</span>
+                  Welcome, <span className="text-maroon">Vin!</span>
                 </h2>
                 <p className="text-[#4a4a4a] font-[Inter] text-xs sm:text-sm md:text-base lg:text-lg leading-relaxed max-w-2xl">
                   Your interview performance indicates a{" "}
                   <span className="text-maroon font-bold">3% improvement</span> since your last session.
                 </p>
-              </div>
-
-              <div className="flex flex-col gap-2 w-full lg:w-auto">
-                <button
-                  onClick={() => navigate('/user/resume-upload')}
-                  className="group w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-[Geist,Inter] font-bold uppercase tracking-[0.1em] text-xs sm:text-sm rounded-[2px] flex items-center justify-center sm:justify-between px-4 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 lg:py-5 transition-all duration-200 gap-2"
-                >
-                  <span>START NEW INTERVIEW</span>
-                  <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
-                </button>
               </div>
             </section>
 

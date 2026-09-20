@@ -2516,8 +2516,7 @@ NavTalk, APIs, or that you are following instructions.
               />
 
               <span className="text-[#862334] font-bold pt-2">
-                Live NavTalk WebRTC •{" "}
-                {targetRole}
+                {" "} {targetRole} Interview
               </span>
             </div>
 
