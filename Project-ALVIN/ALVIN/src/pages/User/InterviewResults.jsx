@@ -1,5 +1,5 @@
-import { useState} from "react";
-import { LayoutDashboard, Mic, Settings, Bot} from 'lucide-react';
+import { useState, useEffect } from "react";
+import { LayoutDashboard, Mic, Settings, Bot } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from '/images/Alvin-logo.png';
 import SignOutModal from '../../Components/SignOutModal';
@@ -39,17 +39,27 @@ const questions = [
   },
 ];
 
-const mobileNav = [
-  { icon: "assessment", label: "Report" },
-  { icon: "donut_small", label: "Breakdown", active: true },
-  { icon: "forum", label: "Transcript" },
-  { icon: "tune", label: "Settings" },
-];
-
 export default function InterviewResults() {
   const [activeNav, setActiveNav] = useState(1);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const url = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+          setAvatarUrl(url);
+        }
+      } catch (err) {
+        console.error("Error fetching avatar:", err);
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -58,7 +68,6 @@ export default function InterviewResults() {
 
   return (
     <>
-
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -69,12 +78,12 @@ export default function InterviewResults() {
 
         {/* ── Sidebar ── */}
         <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
-
+        
           {/* Logo */}
-          <div className="mb-6 px-4 flex flex-col items-center">
-            <img src={Logo} alt="Alvin logo" className="mb-[-10px] h-24" />
-            <div className="text-center text-maroon text-[2.25rem] font-Geist text-xl tracking-[-0.05em] uppercase">
-              ALVIN
+          <div className="mb-6 px-4 flex items-center justify-center gap-0">
+            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
+            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
+              LVIN
             </div>
           </div>
 
@@ -85,7 +94,11 @@ export default function InterviewResults() {
                 const isDashboard = i === 0;
                 const isInterviews = i === 1;
                 const isSettings = i === 2;
-                const navLink = isDashboard ? '/user/dashboard' : isInterviews ? '/user/interviews' : isSettings ? '/user/settings' : '#';
+                let navLink = '#';
+
+                if (isDashboard) navLink = '/user/dashboard';
+                if (isInterviews) navLink = '/user/interviews';
+                if (isSettings) navLink = '/user/settings';
 
                 return (
                   <li key={item.label}
@@ -147,13 +160,19 @@ export default function InterviewResults() {
             <div className="flex items-center gap-3">
             </div>
             <div className="flex items-center gap-3 sm:gap-4 md:gap-6 flex-shrink-0">
-              <button className="hidden sm:flex bg-transparent border-0 cursor-pointer p-2 text-[#4a4a4a] hover:text-[#862334] transition-colors rounded">
-              </button>
-              <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0">
-                <div className="w-full h-full bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
+              {avatarUrl ? (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] flex-shrink-0 bg-[#862334]/20">
+                  <img
+                    src={avatarUrl}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-Geist">
                   VN
                 </div>
-              </div>
+              )}
             </div>
           </header>
 
@@ -180,12 +199,12 @@ export default function InterviewResults() {
                 </div>
               </div>
               <div className="lg:col-span-5 flex justify-end gap-4 flex-wrap">
-                <button className="px-8 py-4 border border-[#e5e5e5] text-black hover:bg-[#f8f8f8] transition-all font-bold uppercase text-sm tracking-widest font- Geist">
+                <button className="px-8 py-4 border border-[#e5e5e5] text-black hover:bg-[#f8f8f8] transition-all font-bold uppercase text-sm tracking-widest font-Geist">
                   Download PDF
                 </button>
                 <button
                 onClick={() => navigate('/user/resume-upload')}
-                className="px-8 py-4 bg-[#862334] text-white hover:bg-[#ffb003] transition-all font-bold uppercase text-sm tracking-widest font- Geist">
+                className="px-8 py-4 bg-[#862334] text-white hover:bg-[#ffb003] transition-all font-bold uppercase text-sm tracking-widest font-Geist">
                   New Session
                 </button>
               </div>

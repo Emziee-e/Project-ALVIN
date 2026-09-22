@@ -51,9 +51,18 @@ const API_BASE_URL =
 
 const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 
-const CANDIDATE_FINALIZATION_GRACE_MS = 1000;
-const CANDIDATE_LOCAL_SILENCE_MS = 700;
+const CANDIDATE_FINALIZATION_GRACE_MS = 150;
+const CANDIDATE_LOCAL_SILENCE_MS = 900;
+const CANDIDATE_TRANSCRIPT_SETTLE_MS = 1800;
 const CANDIDATE_SPEECH_RMS_THRESHOLD = 0.012;
+
+// Detect when NavTalk WebRTC audio has actually stopped playing.
+const AVATAR_AUDIO_RMS_THRESHOLD = 0.0015;
+const AVATAR_END_SILENCE_MS = 800;
+const AVATAR_POST_DONE_MIN_WAIT_MS = 350;
+const AVATAR_PLAYBACK_CHECK_MS = 100;
+const AVATAR_ESTIMATED_CHARS_PER_SECOND = 15;
+const AVATAR_MIN_TURN_MS = 1200;
 
 function floatTo16BitPCM(float32Array) {
   const buffer = new ArrayBuffer(float32Array.length * 2);
@@ -342,6 +351,16 @@ export default function LiveSession() {
   const avatarSpeakingGateRef = useRef(false);
   const avatarGateFailsafeTimeoutRef = useRef(null);
 
+  const remoteAudioContextRef = useRef(null);
+  const remoteAudioAnalyserRef = useRef(null);
+  const remoteAudioSourceRef = useRef(null);
+  const remoteAudioMonitorFrameRef = useRef(null);
+  const avatarPlaybackCheckTimeoutRef = useRef(null);
+  const avatarAudioActiveRef = useRef(false);
+  const avatarLastAudioAtRef = useRef(0);
+  const avatarTurnStartedAtRef = useRef(0);
+  const avatarMinimumPlaybackEndAtRef = useRef(0);
+
   const retryCountRef = useRef(0);
 
   const cancelledRef = useRef(false);
@@ -366,7 +385,10 @@ export default function LiveSession() {
   const sessionReadyRef = useRef(false);
   const candidateSpeakingRef = useRef(false);
   const candidateSpeechStopTimerRef = useRef(null);
+  const candidateAnswerFinalizeTimerRef = useRef(null);
+  const candidateVadSpeakingRef = useRef(false);
   const candidatePendingTranscriptRef = useRef("");
+  const candidateLastTranscriptAtRef = useRef(0);
   const candidateLastAudioAtRef = useRef(0);
   const candidateLocalSpeakingRef = useRef(false);
   const generatingQuestionRef = useRef(false);
@@ -753,7 +775,9 @@ NavTalk, APIs, or that you are following instructions.
         session_id: navtalkSessionId,
         navtalk_session_id: navtalkSessionIdRef.current,
       });
-      console.log("Avatar playback finished; backend silence timer armed.");
+      console.log(
+        "Backend notified that avatar playback ended; 10-second silence timer armed."
+      );
     } catch (error) {
       console.warn("Failed to arm silence timer:", error);
     }
@@ -1258,6 +1282,150 @@ NavTalk, APIs, or that you are following instructions.
       }
     }, []);
 
+  const stopRemoteAudioMonitor = useCallback(() => {
+    if (remoteAudioMonitorFrameRef.current) {
+      cancelAnimationFrame(remoteAudioMonitorFrameRef.current);
+      remoteAudioMonitorFrameRef.current = null;
+    }
+
+    if (avatarPlaybackCheckTimeoutRef.current) {
+      clearTimeout(avatarPlaybackCheckTimeoutRef.current);
+      avatarPlaybackCheckTimeoutRef.current = null;
+    }
+
+    if (remoteAudioSourceRef.current) {
+      try {
+        remoteAudioSourceRef.current.disconnect();
+      } catch {}
+      remoteAudioSourceRef.current = null;
+    }
+
+    if (remoteAudioContextRef.current) {
+      try {
+        if (remoteAudioContextRef.current.state !== "closed") {
+          remoteAudioContextRef.current.close();
+        }
+      } catch {}
+      remoteAudioContextRef.current = null;
+    }
+
+    remoteAudioAnalyserRef.current = null;
+    avatarAudioActiveRef.current = false;
+    avatarLastAudioAtRef.current = 0;
+  }, []);
+
+  const startRemoteAudioMonitor = useCallback(
+    (stream) => {
+      if (!stream?.getAudioTracks?.().length) {
+        console.warn("NavTalk remote stream has no audio track to monitor.");
+        return;
+      }
+
+      stopRemoteAudioMonitor();
+
+      try {
+        const AudioContextClass =
+          window.AudioContext || window.webkitAudioContext;
+        const audioContext = new AudioContextClass();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+
+        remoteAudioContextRef.current = audioContext;
+        remoteAudioSourceRef.current = source;
+        remoteAudioAnalyserRef.current = analyser;
+
+        audioContext.resume().catch(() => {});
+
+        const samples = new Float32Array(analyser.fftSize);
+
+        const monitor = () => {
+          if (cancelledRef.current || !remoteAudioAnalyserRef.current) {
+            return;
+          }
+
+          analyser.getFloatTimeDomainData(samples);
+
+          let sumSquares = 0;
+          for (let i = 0; i < samples.length; i += 1) {
+            sumSquares += samples[i] * samples[i];
+          }
+
+          const rms = Math.sqrt(sumSquares / Math.max(1, samples.length));
+
+          if (rms >= AVATAR_AUDIO_RMS_THRESHOLD) {
+            avatarAudioActiveRef.current = true;
+            avatarLastAudioAtRef.current = performance.now();
+          }
+
+          remoteAudioMonitorFrameRef.current =
+            requestAnimationFrame(monitor);
+        };
+
+        monitor();
+        console.log("NavTalk WebRTC audio monitor started.");
+      } catch (error) {
+        console.warn("Could not monitor NavTalk WebRTC audio:", error);
+      }
+    },
+    [stopRemoteAudioMonitor]
+  );
+
+  const waitForActualAvatarPlaybackEnd = useCallback(() => {
+    if (avatarPlaybackCheckTimeoutRef.current) {
+      clearTimeout(avatarPlaybackCheckTimeoutRef.current);
+      avatarPlaybackCheckTimeoutRef.current = null;
+    }
+
+    const startedWaitingAt = performance.now();
+
+    const checkPlayback = () => {
+      if (cancelledRef.current) return;
+
+      const now = performance.now();
+      const lastAudioAt = avatarLastAudioAtRef.current;
+      const silenceFor = lastAudioAt > 0 ? now - lastAudioAt : 0;
+
+      if (
+        avatarAudioActiveRef.current &&
+        now - startedWaitingAt >= AVATAR_POST_DONE_MIN_WAIT_MS &&
+        now >= avatarMinimumPlaybackEndAtRef.current &&
+        silenceFor >= AVATAR_END_SILENCE_MS
+      ) {
+        avatarAudioActiveRef.current = false;
+        avatarSpeakingGateRef.current = false;
+        avatarTurnStartedAtRef.current = 0;
+        avatarMinimumPlaybackEndAtRef.current = 0;
+
+        if (avatarGateFailsafeTimeoutRef.current) {
+          clearTimeout(avatarGateFailsafeTimeoutRef.current);
+          avatarGateFailsafeTimeoutRef.current = null;
+        }
+
+        console.log(
+          "Avatar WebRTC audio actually finished playing."
+        );
+
+        setStatusMessage("ALVIN is listening...");
+        notifyAvatarDone();
+        return;
+      }
+
+      // Do not use a short timeout fallback here. A fallback can arm the
+      // backend countdown while buffered WebRTC audio is still playing.
+      // The existing avatar gate failsafe remains the emergency escape hatch.
+
+      avatarPlaybackCheckTimeoutRef.current = setTimeout(
+        checkPlayback,
+        AVATAR_PLAYBACK_CHECK_MS
+      );
+    };
+
+    checkPlayback();
+  }, [notifyAvatarDone]);
+
   const attachRemoteStream =
     useCallback((stream) => {
       if (!stream) {
@@ -1266,6 +1434,8 @@ NavTalk, APIs, or that you are following instructions.
 
       remoteStreamRef.current =
         stream;
+
+      startRemoteAudioMonitor(stream);
 
       const video =
         navtalkVideoRef.current;
@@ -1310,7 +1480,7 @@ NavTalk, APIs, or that you are following instructions.
       };
 
       playVideo();
-    }, []);
+    }, [startRemoteAudioMonitor]);
 
   const handleOffer =
     useCallback(
@@ -1927,6 +2097,7 @@ NavTalk, APIs, or that you are following instructions.
             }
 
             case NavTalkMessageType.SPEECH_STARTED: {
+              candidateVadSpeakingRef.current = true;
               candidateSpeakingRef.current = true;
               candidateLocalSpeakingRef.current = true;
               candidateLastAudioAtRef.current = performance.now();
@@ -1934,6 +2105,11 @@ NavTalk, APIs, or that you are following instructions.
               if (candidateSpeechStopTimerRef.current) {
                 clearTimeout(candidateSpeechStopTimerRef.current);
                 candidateSpeechStopTimerRef.current = null;
+              }
+
+              if (candidateAnswerFinalizeTimerRef.current) {
+                clearTimeout(candidateAnswerFinalizeTimerRef.current);
+                candidateAnswerFinalizeTimerRef.current = null;
               }
 
               clearSilenceTimer();
@@ -1948,29 +2124,12 @@ NavTalk, APIs, or that you are following instructions.
             }
 
             case NavTalkMessageType.SPEECH_STOPPED: {
+              candidateVadSpeakingRef.current = false;
+              candidateLocalSpeakingRef.current = false;
+
               console.log(
-                "NavTalk speech stopped; holding answer state until local audio is quiet and the final transcript is stable."
+                "NavTalk speech stopped; waiting for transcript stability before finalizing the answer."
               );
-
-              if (candidateSpeechStopTimerRef.current) {
-                clearTimeout(candidateSpeechStopTimerRef.current);
-              }
-
-              candidateSpeechStopTimerRef.current = setTimeout(() => {
-                candidateSpeechStopTimerRef.current = null;
-
-                const elapsed =
-                  performance.now() - candidateLastAudioAtRef.current;
-
-                if (elapsed < CANDIDATE_LOCAL_SILENCE_MS) {
-                  return;
-                }
-
-                candidateLocalSpeakingRef.current = false;
-                console.log(
-                  "Candidate audio is quiet; waiting for final transcript."
-                );
-              }, CANDIDATE_FINALIZATION_GRACE_MS);
 
               break;
             }
@@ -1987,24 +2146,59 @@ NavTalk, APIs, or that you are following instructions.
                 break;
               }
 
-              candidatePendingTranscriptRef.current = candidateText;
-              candidateAnswerBufferRef.current = candidateText;
+              const existing = candidateAnswerBufferRef.current.trim();
+
+              if (!existing) {
+                candidateAnswerBufferRef.current = candidateText;
+              } else if (candidateText.startsWith(existing)) {
+                candidateAnswerBufferRef.current = candidateText;
+              } else if (!existing.endsWith(candidateText)) {
+                candidateAnswerBufferRef.current = `${existing} ${candidateText}`.trim();
+              }
+
+              candidatePendingTranscriptRef.current =
+                candidateAnswerBufferRef.current;
+              candidateLastTranscriptAtRef.current = performance.now();
               clearSilenceTimer();
 
               console.log(
-                "Candidate transcript received; waiting for confirmed silence:",
+                "Candidate transcript chunk received; waiting for answer to settle:",
                 candidateText
               );
 
-              const processCandidateAnswer = async () => {
-                if (
-                  cancelledRef.current ||
-                  candidatePendingTranscriptRef.current !== candidateText
-                ) {
+              if (candidateAnswerFinalizeTimerRef.current) {
+                clearTimeout(candidateAnswerFinalizeTimerRef.current);
+                candidateAnswerFinalizeTimerRef.current = null;
+              }
+
+              const finalizeCandidateAnswer = async () => {
+                candidateAnswerFinalizeTimerRef.current = null;
+
+                if (cancelledRef.current) return;
+
+                // A new NavTalk VAD speech_started event always cancels this
+                // timer. This guard handles a race where speech starts at the
+                // same moment the timer callback is queued.
+                if (candidateVadSpeakingRef.current) {
                   return;
                 }
 
-                candidateSpeechStopTimerRef.current = null;
+                const elapsedSinceTranscript =
+                  performance.now() - candidateLastTranscriptAtRef.current;
+
+                if (elapsedSinceTranscript < CANDIDATE_TRANSCRIPT_SETTLE_MS) {
+                  candidateAnswerFinalizeTimerRef.current = setTimeout(
+                    finalizeCandidateAnswer,
+                    CANDIDATE_TRANSCRIPT_SETTLE_MS - elapsedSinceTranscript
+                  );
+                  return;
+                }
+
+                const finalCandidateText =
+                  candidateAnswerBufferRef.current.trim();
+
+                if (!finalCandidateText) return;
+
                 candidateSpeakingRef.current = false;
                 candidateLocalSpeakingRef.current = false;
                 candidatePendingTranscriptRef.current = "";
@@ -2017,20 +2211,16 @@ NavTalk, APIs, or that you are following instructions.
                 avatarSpeakingGateRef.current = true;
 
                 console.log(
-                  "Sending finalized candidate transcript to backend for Gemini:",
-                  candidateText
+                  "Candidate answer settled; sending complete transcript to backend for Gemini:",
+                  finalCandidateText
                 );
 
                 try {
-                  const decision =
-                    await requestAdaptiveQuestion({
-                      candidateAnswer: candidateText,
-                    });
+                  const decision = await requestAdaptiveQuestion({
+                    candidateAnswer: finalCandidateText,
+                  });
 
-                  if (
-                    cancelledRef.current ||
-                    !decision?.question
-                  ) {
+                  if (cancelledRef.current || !decision?.question) {
                     console.warn(
                       "No interview decision returned from backend."
                     );
@@ -2038,10 +2228,7 @@ NavTalk, APIs, or that you are following instructions.
                     return;
                   }
 
-                  console.log(
-                    "Gemini interview decision:",
-                    decision
-                  );
+                  console.log("Gemini interview decision:", decision);
 
                   setStatusMessage(
                     decision.advanced
@@ -2050,24 +2237,21 @@ NavTalk, APIs, or that you are following instructions.
                   );
 
                   const spokenReply =
-                    decision.reply?.trim() ||
-                    decision.question?.trim();
+                    decision.reply?.trim() || decision.question?.trim();
 
                   if (!spokenReply) {
-                    throw new Error(
-                      "Backend returned no reply to speak."
-                    );
+                    throw new Error("Backend returned no reply to speak.");
                   }
 
-                  const spoken = speakQuestion(
-                    spokenReply
-                  );
+                  const spoken = speakQuestion(spokenReply);
 
                   if (!spoken) {
                     throw new Error(
                       "Failed to send the interview response to NavTalk."
                     );
                   }
+
+                  candidateAnswerBufferRef.current = "";
                 } catch (error) {
                   avatarSpeakingGateRef.current = false;
                   console.error(
@@ -2077,34 +2261,21 @@ NavTalk, APIs, or that you are following instructions.
                 }
               };
 
-              const scheduleCandidateAnswer = () => {
-                const elapsed =
-                  performance.now() - candidateLastAudioAtRef.current;
-
-                if (elapsed < CANDIDATE_LOCAL_SILENCE_MS) {
-                  candidateSpeechStopTimerRef.current = setTimeout(
-                    scheduleCandidateAnswer,
-                    Math.max(250, CANDIDATE_LOCAL_SILENCE_MS - elapsed)
-                  );
-                  return;
-                }
-
-                processCandidateAnswer();
-              };
-
-              if (candidateSpeechStopTimerRef.current) {
-                clearTimeout(candidateSpeechStopTimerRef.current);
-              }
-
-              candidateSpeechStopTimerRef.current = setTimeout(
-                scheduleCandidateAnswer,
-                CANDIDATE_FINALIZATION_GRACE_MS
+              // This timer is independent of speech_stopped handling. If no
+              // new speech_started or transcript event arrives, it submits the
+              // accumulated answer automatically after the settle window.
+              candidateAnswerFinalizeTimerRef.current = setTimeout(
+                finalizeCandidateAnswer,
+                CANDIDATE_TRANSCRIPT_SETTLE_MS
               );
 
               break;
             }
 
             case NavTalkMessageType.RESPONSE_AUDIO_DELTA: {
+              if (!avatarTurnStartedAtRef.current) {
+                avatarTurnStartedAtRef.current = performance.now();
+              }
               avatarSpeakingGateRef.current = true;
               clearSilenceTimer();
 
@@ -2150,41 +2321,30 @@ NavTalk, APIs, or that you are following instructions.
                 )
               );
 
-              // audio.done means the model finished GENERATING the
-              // response — the buffered audio still takes time to
-              // actually play back to the candidate over WebRTC.
-              // Starting the silence countdown immediately here was
-              // causing it to run while the avatar was still visibly
-              // speaking. Estimate remaining playback time from how
-              // much transcript text was generated and delay the
-              // countdown start to roughly match.
-              const ESTIMATED_CHARS_PER_SECOND = 15;
-              const MIN_PLAYBACK_BUFFER_MS = 800;
-              const MAX_PLAYBACK_BUFFER_MS = 9000;
+              // audio.done means NavTalk finished generating/sending audio.
+              // It does NOT mean the buffered WebRTC audio has finished
+              // playing in the browser. Keep the candidate microphone gated
+              // until the actual remote audio becomes quiet.
+              const transcriptChars = responseTranscriptLengthRef.current;
+              const estimatedTurnMs = Math.max(
+                AVATAR_MIN_TURN_MS,
+                (transcriptChars / AVATAR_ESTIMATED_CHARS_PER_SECOND) * 1000
+              );
+              const turnStartedAt =
+                avatarTurnStartedAtRef.current || performance.now();
+              avatarMinimumPlaybackEndAtRef.current =
+                turnStartedAt + estimatedTurnMs;
 
-              const estimatedPlaybackMs =
-                Math.min(
-                  MAX_PLAYBACK_BUFFER_MS,
-                  Math.max(
-                    MIN_PLAYBACK_BUFFER_MS,
-                    (responseTranscriptLengthRef.current /
-                      ESTIMATED_CHARS_PER_SECOND) *
-                      1000
-                  )
-                );
+              console.log(
+                "NavTalk audio generation finished; waiting for WebRTC playback and minimum transcript duration.",
+                { estimatedTurnMs: Math.round(estimatedTurnMs) }
+              );
 
               responseTranscriptLengthRef.current = 0;
               responseTranscriptTextRef.current = "";
 
-              // Wait for playback before arming the silence timer.
-              disarmAvatarSpeakingGate(estimatedPlaybackMs);
-
-              setTimeout(() => {
-                if (cancelledRef.current) return;
-                notifyAvatarDone();
-              }, estimatedPlaybackMs);
-
-              setStatusMessage("ALVIN is listening...");
+              avatarSpeakingGateRef.current = true;
+              waitForActualAvatarPlaybackEnd();
 
               break;
             }
@@ -2261,6 +2421,7 @@ NavTalk, APIs, or that you are following instructions.
       speakQuestion,
       requestAdaptiveQuestion,
       notifyAvatarDone,
+      waitForActualAvatarPlaybackEnd,
       handleOffer,
       handleIceCandidate,
       clearSilenceTimer,
@@ -2373,6 +2534,11 @@ NavTalk, APIs, or that you are following instructions.
         candidateSpeechStopTimerRef.current = null;
       }
 
+      if (candidateAnswerFinalizeTimerRef.current) {
+        clearTimeout(candidateAnswerFinalizeTimerRef.current);
+        candidateAnswerFinalizeTimerRef.current = null;
+      }
+
       clearSilenceTimer();
 
       if (navtalkSessionId) {
@@ -2386,6 +2552,7 @@ NavTalk, APIs, or that you are following instructions.
       }
 
       stopAudioStreaming();
+      stopRemoteAudioMonitor();
 
       sessionReadyRef.current =
         false;
@@ -2516,7 +2683,8 @@ NavTalk, APIs, or that you are following instructions.
               />
 
               <span className="text-[#862334] font-bold pt-2">
-                {" "} {targetRole} Interview
+                Live NavTalk WebRTC •{" "}
+                {targetRole}
               </span>
             </div>
 

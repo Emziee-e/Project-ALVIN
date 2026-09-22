@@ -21,6 +21,7 @@ import SystemReport from './pages/Admin/SystemReport.jsx';
 import UserManagement from './pages/Admin/UserManagement.jsx';
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx';
 import FloatingButton from './Components/FloatingButton.jsx';
+import ProfileSetupModal from './Components/ProfileSetupModal.jsx';
 
 // Email-based role assignment
 const ADMIN_EMAILS = ["2204421@ub.edu.ph"];
@@ -75,6 +76,14 @@ function App() {
     }
   }, [session])
 
+  // set up modal function
+  const isUbStudent = session?.user?.email?.toLowerCase().endsWith('@ub.edu.ph') && role === 'student'
+  const needsProfileSetup = isUbStudent && !session.user.user_metadata?.profile_completed
+
+  const handleProfileComplete = (updatedUser) => {
+    setSession((currentSession) => currentSession ? { ...currentSession, user: updatedUser } : currentSession)
+  }
+
   // If loading, show your animation
   if (isLoading) {
     return <Loading />
@@ -84,9 +93,12 @@ function App() {
   if (session && roleLoading) {
     return <Loading />
   }
+  
 
   return (
     <BrowserRouter>
+      {/* Profile Setup Modal */}
+      <ProfileSetupModal isOpen={needsProfileSetup} onComplete={handleProfileComplete} />
       <Routes>
         <Route path="/" element={<LandingPage />} />
 
@@ -96,18 +108,18 @@ function App() {
 
         {/* Protected User Routes: Check for session and user role */}
         <Route
-  path="/user/dashboard"
-  element={
-    session && (role === 'user' || role === 'student') ? (
-      <div className="relative min-h-screen w-full">
-        <UserDashboard />
-        <FloatingButton />
-      </div>
-    ) : (
-      <Navigate to="/login/student" />
-    )
-  }
-/>
+          path="/user/dashboard"
+          element={
+          session && (role === 'user' || role === 'student') ? (
+            <div className="relative min-h-screen w-full">
+              <UserDashboard />
+              <FloatingButton />
+              </div>
+            ) : (
+              <Navigate to="/login/student" />
+            )
+          }
+        />
         <Route path="/user/interviews" element={session && (role === 'user' || role === 'student') ? <InterviewHistory /> : <Navigate to="/login/student" />} />
         <Route path="/user/interview-results" element={session && (role === 'user' || role === 'student') ? <InterviewResults /> : <Navigate to="/login/student" />} />
         <Route path="/user/settings" element={session && (role === 'user' || role === 'student') ? <UserSettings /> : <Navigate to="/login/student" />} />

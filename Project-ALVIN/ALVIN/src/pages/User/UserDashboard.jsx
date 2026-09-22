@@ -56,14 +56,6 @@ export default function StaffDashboard() {
     };
   }, []);
 
-  const handleStartInterview = () => {
-    setIsStarting(true);
-    // Short delay to allow animation to play before navigating
-    setTimeout(() => {
-      navigate('/user/resume-upload');
-    }, 800);
-  };
-
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
