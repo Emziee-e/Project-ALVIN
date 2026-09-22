@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import {ChevronRight,FileText,UploadCloud,Target,Briefcase,AlertCircle} from 'lucide-react';
+import {FileText,UploadCloud,Target,Briefcase,AlertCircle} from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
 import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
-export default function ResumeUpload() {
+export default function ResumeUpload() { 
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
   const [role, setRole] = useState("");
@@ -67,11 +67,10 @@ export default function ResumeUpload() {
 
   return (
     <>
-      {/* Google Fonts */}
+
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
       <div className="flex min-h-screen bg-white text-black font-Geist">
-        {/* Modal */}
         <SignOutModal
           isOpen={isSignOutModalOpen}
           onClose={() => setIsSignOutModalOpen(false)}
@@ -108,8 +107,6 @@ export default function ResumeUpload() {
           {/* ── SessionSetup Main Content ── */}
           <div className="flex-1 overflow-y-auto px-8 md:px-24 py-12 w-full">
             <div className="max-w-[1200px] mx-auto">
-
-              {/* Hero */}
 
 
               {/* Bento Grid */}
@@ -231,7 +228,6 @@ export default function ResumeUpload() {
           </div>
         </main>
 
-        {/* Decorative glow */}
         <div
           className="fixed top-0 right-0 w-[60vw] h-[614px] pointer-events-none -z-10 opacity-10"
           style={{ background: "radial-gradient(ellipse at top right, rgba(134,35,52,0.15) 0%, transparent 70%)" }}
