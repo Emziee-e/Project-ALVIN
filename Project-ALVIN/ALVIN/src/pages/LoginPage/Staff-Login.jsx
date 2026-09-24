@@ -19,7 +19,7 @@ const StaffLogin = () => {
             provider: 'google',
             options: {
                 // Redirects back to your site (e.g., http://localhost:5173)
-                redirectTo: `${window.location.origin}/user/dashboard`,
+                redirectTo: `${window.location.origin}/login/staff`,
                 queryParams: {
                   access_type: 'offline',
                   prompt: 'consent',
@@ -31,8 +31,7 @@ const StaffLogin = () => {
             console.error('Login error:', error.message);
             alert("Login failed: " + error.message);
         } else {
-            // Redirect to UserDashboard on successful login
-            navigate('/user/dashboard');
+            navigate('/login/staff');
         }
     };
 

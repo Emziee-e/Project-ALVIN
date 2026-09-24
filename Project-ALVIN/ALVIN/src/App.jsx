@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabaseClient'
+import { getProfileForUser, saveStudentProfile } from './lib/profileService'
 
 // Your Page Imports
 import LandingPage from "./pages/LandingPage/LandingPage.jsx"
@@ -23,22 +24,11 @@ import AvatarManagement from './pages/Admin/AvatarManagement.jsx';
 import FloatingButton from './Components/FloatingButton.jsx';
 import ProfileSetupModal from './Components/ProfileSetupModal.jsx';
 
-// Email-based role assignment
-const ADMIN_EMAILS = ["2204421@ub.edu.ph"];
-const STAFF_EMAILS = ["2301565@ub.edu.ph"];
-
-// Helper function to determine role based on email
-const getRoleByEmail = (email) => {
-  if (ADMIN_EMAILS.includes(email)) return 'admin';
-  if (STAFF_EMAILS.includes(email)) return 'staff';
-  return 'student';
-};
-
 function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [session, setSession] = useState(null) // NEW: Track the user session
   const [role, setRole] = useState(null) // NEW: Track the user role
-  const [roleLoading, setRoleLoading] = useState(false) // NEW: Track role fetching state
+  const [roleLoading, setRoleLoading] = useState(false)
 
   useEffect(() => {
     // 1. Initial Session Check
@@ -56,23 +46,58 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Determine user role based on email
+  // Resolve the role from the profile tables. Users without an elevated profile are students.
   useEffect(() => {
     if (!session?.user?.email) {
-      setRole(null)
-      setRoleLoading(false)
+      queueMicrotask(() => {
+        setRole(null)
+        setRoleLoading(false)
+      })
       return
     }
 
-    setRoleLoading(true)
-    try {
-      const emailBasedRole = getRoleByEmail(session.user.email)
-      setRole(emailBasedRole)
-    } catch (error) {
-      console.error('Error determining role:', error)
-      setRole(null)
-    } finally {
-      setRoleLoading(false)
+    let isMounted = true
+
+    const loadProfile = async () => {
+      try {
+        const profileResult = await getProfileForUser(session.user)
+        const resolvedRole = profileResult?.role || 'student'
+
+        if (isMounted) {
+          setRole(resolvedRole)
+        }
+
+        const metadata = session.user.user_metadata || {}
+
+        if (
+          resolvedRole === 'student' &&
+          metadata.course_degree_program &&
+          metadata.academic_year_level
+        ) {
+          try {
+            await saveStudentProfile(session.user, {
+              program_course: metadata.course_degree_program,
+              year_level: metadata.academic_year_level,
+            })
+          } catch (error) {
+            console.error('Error saving student profile:', error)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error)
+        if (isMounted) setRole('student')
+      } finally {
+        if (isMounted) setRoleLoading(false)
+      }
+    }
+
+    queueMicrotask(() => {
+      if (isMounted) setRoleLoading(true)
+    })
+    loadProfile()
+
+    return () => {
+      isMounted = false
     }
   }, [session])
 
