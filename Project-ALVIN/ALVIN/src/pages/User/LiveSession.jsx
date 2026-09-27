@@ -81,6 +81,143 @@ function floatTo16BitPCM(float32Array) {
   return buffer;
 }
 
+function appendTranscriptDelta(existingText, deltaText) {
+  const existing = String(existingText || "");
+  const delta = String(deltaText || "");
+
+  if (!delta) return existing;
+  if (!existing) return delta;
+
+  const prev = existing.slice(-1);
+  const next = delta.charAt(0);
+
+  // NavTalk/OpenAIRealtime transcript deltas can arrive without the whitespace
+  // that was present in natural speech. Preserve explicit whitespace when it
+  // exists; otherwise add a boundary between word-like chunks.
+  if (/\s/.test(prev) || /\s/.test(next)) {
+    return existing + delta;
+  }
+
+  // No space before punctuation / closing marks.
+  if (/^[,.;:!?%)\]}]/.test(delta)) {
+    return existing + delta;
+  }
+
+  // No space after opening punctuation.
+  if (/[([{]$/.test(existing)) {
+    return existing + delta;
+  }
+
+  // Keep apostrophe contractions/possessives together.
+  if (/^[’']/.test(delta) || /[’']$/.test(existing)) {
+    return existing + delta;
+  }
+
+  // If both sides look like text tokens, NavTalk likely omitted a word boundary.
+  if (/[A-Za-z0-9]$/.test(existing) && /^[A-Za-z0-9]/.test(delta)) {
+    return existing + " " + delta;
+  }
+
+  // A new capitalized word after sentence punctuation needs a space.
+  if (/[.!?]$/.test(existing) && /^[A-Z]/.test(delta)) {
+    return existing + " " + delta;
+  }
+
+  return existing + delta;
+}
+
+function parseGeminiRoadmap(navtalkPrompt) {
+  const prompt = String(navtalkPrompt || "");
+  const roadmap = [];
+
+  const regex =
+    /Q(\d{2}):\s*(.+?)(?:\r?\n)Intent:\s*(.*?)(?=\r?\n\r?\nQ\d{2}:|\r?\n\r?\n#|$)/gs;
+
+  let match;
+  while ((match = regex.exec(prompt)) !== null) {
+    roadmap.push({
+      id: `Q${match[1]}`,
+      question: match[2].trim(),
+      intent: match[3].trim(),
+    });
+  }
+
+  return roadmap;
+}
+
+function normalizeQuestionForMatch(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findClosestGeminiQuestion(spokenQuestion, roadmap) {
+  const spokenTokens = new Set(
+    normalizeQuestionForMatch(spokenQuestion)
+      .split(" ")
+      .filter((word) => word.length > 2)
+  );
+
+  if (!spokenTokens.size || !roadmap?.length) return null;
+
+  let best = null;
+
+  for (const item of roadmap) {
+    const candidateTokens = new Set(
+      normalizeQuestionForMatch(item.question)
+        .split(" ")
+        .filter((word) => word.length > 2)
+    );
+
+    if (!candidateTokens.size) continue;
+
+    let overlap = 0;
+    for (const token of spokenTokens) {
+      if (candidateTokens.has(token)) overlap += 1;
+    }
+
+    const union = new Set([...spokenTokens, ...candidateTokens]).size;
+    const score = union ? overlap / union : 0;
+
+    if (!best || score > best.score) {
+      best = { ...item, score };
+    }
+  }
+
+  return best;
+}
+
+function extractDisplayedQuestion(alvinText) {
+  const text = String(alvinText || "").trim();
+  if (!text || !text.includes("?")) return "";
+
+  // Keep the last question in the avatar turn. This removes short routing
+  // prefixes such as "No problem." or "Please focus on the question."
+  const lastQuestionMark = text.lastIndexOf("?");
+  const throughQuestion = text.slice(0, lastQuestionMark + 1);
+
+  // Prefer the text after the final sentence boundary before the question.
+  // Example:
+  // "No problem. How do you usually start...?"
+  // -> "How do you usually start...?"
+  const candidates = throughQuestion
+    .split(/(?<=[.!])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const questionParts = candidates.filter((part) => part.includes("?"));
+  if (questionParts.length) {
+    return questionParts[questionParts.length - 1];
+  }
+
+  // If NavTalk emitted unusual spacing/punctuation, show the complete
+  // question-bearing turn rather than leaving the UI stuck on an old question.
+  return throughQuestion.trim();
+}
+
 function base64EncodeAudio(uint8Array) {
   let binary = "";
   const chunkSize = 0x8000;
@@ -333,6 +470,10 @@ export default function LiveSession() {
     sessionData?.voice ||
     "cedar";
 
+  const navtalkAiPrompt =
+    sessionData?.navtalk_ai_prompt ||
+    "";
+
   const navtalkVideoRef = useRef(null);
   const localVideoRef = useRef(null);
 
@@ -381,7 +522,9 @@ export default function LiveSession() {
   const startAudioStreamingRef = useRef(() => {});
 
   const openingSentRef = useRef(false);
-  const openingResponseTriggeredRef = useRef(false);
+  const realtimePromptReadyRef = useRef(false);
+  const consoleGreetingFinishedRef = useRef(false);
+  const q01TriggeredRef = useRef(false);
   const sessionReadyRef = useRef(false);
   const candidateSpeakingRef = useRef(false);
   const candidateSpeechStopTimerRef = useRef(null);
@@ -535,7 +678,7 @@ export default function LiveSession() {
 
         try {
           const result = await postBackend(
-            "/api/interview/navtalk-started",
+            "/api/interview/navtalk-native-started",
             {
               session_id: navtalkSessionId,
               navtalk_session_id: remoteNavTalkSessionId,
@@ -548,17 +691,17 @@ export default function LiveSession() {
             sessionReadyRef.current = true;
 
             setStatusMessage(
-              "Transparent Mode connected. Starting interview..."
+              "NavTalk realtime AI connected. Starting interview..."
             );
 
             console.log(
-              "Transparent Mode MQTT session registered:",
+              "NavTalk native AI session registered:",
               remoteNavTalkSessionId
             );
 
             if (localStreamRef.current) {
               console.log(
-                "Starting PCM audio after Transparent Mode registration..."
+                "Starting PCM audio for NavTalk realtime AI..."
               );
               startAudioStreamingRef.current();
             } else {
@@ -584,7 +727,7 @@ export default function LiveSession() {
       }
 
       setDisconnectedReason(
-        "Could not connect the interview to NavTalk Transparent Mode MQTT."
+        "Could not register the NavTalk realtime AI session."
       );
       return false;
     },
@@ -695,75 +838,25 @@ NavTalk, APIs, or system instructions.
   );
 
   const sendOpeningMessage = useCallback(() => {
-    if (openingSentRef.current) {
+    if (openingSentRef.current) return;
+
+    if (!navtalkAiPrompt) {
+      console.warn("No NavTalk AI interview prompt is available.");
       return;
     }
 
-    if (!openingMessage && !openingQuestion) {
-      console.warn(
-        "No opening message or opening question available."
-      );
-
-      return;
-    }
-
-    const message =
-      openingMessage ||
-      `Welcome to the interview. Let's begin with this question: ${openingQuestion}`;
-
-    const prompt = `
-You are ALVIN, a professional job interviewer conducting a live
-interview with ${candidateName} for the ${targetRole} role.
-
-Begin the conversation now. Say the following naturally, in this
-order, with nothing before it:
-
-1. "${message}"
-2. "${openingQuestion}"
-
-Do not discuss the candidate's resume, background, skills, or
-experience before saying item 1. Do not skip or shorten item 1.
-
-Sound warm, professional, and natural. Do not mention Gemini,
-NavTalk, APIs, or that you are following instructions.
-`;
-
-    console.log(
-      "Sending interview opening configuration."
-    );
-
-    const sent = sendNavTalkConfig(prompt);
+    const sent = sendNavTalkConfig(navtalkAiPrompt);
 
     if (sent) {
       openingSentRef.current = true;
-
-      if (openingQuestion) {
-        currentQuestionRef.current =
-          openingQuestion;
-
-        setCurrentQuestion(
-          openingQuestion
-        );
-
-        conversationHistoryRef.current = [
-          {
-            speaker: "ALVIN",
-            text: openingQuestion,
-          },
-        ];
-      }
-
-      setStatusMessage(
-        "ALVIN is starting the interview..."
-      );
+      currentQuestionRef.current = openingQuestion;
+      setCurrentQuestion(openingQuestion);
+      conversationHistoryRef.current = openingQuestion
+        ? [{ speaker: "ALVIN", text: openingQuestion }]
+        : [];
+      setStatusMessage("ALVIN is starting the interview...");
     }
-  }, [
-    openingMessage,
-    openingQuestion,
-    candidateName,
-    targetRole,
-    sendNavTalkConfig,
-  ]);
+  }, [navtalkAiPrompt, openingQuestion, sendNavTalkConfig]);
 
   const notifyAvatarDone = useCallback(async () => {
     if (!navtalkSessionId || cancelledRef.current) {
@@ -923,8 +1016,9 @@ NavTalk, APIs, or that you are following instructions.
     cancelledRef.current = false;
 
     openingSentRef.current = false;
-
-    openingResponseTriggeredRef.current = false;
+    realtimePromptReadyRef.current = false;
+    consoleGreetingFinishedRef.current = false;
+    q01TriggeredRef.current = false;
 
     avatarSpeakingGateRef.current = false;
 
@@ -1408,6 +1502,26 @@ NavTalk, APIs, or that you are following instructions.
           "Avatar WebRTC audio actually finished playing."
         );
 
+        // First avatar turn is NavTalk Console First Message (greeting only).
+        // Do not arm the candidate silence timer yet. Ask Gemini-generated Q01.
+        if (!q01TriggeredRef.current) {
+          consoleGreetingFinishedRef.current = true;
+
+          if (realtimePromptReadyRef.current) {
+            q01TriggeredRef.current = true;
+            console.log(
+              "Console greeting finished; triggering exact Gemini-generated Q01."
+            );
+            setStatusMessage("ALVIN is asking the first question...");
+            triggerAvatarResponse();
+          } else {
+            console.log(
+              "Console greeting finished before realtime prompt was ready; Q01 deferred."
+            );
+          }
+          return;
+        }
+
         setStatusMessage("ALVIN is listening...");
         notifyAvatarDone();
         return;
@@ -1424,7 +1538,7 @@ NavTalk, APIs, or that you are following instructions.
     };
 
     checkPlayback();
-  }, [notifyAvatarDone]);
+  }, [notifyAvatarDone, triggerAvatarResponse]);
 
   const attachRemoteStream =
     useCallback((stream) => {
@@ -1761,9 +1875,6 @@ NavTalk, APIs, or that you are following instructions.
 
       openingSentRef.current =
         false;
-
-      openingResponseTriggeredRef.current =
-        false;
       mqttModeRegisteredRef.current = false;
       navtalkSessionIdRef.current = "";
 
@@ -1871,12 +1982,11 @@ NavTalk, APIs, or that you are following instructions.
         );
 
         setStatusMessage(
-          "Configuring ALVIN..."
+          "Connecting ALVIN realtime interview..."
         );
 
-        console.log(
-          "Waiting for Transparent Mode MQTT registration."
-        );
+        // Do NOT send realtime.input_config here.
+        // NavTalk can discard provider frames before realtime input is READY.
       };
 
       ws.onmessage =
@@ -1950,7 +2060,7 @@ NavTalk, APIs, or that you are following instructions.
                   message
                 );
                 setDisconnectedReason(
-                  "NavTalk did not return a Transparent Mode session ID."
+                  "NavTalk did not return a realtime session ID."
                 );
                 break;
               }
@@ -2059,14 +2169,19 @@ NavTalk, APIs, or that you are following instructions.
                   message
                 );
                 setDisconnectedReason(
-                  "NavTalk did not return a Transparent Mode session ID."
+                  "NavTalk did not return a realtime session ID."
                 );
                 break;
               }
 
               setStatusMessage(
-                "Starting Transparent Mode..."
+                "Starting NavTalk realtime AI..."
               );
+
+              // Do not send provider frames here. NavTalk can emit
+              // realtime.session.created before its provider input is ready.
+              // The opening bootstrap is sent only after READY + a confirmed
+              // post-ready session.update below.
 
               await registerNavTalkSession(
                 remoteSessionId
@@ -2088,11 +2203,83 @@ NavTalk, APIs, or that you are following instructions.
 
               startAudioStreaming();
 
+              // NavTalk Console First Message owns the opening turn.
+              // Do not inject conversation.item.create or response.create here.
+
+
               break;
             }
 
             case NavTalkMessageType.REALTIME_STATUS: {
               console.log("NavTalk realtime status:", navData);
+
+              const realtimeStatus =
+                navData?.data || navData || {};
+
+              const realtimePhase =
+                String(realtimeStatus?.phase || "").toLowerCase();
+              const realtimeState =
+                String(realtimeStatus?.status || "").toLowerCase();
+              const realtimeMessage =
+                String(
+                  realtimeStatus?.message ||
+                  navData?.message ||
+                  ""
+                ).toLowerCase();
+
+              const realtimeInputReady =
+                (realtimePhase === "ready" &&
+                  realtimeState === "success") ||
+                realtimeMessage.includes("realtime input is ready");
+
+              if (realtimeInputReady) {
+                console.log(
+                  "NavTalk realtime input is READY; applying Gemini roadmap prompt."
+                );
+
+                const configured = sendNavTalkConfig(navtalkAiPrompt);
+                if (configured) {
+                  openingSentRef.current = true;
+                  realtimePromptReadyRef.current = true;
+                  currentQuestionRef.current = openingQuestion;
+                  setCurrentQuestion(openingQuestion);
+
+                  console.log(
+                    "Gemini roadmap prompt applied. Waiting for Console greeting to finish before Q01."
+                  );
+                  const geminiRoadmap =
+                    parseGeminiRoadmap(navtalkAiPrompt);
+
+                  console.group("[GEMINI ROADMAP] Generated interview questions");
+                  geminiRoadmap.forEach((item) => {
+                    console.log(
+                      `${item.id}:`,
+                      item.question,
+                      "| intent:",
+                      item.intent
+                    );
+                  });
+                  console.groupEnd();
+
+                  // If the greeting already finished before READY arrived,
+                  // immediately ask Q01 now.
+                  if (
+                    consoleGreetingFinishedRef.current &&
+                    !q01TriggeredRef.current
+                  ) {
+                    q01TriggeredRef.current = true;
+                    console.log(
+                      "Console greeting already finished; triggering exact Gemini Q01."
+                    );
+                    triggerAvatarResponse();
+                  }
+                }
+
+                setStatusMessage(
+                  "ALVIN is starting the interview..."
+                );
+              }
+
               break;
             }
 
@@ -2204,61 +2391,27 @@ NavTalk, APIs, or that you are following instructions.
                 candidatePendingTranscriptRef.current = "";
                 syncCandidateSpeaking(false);
 
-                setStatusMessage(
-                  "ALVIN is preparing the next question..."
-                );
-
-                avatarSpeakingGateRef.current = true;
+                setStatusMessage("ALVIN is listening and responding...");
 
                 console.log(
-                  "Candidate answer settled; sending complete transcript to backend for Gemini:",
+                  "Candidate answer settled; NavTalk AI owns the live response:",
                   finalCandidateText
                 );
 
-                try {
-                  const decision = await requestAdaptiveQuestion({
-                    candidateAnswer: finalCandidateText,
-                  });
+                conversationHistoryRef.current.push({
+                  speaker: "Candidate",
+                  text: finalCandidateText,
+                });
 
-                  if (cancelledRef.current || !decision?.question) {
-                    console.warn(
-                      "No interview decision returned from backend."
-                    );
-                    avatarSpeakingGateRef.current = false;
-                    return;
-                  }
+                postBackend("/api/interview/native-transcript", {
+                  session_id: navtalkSessionId,
+                  speaker: "Candidate",
+                  text: finalCandidateText,
+                }).catch((error) => {
+                  console.warn("Failed to store candidate transcript:", error);
+                });
 
-                  console.log("Gemini interview decision:", decision);
-
-                  setStatusMessage(
-                    decision.advanced
-                      ? "ALVIN is asking the next question..."
-                      : "ALVIN is redirecting to the current question..."
-                  );
-
-                  const spokenReply =
-                    decision.reply?.trim() || decision.question?.trim();
-
-                  if (!spokenReply) {
-                    throw new Error("Backend returned no reply to speak.");
-                  }
-
-                  const spoken = speakQuestion(spokenReply);
-
-                  if (!spoken) {
-                    throw new Error(
-                      "Failed to send the interview response to NavTalk."
-                    );
-                  }
-
-                  candidateAnswerBufferRef.current = "";
-                } catch (error) {
-                  avatarSpeakingGateRef.current = false;
-                  console.error(
-                    "Failed to request next question:",
-                    error
-                  );
-                }
+                candidateAnswerBufferRef.current = "";
               };
 
               // This timer is independent of speech_stopped handling. If no
@@ -2299,8 +2452,11 @@ NavTalk, APIs, or that you are following instructions.
                 responseTranscriptLengthRef.current +=
                   deltaText.length;
 
-                responseTranscriptTextRef.current +=
-                  deltaText;
+                responseTranscriptTextRef.current =
+                  appendTranscriptDelta(
+                    responseTranscriptTextRef.current,
+                    deltaText
+                  );
               }
 
               break;
@@ -2320,6 +2476,89 @@ NavTalk, APIs, or that you are following instructions.
                   responseTranscriptTextRef.current
                 )
               );
+
+              const completedAlvinText =
+                responseTranscriptTextRef.current.trim();
+
+              if (completedAlvinText) {
+                conversationHistoryRef.current.push({
+                  speaker: "ALVIN",
+                  text: completedAlvinText,
+                });
+
+                // In native OpenAIRealtime mode NavTalk chooses/phrases the next
+                // roadmap question internally, so /adaptive-question is not what
+                // advances the UI. Synchronize the displayed question from the
+                // question ALVIN actually finished speaking.
+                //
+                // Do not treat the Console First Message as Q01.
+                if (q01TriggeredRef.current) {
+                  const spokenQuestion =
+                    extractDisplayedQuestion(completedAlvinText);
+
+                  if (spokenQuestion) {
+                    const previousDisplayedQuestion =
+                      currentQuestionRef.current || openingQuestion || "";
+
+                    currentQuestionRef.current = spokenQuestion;
+                    setCurrentQuestion(spokenQuestion);
+
+                    console.log(
+                      "[UI QUESTION UPDATED]",
+                      {
+                        previousQuestion: previousDisplayedQuestion,
+                        newQuestion: spokenQuestion,
+                      }
+                    );
+
+                    console.log(
+                      "[ALVIN SPOKEN QUESTION]",
+                      spokenQuestion
+                    );
+
+                    const geminiRoadmap =
+                      parseGeminiRoadmap(navtalkAiPrompt);
+                    const geminiMatch =
+                      findClosestGeminiQuestion(
+                        spokenQuestion,
+                        geminiRoadmap
+                      );
+
+                    if (geminiMatch) {
+                      console.log(
+                        "[GEMINI QUESTION MATCH]",
+                        {
+                          roadmapId: geminiMatch.id,
+                          geminiQuestion: geminiMatch.question,
+                          spokenByAlvin: spokenQuestion,
+                          similarity: Number(
+                            geminiMatch.score.toFixed(3)
+                          ),
+                          exactText:
+                            normalizeQuestionForMatch(
+                              geminiMatch.question
+                            ) ===
+                            normalizeQuestionForMatch(
+                              spokenQuestion
+                            ),
+                          note:
+                            geminiMatch.score >= 0.3
+                              ? "ALVIN's spoken question is related to this Gemini roadmap question. NavTalk may have paraphrased or simplified it."
+                              : "Low-confidence match. This spoken question may be a NavTalk follow-up/simplification rather than the original Gemini wording.",
+                        }
+                      );
+                    }
+                  }
+                }
+
+                postBackend("/api/interview/native-transcript", {
+                  session_id: navtalkSessionId,
+                  speaker: "ALVIN",
+                  text: completedAlvinText,
+                }).catch((error) => {
+                  console.warn("Failed to store ALVIN transcript:", error);
+                });
+              }
 
               // audio.done means NavTalk finished generating/sending audio.
               // It does NOT mean the buffered WebRTC audio has finished
@@ -2452,7 +2691,16 @@ NavTalk, APIs, or that you are following instructions.
 
         const data = await response.json();
 
-        if (data.current_question) {
+        // In native OpenAIRealtime mode, the backend's current_question can
+        // remain on the original Gemini Q01 because NavTalk owns the live
+        // ANSWERED/PARTIAL/KNOWLEDGE_GAP/OFF_TOPIC progression.
+        //
+        // Once Q01 has started, NEVER let session polling overwrite the
+        // question we synchronized from ALVIN's actual spoken transcript.
+        if (
+          data.current_question &&
+          !q01TriggeredRef.current
+        ) {
           currentQuestionRef.current = data.current_question;
           setCurrentQuestion(data.current_question);
         }

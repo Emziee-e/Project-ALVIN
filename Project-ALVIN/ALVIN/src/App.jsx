@@ -39,8 +39,22 @@ function App() {
     })
 
     // 2. Listen for Auth Changes (Sign-in/Sign-out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession((currentSession) => {
+        // TOKEN_REFRESHED / tab-focus auth activity can provide a new session object
+        // for the same signed-in user. Keeping the existing object prevents the
+        // profile effect from rerunning and avoids remounting an active LiveSession.
+        const sameUser =
+          currentSession?.user?.id &&
+          nextSession?.user?.id &&
+          currentSession.user.id === nextSession.user.id
+
+        if (sameUser && event !== 'USER_UPDATED') {
+          return currentSession
+        }
+
+        return nextSession
+      })
     })
 
     return () => subscription.unsubscribe()
@@ -89,6 +103,18 @@ function App() {
       } finally {
         if (isMounted) setRoleLoading(false)
       }
+<<<<<<< HEAD
+    }
+
+    queueMicrotask(() => {
+      if (isMounted) setRoleLoading(true)
+    })
+    loadProfile()
+
+    return () => {
+      isMounted = false
+=======
+>>>>>>> poli
     }
 
     queueMicrotask(() => {
@@ -99,7 +125,7 @@ function App() {
     return () => {
       isMounted = false
     }
-  }, [session])
+  }, [session?.user?.id, session?.user?.email])
 
   // set up modal function
   const isUbStudent = session?.user?.email?.toLowerCase().endsWith('@ub.edu.ph') && role === 'student'
@@ -115,7 +141,9 @@ function App() {
   }
 
   // If session exists but role is still loading, show loading screen
-  if (session && roleLoading) {
+  // Only block the app while resolving the role for the first time.
+  // Background auth/profile refreshes must never unmount LiveSession.
+  if (session && roleLoading && !role) {
     return <Loading />
   }
   
