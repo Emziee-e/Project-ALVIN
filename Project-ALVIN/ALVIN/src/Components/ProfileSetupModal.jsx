@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { AlertCircle, BookOpen, CalendarDays, ChevronDown, GraduationCap, Info, Check } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { saveStudentProfile } from "../lib/profileService";
 
 const academicYearOptions = [
   "First Year",
@@ -32,11 +33,13 @@ export default function ProfileSetupModal({ isOpen, onComplete }) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
-      setAcademicYearLevel("");
-      setCourseDegreeProgram("");
-      setError("");
-      setOpenYearDropdown(false);
-      setOpenCourseDropdown(false);
+      queueMicrotask(() => {
+        setAcademicYearLevel("");
+        setCourseDegreeProgram("");
+        setError("");
+        setOpenYearDropdown(false);
+        setOpenCourseDropdown(false);
+      });
     } else {
       document.body.style.overflow = "unset";
     }
@@ -81,6 +84,17 @@ export default function ProfileSetupModal({ isOpen, onComplete }) {
 
     if (updateError) {
       setError(updateError.message);
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      await saveStudentProfile(data.user, {
+        program_course: courseDegreeProgram,
+        year_level: academicYearLevel,
+      });
+    } catch (profileError) {
+      setError(profileError.message);
       setIsSaving(false);
       return;
     }
