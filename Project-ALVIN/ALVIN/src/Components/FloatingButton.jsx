@@ -16,7 +16,7 @@ function FloatingButton() {
 
   return (
     <div
-      className="fixed bottom-8 right-8 z-[999999] flex items-center"
+      className="fixed bottom-8 right-8 z-30 flex items-center"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

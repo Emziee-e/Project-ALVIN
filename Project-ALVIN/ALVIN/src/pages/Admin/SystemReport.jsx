@@ -1,53 +1,107 @@
 import { useEffect, useState } from "react";
-import { Users, FileBarChart, UserCircle, Mic, TrendingUp, LayoutGrid, Calendar, Clock, ChevronDown } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import Logo from '/images/Alvin-logo.png';
-import BarCharts from './barChart';
-import SignOutModal from '../../Components/SignOutModal';
-import { supabase } from '../../lib/supabaseClient';
+import {
+  Users,
+  FileBarChart,
+  UserCircle,
+  Mic,
+  TrendingUp,
+  LayoutGrid,
+  Calendar,
+  Clock,
+  ChevronDown,
+  User,
+  X,
+  Mail,
+} from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import Logo from "/images/Alvin-logo.png";
+import BarCharts from "./barChart";
+import SignOutModal from "../../Components/SignOutModal";
+import { supabase } from "../../lib/supabaseClient";
 
 const navItems = [
-  { icon: Users, label: "User Management" },
-  { icon: FileBarChart, label: "System Report" },
-  { icon: UserCircle, label: "Avatar" },
+  { id: "account", label: "Account" },
+  { id: "users", label: "People", path: "/admin/users", icon: Users },
+  { id: "reports", label: "Reports", path: "/admin/reports", icon: FileBarChart },
+  { id: "avatars", label: "Avatars", path: "/admin/avatars", icon: UserCircle },
 ];
 
 export default function SystemReport() {
-  const [activeNav, setActiveNav] = useState(1);
+  const [activeNav, setActiveNav] = useState("reports");
   const [reportType, setReportType] = useState("Weekly");
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const [userProfile, setUserProfile] = useState({
+    name: "User",
+    email: "",
+    avatarUrl: null,
+    initials: "U",
+  });
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadUserAvatar = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      const metadata = user?.user_metadata ?? {};
-      const nextAvatarUrl =
-        metadata.avatar_url ||
-        metadata.picture ||
-        metadata.avatar ||
-        metadata.image ||
-        "";
+    const loadUserData = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (isMounted) {
-        setAvatarUrl(nextAvatarUrl);
+      if (user && isMounted) {
+        const metadata = user.user_metadata || {};
+        const fullName =
+          metadata.full_name ||
+          metadata.name ||
+          `${metadata.first_name || ""} ${metadata.last_name || ""}`.trim() ||
+          user.email?.split("@")[0] ||
+          "User Account";
+
+        const emailAddress = user.email || metadata.email || "N/A";
+        const avatar =
+          metadata.avatar_url ||
+          metadata.picture ||
+          user.identities?.[0]?.identity_data?.avatar_url ||
+          user.identities?.[0]?.identity_data?.picture ||
+          null;
+
+        const nameParts = fullName.split(" ").filter(Boolean);
+        const initials =
+          nameParts.length >= 2
+            ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+            : fullName.slice(0, 2).toUpperCase();
+
+        setUserProfile({
+          name: fullName,
+          email: emailAddress,
+          avatarUrl: avatar,
+          initials: initials,
+        });
       }
     };
 
-    loadUserAvatar();
+    loadUserData();
 
     return () => {
       isMounted = false;
     };
   }, []);
 
+  useEffect(() => {
+    if (location.pathname.includes("/users")) {
+      setActiveNav("users");
+    } else if (location.pathname.includes("/avatars")) {
+      setActiveNav("avatars");
+    } else {
+      setActiveNav("reports");
+    }
+  }, [location.pathname]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate('/');
+    navigate("/");
   };
 
   return (
@@ -56,139 +110,223 @@ export default function SystemReport() {
         html, body, #root { height: 100%; margin: 0; width: 100%; }
       `}</style>
 
-      <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Manrope,sans-serif]">
-
-        {/* ── Sidebar ── */}
-        <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
-
-          {/* Logo */}
-          <div className="mb-6 px-4 flex items-center justify-center gap-0">
-            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
-            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
-              LVIN
-            </div>
-          </div>
-
-          {/* Nav */}
-          <nav className="flex-1">
-            <ul className="flex flex-col gap-1 list-none">
-              {navItems.map((item, i) => {
-                const isUserMgmt = i === 0;
-                const isSystemReport = i === 1;
-                const isAvatarMgmt = i === 2;
-                let navLink = '#';
-
-                if (isUserMgmt) navLink = '/admin/users';
-                if (isSystemReport) navLink = '/admin/reports';
-                if (isAvatarMgmt) navLink = '/admin/avatars';
-
-                return (
-                  <li key={item.label}
-                    className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
-                  >
-                    <Link
-                      to={navLink}
-                      onClick={() => setActiveNav(i)}
-                      className={`flex items-center gap-4 px-4 py-3 no-underline transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
-                        ${activeNav === i
-                          ? "text-[#862334]"
-                          : "text-[#4a4a4a] hover:text-[#862334] hover:bg-[#f0f0f0]"}`}
-                    >
-                      <item.icon size={20} />
-                      <span>{item.label}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-
-          <div className="mt-auto">
-            <button
-              onClick={() => setIsSignOutModalOpen(true)}
-              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
-            >
-              Sign Out
-            </button>
-          </div>
-        </aside>
-
-        {/* Modal */}
+      <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Geist, Inter] relative">
+        {/* Modals */}
         <SignOutModal
           isOpen={isSignOutModalOpen}
           onClose={() => setIsSignOutModalOpen(false)}
           onConfirm={handleSignOut}
         />
 
-        {/* ── Main ── */}
-        <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
+        {/* Slide-out Account Drawer Wrapper with Smooth Transitions */}
+        <div
+          className={`fixed inset-0 z-40 flex transition-opacity duration-300 ${
+            isAccountOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          {/* Backdrop Overlay */}
+          <div
+            className="fixed inset-0 bg-black/10 transition-opacity duration-300"
+            onClick={() => setIsAccountOpen(false)}
+          />
 
-          {/* Top Header (Shared with UserDashboard) */}
-          <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 py-4 border-b border-[#e5e5e5]">
-            <div className="hidden md:flex items-center gap-2 text-xs font-[Inter,sans-serif] opacity-100">
+          {/* Animated Drawer Panel */}
+          <aside
+            className={`relative left-[100px] w-[340px] h-full bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col overflow-y-auto select-none font-sans text-[#2D3B45] transition-transform duration-300 ease-in-out ${
+              isAccountOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
+            <div className="flex justify-end p-4">
+              <button
+                onClick={() => setIsAccountOpen(false)}
+                className="p-1.5 rounded-lg border border-[#862334] text-[#862334] hover:bg-[#862334]/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5 stroke-[2.5]" />
+              </button>
             </div>
-            <div className="flex items-center gap-6">
-              {avatarUrl && (
-                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
-                  <img
-                    src={avatarUrl}
-                    alt="User avatar"
-                    className="w-full h-full object-cover"
-                  />
+
+            <div className="flex flex-col items-center text-center pt-2 pb-6 px-6">
+              {userProfile.avatarUrl && !imageError ? (
+                <img
+                  src={userProfile.avatarUrl}
+                  alt={userProfile.name}
+                  onError={() => setImageError(true)}
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#862334] shadow-sm mb-3"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full border-2 border-[#862334] flex items-center justify-center text-[#862334] font-semibold text-2xl mb-3 bg-white shadow-xs">
+                  {userProfile.initials}
                 </div>
               )}
+
+              <h2 className="text-xl font-bold text-[#2D3B45] text-center tracking-tight">
+                {userProfile.name}
+              </h2>
+
+              <button
+                onClick={() => {
+                  setIsAccountOpen(false);
+                  setIsSignOutModalOpen(true);
+                }}
+                className="mt-3 px-4 py-1 bg-[#F5F5F5] hover:bg-gray-200 border border-gray-300 rounded text-xs font-medium text-[#2D3B45] transition-colors cursor-pointer"
+              >
+                Logout
+              </button>
             </div>
-          </header>
 
-          {/* Content Canvas */}
+            <div className="px-6 my-1">
+              <hr className="border-t border-gray-200" />
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Email Address
+                  </span>
+                  <span className="text-sm font-medium text-[#2D3B45] break-all">
+                    {userProfile.email || "Not Available"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        {/* Canvas-style Vertical Navigation Sidebar */}
+        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen">
+          <div className="w-full flex flex-col items-center">
+            <div
+              className="mb-3 px-1 flex flex-col items-center cursor-pointer"
+              onClick={() => {
+                setIsAccountOpen(false);
+                setActiveNav("reports");
+                navigate("/admin/reports");
+              }}
+            >
+              <img
+                src={Logo}
+                alt="Alvin Logo"
+                className="w-20 h-20 object-contain hover:scale-105 transition-transform"
+              />
+            </div>
+
+            <nav className="w-full flex flex-col gap-1">
+              {navItems.map((item) => {
+                const Icon = item.id === "account" ? User : item.icon;
+
+                const isSolidActive = isAccountOpen
+                  ? item.id === "account"
+                  : activeNav === item.id;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      if (item.id === "account") {
+                        setIsAccountOpen(!isAccountOpen);
+                      } else {
+                        setIsAccountOpen(false);
+                        setActiveNav(item.id);
+                        if (item.path) navigate(item.path);
+                      }
+                    }}
+                    className={`w-full py-3.5 px-2 flex flex-col items-center justify-center transition-colors relative cursor-pointer ${
+                      isSolidActive
+                        ? "bg-[#862334] text-white"
+                        : "text-[#862334] hover:bg-[#862334]/10 bg-transparent"
+                    }`}
+                  >
+                    <Icon
+                      className={`w-6 h-6 mb-1 ${
+                        isSolidActive ? "text-white" : "text-[#862334]"
+                      }`}
+                    />
+                    <span
+                      className={`text-[11px] tracking-tight ${
+                        isSolidActive
+                          ? "font-bold text-white"
+                          : "font-medium text-[#862334]"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
+
+        {/* ── Main Content ── */}
+        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
-            <div className="p-4 sm:p-6 md:p-8 lg:p-12 space-y-8 max-w-7xl mx-auto">
-
+            {/* Expanded padding to give substantial offset from the sidebar */}
+            <div className="px-12 sm:px-16 md:px-20 lg:px-28 py-8 space-y-8 w-full">
               {/* KPI Cards Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {/* Total Interviews */}
-                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Total Interviews</p>
+                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">
+                      Total Interviews
+                    </p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <Mic className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">12,842</h3>
+                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
+                    12,842
+                  </h3>
                 </div>
 
                 {/* Avg. Performance */}
-                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Avg. Performance</p>
+                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">
+                      Avg. Performance
+                    </p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <FileBarChart className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">94.8%</h3>
+                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
+                    94.8%
+                  </h3>
                 </div>
 
                 {/* Active Users */}
-                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Active Users</p>
+                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">
+                      Active Users
+                    </p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <TrendingUp className="w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">3,205</h3>
+                  <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
+                    3,205
+                  </h3>
                 </div>
 
                 {/* Daily Users */}
-                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Daily Users</p>
+                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">
+                      Daily Users
+                    </p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <Clock className="w-5 h-5" />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">10</h3>
+                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
+                      10
+                    </h3>
                     <div className="flex items-center gap-1.5 text-gray-400 text-xs">
                       <Clock className="w-4 h-4" />
                       <span>Last 24 hours</span>
@@ -197,15 +335,19 @@ export default function SystemReport() {
                 </div>
 
                 {/* Weekly Users */}
-                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Weekly Users</p>
+                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">
+                      Weekly Users
+                    </p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
                       <Users className="w-5 h-5" />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">20</h3>
+                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
+                      20
+                    </h3>
                     <div className="flex items-center gap-1.5 text-gray-400 text-xs">
                       <LayoutGrid className="w-4 h-4" />
                       <span>Last 7 days</span>
@@ -214,15 +356,19 @@ export default function SystemReport() {
                 </div>
 
                 {/* Monthly Users */}
-                <div className="bg-white p-4 h-auto rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs relative overflow-hidden group transition-all duration-300 flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">Monthly Users</p>
+                    <p className="text-gray-500 text-sm font-semibold font-[Geist,Inter]">
+                      Monthly Users
+                    </p>
                     <div className="p-2 bg-rose-50 text-[#862334] rounded-lg">
-                      <Calendar className="w-5 h-5" />
+                      <Calendar className="w-4 h-4" />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">40</h3>
+                    <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
+                      40
+                    </h3>
                     <div className="flex items-center gap-1.5 text-gray-400 text-xs">
                       <Calendar className="w-4 h-4" />
                       <span>Last 30 days</span>
@@ -232,17 +378,17 @@ export default function SystemReport() {
               </div>
 
               {/* Total Users Graph Section */}
-              <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm mb-10">
-                <div className="flex justify-between items-center mb-10">
-                  <div className="flex items-center gap-4">
-                    <h3 className="text-2xl font-bold font-[Geist,Inter] text-black">
-                      {reportType} Interview Volume
-                    </h3>
-                  </div>
+              <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden mb-10">
+                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-white">
+                  <h3 className="text-lg font-bold font-[Geist,Inter] text-black">
+                    {reportType} Interview Volume
+                  </h3>
                   <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full bg-[#862334]"></span>
-                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Volume</span>
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                        Volume
+                      </span>
                     </div>
                     <div className="relative group">
                       <select
@@ -258,7 +404,9 @@ export default function SystemReport() {
                     </div>
                   </div>
                 </div>
-                <BarCharts reportType={reportType} />
+                <div className="p-6">
+                  <BarCharts reportType={reportType} />
+                </div>
               </div>
             </div>
           </div>
