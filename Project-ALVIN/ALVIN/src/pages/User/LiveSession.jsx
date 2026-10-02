@@ -536,6 +536,18 @@ export default function LiveSession() {
   const realtimePromptReadyRef = useRef(false);
   const consoleGreetingFinishedRef = useRef(false);
   const q01TriggeredRef = useRef(false);
+  // The Console First Message is produced by NavTalk itself and may not emit the
+  // same realtime.response.audio.done lifecycle as model-generated turns.
+  // Detect its actual WebRTC playback instead so Q01 can be triggered without
+  // waiting for candidate speech.
+  const consoleGreetingAudioSeenRef = useRef(false);
+  const consoleGreetingLastAudioAtRef = useRef(0);
+  // Candidate speech is accepted only after a real interview question has
+  // completely finished playing. The Console greeting never opens an answer window.
+  const candidateAnswerEnabledRef = useRef(false);
+  // Lets the closing/playback callbacks request the normal finalization flow
+  // without creating a dependency-order cycle with handleConfirmEnd.
+  const autoEndInterviewRef = useRef(() => {});
   const interviewEndedRef = useRef(false);
   const interviewEndedAtRef = useRef(0);
   const closingPendingRef = useRef(false);
@@ -1107,6 +1119,9 @@ NavTalk, APIs, or system instructions.
     realtimePromptReadyRef.current = false;
     consoleGreetingFinishedRef.current = false;
     q01TriggeredRef.current = false;
+    consoleGreetingAudioSeenRef.current = false;
+    consoleGreetingLastAudioAtRef.current = 0;
+    candidateAnswerEnabledRef.current = false;
     interviewEndedRef.current = false;
     setInterviewComplete(false);
 
@@ -1310,7 +1325,8 @@ NavTalk, APIs, or system instructions.
             if (
               !micActiveRef.current ||
               interviewEndedRef.current ||
-              avatarSpeakingGateRef.current
+              avatarSpeakingGateRef.current ||
+              !candidateAnswerEnabledRef.current
             ) {
               return;
             }
@@ -1594,9 +1610,38 @@ NavTalk, APIs, or system instructions.
 
           const rms = Math.sqrt(sumSquares / Math.max(1, samples.length));
 
+          const now = performance.now();
+
           if (rms >= AVATAR_AUDIO_RMS_THRESHOLD) {
             avatarAudioActiveRef.current = true;
-            avatarLastAudioAtRef.current = performance.now();
+            avatarLastAudioAtRef.current = now;
+
+            // Before Q01, any remote avatar audio is the NavTalk Console
+            // First Message. Remember that we actually heard it.
+            if (!q01TriggeredRef.current) {
+              consoleGreetingAudioSeenRef.current = true;
+              consoleGreetingLastAudioAtRef.current = now;
+            }
+          } else if (
+            !q01TriggeredRef.current &&
+            realtimePromptReadyRef.current &&
+            consoleGreetingAudioSeenRef.current &&
+            consoleGreetingLastAudioAtRef.current > 0 &&
+            now - consoleGreetingLastAudioAtRef.current >= AVATAR_END_SILENCE_MS
+          ) {
+            // The Console First Message has really finished playing. NavTalk's
+            // built-in greeting can wait for user input by default, so explicitly
+            // request the first model response here. The prompt guarantees that
+            // the first generated response is roadmap Q01.
+            consoleGreetingFinishedRef.current = true;
+            q01TriggeredRef.current = true;
+            candidateAnswerEnabledRef.current = false;
+
+            console.log(
+              "Console greeting WebRTC playback ended; automatically triggering Q01 without candidate reply."
+            );
+            setStatusMessage("ALVIN is asking the first question...");
+            triggerAvatarResponse();
           }
 
           remoteAudioMonitorFrameRef.current =
@@ -1609,7 +1654,7 @@ NavTalk, APIs, or system instructions.
         console.warn("Could not monitor NavTalk WebRTC audio:", error);
       }
     },
-    [stopRemoteAudioMonitor]
+    [stopRemoteAudioMonitor, triggerAvatarResponse]
   );
 
   const waitForActualAvatarPlaybackEnd = useCallback(() => {
@@ -1677,11 +1722,24 @@ NavTalk, APIs, or system instructions.
         }
 
         if (closingPendingRef.current) {
-          console.log("Outro finished playing; starting closing grace window.");
-          beginClosingGrace();
+          console.log(
+            "Outro finished playing; stopping microphone and automatically finalizing interview."
+          );
+          closingPendingRef.current = false;
+          candidateAnswerEnabledRef.current = false;
+          stopMicAfterInterview();
+
+          // Allow React/state cleanup to settle, then use the exact same safe
+          // shutdown + results flow as the manual End Interview action.
+          setTimeout(() => {
+            autoEndInterviewRef.current?.();
+          }, 150);
           return;
         }
 
+        // A question has now FINISHED playing. Only now may candidate speech
+        // become part of an answer. This deliberately excludes the Console greeting.
+        candidateAnswerEnabledRef.current = true;
         setStatusMessage("ALVIN is listening...");
         notifyAvatarDone();
         return;
@@ -1698,7 +1756,7 @@ NavTalk, APIs, or system instructions.
     };
 
     checkPlayback();
-  }, [notifyAvatarDone, triggerAvatarResponse, beginClosingGrace]);
+  }, [notifyAvatarDone, triggerAvatarResponse, stopMicAfterInterview]);
 
   const attachRemoteStream =
     useCallback((stream) => {
@@ -2445,7 +2503,15 @@ NavTalk, APIs, or system instructions.
 
             case NavTalkMessageType.SPEECH_STARTED: {
               if (interviewEndedRef.current) break;
-              if (closingPendingRef.current) cancelClosing();
+
+              // Ignore speech during the Console greeting, while ALVIN is speaking,
+              // and after the closing turn. The candidate should answer questions only.
+              if (!candidateAnswerEnabledRef.current || avatarSpeakingGateRef.current) {
+                console.log(
+                  "Ignoring candidate speech because no interview answer window is open."
+                );
+                break;
+              }
 
               candidateVadSpeakingRef.current = true;
               candidateSpeakingRef.current = true;
@@ -2489,12 +2555,17 @@ NavTalk, APIs, or system instructions.
             }
 
             case NavTalkMessageType.INPUT_AUDIO_TRANSCRIPTION_COMPLETED: {
-              // Allow a short grace window so the answer to the LAST question can still
-              // arrive after ALVIN's closing line. Ignore anything after that.
+              // The Console greeting is not a question and requires no response.
+              // Also reject late/background transcripts once ALVIN starts another turn
+              // or the interview is closing/finished.
               if (
-                interviewEndedRef.current &&
-                performance.now() - interviewEndedAtRef.current > 6000
+                !candidateAnswerEnabledRef.current ||
+                interviewEndedRef.current ||
+                closingPendingRef.current
               ) {
+                console.log(
+                  "Ignoring candidate transcript because no interview answer window is open."
+                );
                 break;
               }
 
@@ -2577,6 +2648,9 @@ NavTalk, APIs, or system instructions.
             }
 
             case NavTalkMessageType.RESPONSE_AUDIO_DELTA: {
+              // ALVIN has begun a turn; close the candidate answer window immediately
+              // so avatar audio / late speech cannot leak into the candidate transcript.
+              candidateAnswerEnabledRef.current = false;
               if (!avatarTurnStartedAtRef.current) {
                 avatarTurnStartedAtRef.current = performance.now();
               }
@@ -2640,8 +2714,9 @@ NavTalk, APIs, or system instructions.
 
                 if (q01TriggeredRef.current && !interviewEndedRef.current) {
                   if (isClosingStatement(completedAlvinText)) {
-                    // Provisional only. The mic stays ON until the outro has finished
-                    // playing and a short grace window passes with no candidate speech.
+                    // The final answer was flushed above. From this point forward,
+                    // no additional microphone transcript belongs to the interview.
+                    candidateAnswerEnabledRef.current = false;
                     closingPendingRef.current = true;
                   } else {
                     closingPendingRef.current = false;
@@ -2969,6 +3044,7 @@ NavTalk, APIs, or system instructions.
     setFinalizationError(null);
     setDisconnectedReason(null);
     setIsFinishing(true);
+    candidateAnswerEnabledRef.current = false;
     flushCandidateAnswer(); // Don't lose an answer that is still settling.
 
     cancelledRef.current = true;
@@ -3064,6 +3140,10 @@ NavTalk, APIs, or system instructions.
     }
   };
 
+  // The avatar-closing callback uses this ref to invoke the same idempotent
+  // finalization path automatically after the closing audio has really ended.
+  autoEndInterviewRef.current = handleConfirmEnd;
+
   if (isFinishing) {
     return (
       <Loading message="Finalizing interview evaluation with Gemini AI..." />
@@ -3083,8 +3163,7 @@ NavTalk, APIs, or system instructions.
               />
 
               <span className="text-[#862334] font-bold pt-2">
-                Live NavTalk WebRTC •{" "}
-                {targetRole}
+                {" "}{targetRole} Interview
               </span>
             </div>
 

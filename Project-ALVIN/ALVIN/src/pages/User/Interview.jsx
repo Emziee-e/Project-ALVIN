@@ -1,197 +1,348 @@
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Mic, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import Logo from '/images/Alvin-logo.png';
-import SignOutModal from '../../Components/SignOutModal';
-import { supabase } from '../../lib/supabaseClient';
+import {
+  LayoutDashboard,
+  Mic,
+  User,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Mail,
+  Calendar,
+  GraduationCap,
+} from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import Logo from "/images/Alvin-logo.png";
+import SignOutModal from "../../Components/SignOutModal";
+import { supabase } from "../../lib/supabaseClient";
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard" },
-  { icon: Mic, label: "Interview History" },
-  { icon: Settings, label: "Settings" },
+  { id: "account", label: "Account" },
+  { id: "dashboard", label: "Dashboard", path: "/user/dashboard", icon: LayoutDashboard },
+  { id: "interviews", label: "History", path: "/user/interviews", icon: Mic },
 ];
 
 const interviews = [
-  { role: "Software Engineer", date: "Oct 24, 2023", score: 84, icon: "terminal",    primary: true  },
-  { role: "Data Scientist", date: "Oct 22, 2023", score: 78, icon: "palette",     primary: false },
+  { role: "Software Engineer", date: "Oct 24, 2023", score: 84, icon: "terminal", primary: true },
+  { role: "Data Scientist", date: "Oct 22, 2023", score: 78, icon: "palette", primary: false },
   { role: "Cybersecurity Analyst", date: "Oct 18, 2023", score: 85, icon: "leaderboard", primary: false },
-  { role: "Cloud Engineer", date: "Oct 15, 2023", score: 95, icon: "psychology",  primary: false },
-  { role: "UI/UX Designer", date: "Oct 12, 2023", score: 62, icon: "database",    primary: false },
+  { role: "Cloud Engineer", date: "Oct 15, 2023", score: 95, icon: "psychology", primary: false },
+  { role: "UI/UX Designer", date: "Oct 12, 2023", score: 62, icon: "database", primary: false },
 ];
 
-const TOTAL    = 10;
+const TOTAL = 10;
 const PER_PAGE = 5;
-const PAGES    = Math.ceil(TOTAL / PER_PAGE);
+const PAGES = Math.ceil(TOTAL / PER_PAGE);
 
-export default function InterviewHistory() {
-  const [activeNav,   setActiveNav]   = useState(1);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [page,        setPage]        = useState(1);
+export default function Interview() {
+  const [activeNav, setActiveNav] = useState("interviews");
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [page, setPage] = useState(1);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState("");
+
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const [userProfile, setUserProfile] = useState({
+    name: "Vin",
+    email: "",
+    academicYear: "4th Year",
+    degreeProgram: "BS in Information Technology",
+    avatarUrl: null,
+    initials: "V",
+  });
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadUserAvatar = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      const metadata = user?.user_metadata ?? {};
-      const nextAvatarUrl =
-        metadata.avatar_url ||
-        metadata.picture ||
-        metadata.avatar ||
-        metadata.image ||
-        "";
+    const loadUserData = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (isMounted) {
-        setAvatarUrl(nextAvatarUrl);
+      if (user && isMounted) {
+        const metadata = user.user_metadata || {};
+        const fullName =
+          metadata.full_name ||
+          metadata.name ||
+          `${metadata.first_name || ""} ${metadata.last_name || ""}`.trim() ||
+          user.email?.split("@")[0] ||
+          "Vin";
+
+        const emailAddress = user.email || metadata.email || "N/A";
+        const academicYear =
+          metadata.academic_year || metadata.academicYear || "A.Y. 2026 - 2027";
+        const degreeProgram =
+          metadata.degree_program ||
+          metadata.course ||
+          metadata.department ||
+          "BS in Computer Science";
+        const avatar =
+          metadata.avatar_url ||
+          metadata.picture ||
+          metadata.avatar ||
+          user.identities?.[0]?.identity_data?.avatar_url ||
+          user.identities?.[0]?.identity_data?.picture ||
+          null;
+
+        const nameParts = fullName.split(" ").filter(Boolean);
+        const initials =
+          nameParts.length >= 2
+            ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+            : fullName.slice(0, 2).toUpperCase();
+
+        setUserProfile({
+          name: fullName,
+          email: emailAddress,
+          academicYear: academicYear,
+          degreeProgram: degreeProgram,
+          avatarUrl: avatar,
+          initials: initials,
+        });
       }
     };
 
-    loadUserAvatar();
+    loadUserData();
 
     return () => {
       isMounted = false;
     };
   }, []);
 
+  useEffect(() => {
+    if (location.pathname.includes("/interviews")) {
+      setActiveNav("interviews");
+    } else if (location.pathname.includes("/dashboard")) {
+      setActiveNav("dashboard");
+    }
+  }, [location.pathname]);
+
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      navigate("/login");
+    } catch (error) {
+      console.error("Error signing out:", error.message);
+    }
   };
 
   return (
     <>
-      <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+      <style>{`
+        html, body, #root { height: 100%; margin: 0; width: 100%; }
+      `}</style>
 
-
-
-      <div className="flex min-h-screen bg-white text-black font-[Manrope,sans-serif]">
-
-        {/* ── Mobile sidebar overlay ── */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black/40 z-40 md:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-                {/* ── Sidebar ── */}
-        <aside className="hidden md:flex fixed w-60 lg:w-64 h-screen left-0 top-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex-col py-8 px-4 z-50 overflow-y-auto">
-
-          {/* Logo */}
-          <div className="mb-6 px-4 flex items-center justify-center gap-0">
-            <img src={Logo} alt="Alvin logo" className="h-12 w-auto flex-shrink-0 block" />
-            <div className="flex h-12 items-center text-maroon font-Geist text-[46px] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
-              LVIN
-            </div>
-          </div>
-
-          {/* Nav */}
-          <nav className="flex-1">
-            <ul className="flex flex-col gap-1 list-none">
-              {navItems.map((item, i) => {
-                const isDashboard = i === 0;
-                const isInterviews = i === 1;
-                const isSettings = i === 2;
-                let navLink = '#';
-
-                if (isDashboard) navLink = '/user/dashboard';
-                if (isInterviews) navLink = '/user/interviews';
-                if (isSettings) navLink = '/user/settings';
-
-                return (
-                  <li key={item.label}
-                    className={`${activeNav === i ? "border-r-4 border-[#862334] bg-[#f0f0f0]" : ""}`}
-                  >
-                    {isDashboard || isInterviews || isSettings ? (
-                      <Link
-                        to={navLink}
-                        onClick={(e) => { setActiveNav(i); }}
-                        className={`flex items-center gap-4 px-4 py-3 no-underline transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
-                          ${activeNav === i
-                            ? "text-[#862334]"
-                            : "text-[#4a4a4a] hover:text-[#862334] hover:bg-[#f0f0f0]"}`}
-                      >
-                        <item.icon size={20} />
-                        <span>{item.label}</span>
-                      </Link>
-                    ) : (
-                      <a
-                        href="#"
-                        onClick={e => { e.preventDefault(); setActiveNav(i); }}
-                        className={`flex items-center gap-4 px-4 py-3 no-underline transition-all duration-200 font-Geist uppercase tracking-[0.15em] text-xs rounded-[2px]
-                          ${activeNav === i
-                            ? "text-[#862334]"
-                            : "text-[#4a4a4a] hover:text-[#862334] hover:bg-[#f0f0f0]"}`}
-                      >
-                        <item.icon size={20} />
-                        <span>{item.label}</span>
-                      </a>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-
-          <div className="mt-auto">
-            <button
-              onClick={() => setIsSignOutModalOpen(true)}
-              className="w-full bg-[#862334] hover:bg-[#ffb003] text-white border-0 cursor-pointer font-Geist font-bold uppercase tracking-[0.1em] text-xs rounded-[2px] flex items-center justify-center gap-2 px-4 py-3 transition-all duration-200"
-            >
-              Sign Out
-            </button>
-          </div>
-        </aside>
-
-        {/* Modal */}
+      <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Geist,Inter] relative">
+        {/* Modals */}
         <SignOutModal
           isOpen={isSignOutModalOpen}
           onClose={() => setIsSignOutModalOpen(false)}
           onConfirm={handleSignOut}
         />
 
-        {/* ── Main ── */}
-        <main className="flex-1 w-full md:ml-60 lg:ml-64 bg-white overflow-hidden flex flex-col h-screen">
+        {/* ── Slide-out Account Drawer Wrapper ── */}
+        <div
+          className={`fixed inset-0 z-40 flex transition-all duration-300 ${
+            isAccountOpen ? "pointer-events-auto" : "pointer-events-none"
+          }`}
+        >
+          {/* Dark Backdrop Overlay with Opacity Animation */}
+          <div
+            className={`fixed inset-0 bg-black/30 transition-opacity duration-300 ease-in-out ${
+              isAccountOpen ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={() => setIsAccountOpen(false)}
+          />
 
-          {/* ── Top Header ── */}
-          <header className="sticky top-0 left-0 right-0 md:left-60 lg:left-64 z-40 h-16 bg-white/85 backdrop-blur-md flex justify-between items-center px-4 sm:px-6 md:px-8 border-b border-[#e5e5e5]">
-            <div className="flex items-center gap-3">
-              <span className="md:hidden font-[Space_Grotesk,sans-serif] font-black text-sm sm:text-base md:text-lg text-[#862334] uppercase tracking-tight truncate">ALVIN</span>
+          {/* Sliding Drawer Content Container */}
+          <aside
+            className={`relative left-0 md:left-[100px] w-[340px] h-full bg-white border-r border-gray-200 z-50 flex flex-col overflow-y-auto select-none font-sans text-[#2D3B45] transition-transform duration-300 ease-in-out ${
+              isAccountOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
+            <div className="flex justify-end p-4">
+              <button
+                onClick={() => setIsAccountOpen(false)}
+                className="p-1.5 rounded-lg border border-[#862334] text-[#862334] hover:bg-[#862334]/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5 stroke-[2.5]" />
+              </button>
             </div>
 
-            <div className="flex items-center gap-3 md:gap-4">
-              {avatarUrl && (
-                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
-                  <img
-                    src={avatarUrl}
-                    alt="User avatar"
-                    className="w-full h-full object-cover"
-                  />
+            <div className="flex flex-col items-center text-center pt-2 pb-6 px-6">
+              {userProfile.avatarUrl && !imageError ? (
+                <img
+                  src={userProfile.avatarUrl}
+                  alt={userProfile.name}
+                  onError={() => setImageError(true)}
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#862334] mb-3"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full border-2 border-[#1565C0] flex items-center justify-center text-[#1565C0] font-semibold text-2xl mb-3 bg-white">
+                  {userProfile.initials}
                 </div>
               )}
+
+              <h2 className="text-xl font-bold text-[#2D3B45] text-center tracking-tight">
+                {userProfile.name}
+              </h2>
+
+              <button
+                onClick={() => {
+                  setIsAccountOpen(false);
+                  setIsSignOutModalOpen(true);
+                }}
+                className="mt-3 px-4 py-1 bg-[#F5F5F5] hover:bg-gray-200 border border-gray-300 rounded text-xs font-medium text-[#2D3B45] transition-colors cursor-pointer"
+              >
+                Logout
+              </button>
             </div>
-          </header>
 
+            <div className="px-6 my-1">
+              <hr className="border-t border-gray-200" />
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Email Address
+                  </span>
+                  <span className="text-sm font-medium text-[#2D3B45] break-all">
+                    {userProfile.email || "Not Available"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Academic Year Level
+                  </span>
+                  <span className="text-sm font-medium text-[#2D3B45]">
+                    {userProfile.academicYear}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
+                  <GraduationCap className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Course / Degree Program
+                  </span>
+                  <span className="text-sm font-medium text-[#2D3B45]">
+                    {userProfile.degreeProgram}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        {/* Canvas-style Vertical Navigation Sidebar */}
+        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen">
+          <div className="w-full flex flex-col items-center">
+            <div
+              className="mb-3 px-1 flex flex-col items-center cursor-pointer"
+              onClick={() => {
+                setIsAccountOpen(false);
+                setActiveNav("dashboard");
+                navigate("/user/dashboard");
+              }}
+            >
+              <img
+                src={Logo}
+                alt="Alvin Logo"
+                className="w-20 h-20 object-contain hover:scale-105 transition-transform"
+              />
+            </div>
+
+            <nav className="w-full flex flex-col gap-1">
+              {navItems.map((item) => {
+                const Icon = item.id === "account" ? User : item.icon;
+
+                const isSolidActive = isAccountOpen
+                  ? item.id === "account"
+                  : activeNav === item.id;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      if (item.id === "account") {
+                        setIsAccountOpen(!isAccountOpen);
+                      } else {
+                        setIsAccountOpen(false);
+                        setActiveNav(item.id);
+                        if (item.path) navigate(item.path);
+                      }
+                    }}
+                    className={`w-full py-3.5 px-2 flex flex-col items-center justify-center transition-colors relative cursor-pointer ${
+                      isSolidActive
+                        ? "bg-[#862334] text-white"
+                        : "text-[#862334] hover:bg-[#862334]/10 bg-transparent"
+                    }`}
+                  >
+                    <Icon
+                      className={`w-6 h-6 mb-1 ${
+                        isSolidActive ? "text-white" : "text-[#862334]"
+                      }`}
+                    />
+                    <span
+                      className={`text-[11px] tracking-tight ${
+                        isSolidActive
+                          ? "font-bold text-white"
+                          : "font-medium text-[#862334]"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
+
+        {/* ── Main Content ── */}
+        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen min-w-0">
           {/* ── Page Content ── */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full">
-
-
+          <div className="flex-1 overflow-y-auto pt-14 pb-12 px-12 sm:px-16 lg:px-24 w-full">
+            <div className="mb-10">
+              <h1 className="text-3xl sm:text-4xl font-bold uppercase tracking-tight text-black font-[Geist]">
+                Interview History
+              </h1>
+              <p className="text-[#4a4a4a] text-sm mt-2">
+                Review your previous performance and detailed interview feedback reports.
+              </p>
+            </div>
 
             {/* ── Data Table ── */}
-            <div className="bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <div className="bg-white rounded-xl overflow-hidden border border-gray-200">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[560px]">
                   <thead>
-                    <tr className="bg-gray-50">
+                    <tr className="bg-gray-50/50 border-b border-gray-200">
                       {["Target Role", "Date", "Readiness Score", ""].map((h, i) => (
                         <th
                           key={i}
-                          className={`px-4 md:px-6 py-4 font-Geist text-xs md:text-sm uppercase tracking-widest text-maroon font-bold ${i === 3 ? "text-right" : ""}`}
+                          className={`px-6 py-4 font-Geist text-xs uppercase tracking-widest text-[#862334] font-bold ${
+                            i === 3 ? "text-right" : ""
+                          }`}
                         >
                           {h}
                         </th>
@@ -200,36 +351,40 @@ export default function InterviewHistory() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {interviews.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <tr key={i} className="hover:bg-gray-50/60 transition-colors">
                         {/* Role */}
-                        <td className="px-4 md:px-6 py-4 md:py-6">
-                          <p className="font-bold text-black text-sm md:text-base truncate">{row.role}</p>
+                        <td className="px-6 py-5">
+                          <p className="font-bold text-black text-sm md:text-base truncate">
+                            {row.role}
+                          </p>
                         </td>
                         {/* Date */}
-                        <td className="px-4 md:px-6 py-4 md:py-6 text-gray-500 font-[Inter,sans-serif] text-xs md:text-sm whitespace-nowrap">
+                        <td className="px-6 py-5 text-gray-500 font-[Inter,sans-serif] text-xs md:text-sm whitespace-nowrap">
                           {row.date}
                         </td>
                         {/* Score */}
-                        <td className="px-4 md:px-6 py-4 md:py-6">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 md:w-24 bg-gray-100 h-1.5 rounded-full overflow-hidden flex-shrink-0">
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-20 md:w-28 bg-gray-100 h-1.5 rounded-full overflow-hidden flex-shrink-0">
                               <div
                                 className="bg-[#862334] h-full rounded-full"
                                 style={{ width: `${row.score}%` }}
                               />
                             </div>
-                            <span className="font-bold text-[#862334] text-sm whitespace-nowrap">{row.score}%</span>
+                            <span className="font-bold text-[#862334] text-sm whitespace-nowrap">
+                              {row.score}%
+                            </span>
                           </div>
                         </td>
                         {/* Action */}
-                        <td className="px-4 md:px-6 py-4 md:py-6 text-right">
+                        <td className="px-6 py-5 text-right">
                           <button
                             onClick={() => {
                               if (row.role === "Software Engineer") {
-                                navigate('/user/interview-results');
+                                navigate("/user/interview-results");
                               }
                             }}
-                            className="bg-[#862334] text-white hover:bg-[#ffb003] transition-all duration-300 px-3 md:px-5 py-1.5 md:py-2 text-xs md:text-sm font-bold uppercase tracking-wider rounded active:scale-95 whitespace-nowrap font-Geist"
+                            className="bg-[#862334] text-white hover:bg-[#6e1c2a] transition-all duration-300 px-4 md:px-5 py-2 text-xs md:text-sm font-bold uppercase tracking-wider rounded active:scale-95 whitespace-nowrap font-Geist cursor-pointer"
                           >
                             View Report
                           </button>
@@ -242,12 +397,12 @@ export default function InterviewHistory() {
             </div>
 
             {/* ── Pagination ── */}
-            <div className="mt-6 md:mt-8 flex justify-between items-center px-1 flex-wrap gap-4">
-              <div className="flex items-center gap-3 md:gap-4">
+            <div className="mt-8 flex justify-between items-center px-1 flex-wrap gap-4">
+              <div className="flex items-center gap-4">
                 <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30"
+                  className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30 cursor-pointer"
                 >
                   <ChevronLeft size={18} /> Previous
                 </button>
@@ -257,9 +412,9 @@ export default function InterviewHistory() {
                   <span className="text-gray-500 text-sm">{PAGES}</span>
                 </div>
                 <button
-                  onClick={() => setPage(p => Math.min(PAGES, p + 1))}
+                  onClick={() => setPage((p) => Math.min(PAGES, p + 1))}
                   disabled={page === PAGES}
-                  className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30"
+                  className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30 cursor-pointer"
                 >
                   Next <ChevronRight size={18} />
                 </button>
@@ -268,7 +423,6 @@ export default function InterviewHistory() {
                 Viewing {PER_PAGE} of {TOTAL} interviews
               </span>
             </div>
-
           </div>
         </main>
       </div>

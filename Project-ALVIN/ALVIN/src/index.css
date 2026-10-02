@@ -8,6 +8,11 @@
     src: url("../src/assets/fonts/Inter_28pt-Regular.ttf");
 }
 
+@font-face {
+    font-family: GeistMono;
+    src: url("../src/assets/fonts/GeistMono.ttf");
+}
+
 @import "tailwindcss";
 
 @import "tw-animate-css";
@@ -54,6 +59,33 @@
     }
 }
 
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(1.5deg);
+  }
+}
+
+/* Reverse float animation for delayed effect */
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(10px) rotate(-1.5deg);
+  }
+}
+
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float-reverse 6s ease-in-out infinite 1s;
+}
+
 .animate-spin-horizontal {
     animation: spin-horizontal 2s linear infinite;
     perspective: 1000px;
@@ -65,8 +97,8 @@
 
 .bg-grid-pattern {
     background-image:
-        linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+        linear-gradient(to right, rgba(234, 229, 217, 0.7) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(234, 229, 217, 0.7) 1px, transparent 1px);
     background-size: 24px 24px;
 }
 

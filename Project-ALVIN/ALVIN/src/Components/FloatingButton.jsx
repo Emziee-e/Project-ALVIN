@@ -16,7 +16,7 @@ function FloatingButton() {
 
   return (
     <div
-      className="fixed bottom-8 right-8 z-[999999] flex items-center"
+      className="fixed bottom-8 right-8 z-30 flex items-center"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -44,19 +44,19 @@ function FloatingButton() {
       <button
         onClick={handleStartInterview}
         disabled={isStarting}
-        className={`w-14 h-14 sm:w-16 sm:h-16 bg-[#862334] border border-[#862334] rounded-full
-                    shadow-[0_4px_20px_rgba(134,35,52,0.35)] flex items-center justify-center
+        className={`w-14 h-14 sm:w-16 sm:h-16 bg-white border border-[#e5e5e5] rounded-full
+                    shadow-[0_4px_20px_rgba(0,0,0,0.12)] flex items-center justify-center
                     transition-all duration-200 relative cursor-pointer
                     ${isStarting
                       ? 'scale-95 opacity-80 cursor-wait pointer-events-none'
-                      : 'hover:bg-[#701d2b] active:scale-95'}`}
+                      : 'hover:bg-gray-50 active:scale-95'}`}
       >
         {isStarting ? (
-          <Loader2 size={24} className="animate-spin text-white" />
+          <Loader2 size={24} className="animate-spin text-[#862334]" />
         ) : (
           <Mic
             size={26}
-            className={`relative z-10 text-white ${isHovered ? 'scale-110' : ''} transition-transform duration-300`}
+            className={`relative z-10 text-[#862334] ${isHovered ? 'scale-110' : ''} transition-transform duration-300`}
           />
         )}
       </button>

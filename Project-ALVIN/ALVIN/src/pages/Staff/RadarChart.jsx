@@ -1,6 +1,15 @@
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import React from 'react';
+import {
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts';
 
-const data = [
+const defaultData = [
   { subject: 'Eye Contact', Score: 90, fullMark: 100 },
   { subject: 'Grammar', Score: 68, fullMark: 100 },
   { subject: 'Confidence', Score: 78, fullMark: 100 },
@@ -8,49 +17,63 @@ const data = [
   { subject: 'Posture', Score: 82, fullMark: 100 },
 ];
 
-const RadarChartComponent = () => {
+const CustomTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    const dataItem = payload[0].payload;
+    return (
+      <div className="bg-white/95 backdrop-blur-md border border-gray-100 p-3 rounded-xl shadow-xl text-xs font-sans">
+        <p className="text-gray-400 font-medium text-[10px] uppercase tracking-wider mb-1">{dataItem.subject}</p>
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#FFB003]" />
+          <p className="text-gray-900 font-bold text-sm">
+            {dataItem.Score}% <span className="text-gray-400 text-xs font-normal">Score</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const RadarChartComponent = ({ data = defaultData }) => {
   return (
-    <div style={{ width: '100%', height: '300px' }}>
+    <div className="w-full h-[280px]">
       <ResponsiveContainer width="100%" height="100%">
-        <RadarChart
-          data={data}
-          margin={{
-            top: 20,
-            right: 30,
-            left: 30,
-            bottom: 20,
-          }}
-        >
-          <PolarGrid stroke="#e5e5e5" />
+        <RadarChart data={data} margin={{ top: 10, right: 25, left: 25, bottom: 10 }}>
+          <PolarGrid stroke="#E2E8F0" />
           <PolarAngleAxis
             dataKey="subject"
-            stroke="#4a4a4a"
-            style={{ fontSize: '12px' }}
+            stroke="#64748B"
+            tick={{ fontSize: 11, fontWeight: 600, fill: '#334155' }}
           />
           <PolarRadiusAxis
-            stroke="#4a4a4a"
+            stroke="#CBD5E1"
             domain={[0, 100]}
             ticks={[0, 25, 50, 75, 100]}
-            style={{ fontSize: '11px' }}
+            tick={{ fontSize: 9, fill: '#94A3B8' }}
+            axisLine={false}
           />
           <Radar
             name="Score"
             dataKey="Score"
             stroke="#862334"
+            strokeWidth={2}
             fill="#862334"
-            fillOpacity={0.6}
-            activeDot={{ fill: '#ffb003', stroke: '#862334', strokeWidth: 2 }}
-          />
-          <Tooltip
-            cursor={{ stroke: '#862334' }}
-            contentStyle={{
-              backgroundColor: '#fff',
-              borderColor: '#862334',
-              borderRadius: '6px',
-              border: '1px solid #e5e5e5',
+            fillOpacity={0.25}
+            dot={{
+              r: 4,
+              fill: '#FFB003',
+              stroke: '#862334',
+              strokeWidth: 1.5,
             }}
-            formatter={(value) => `${value}%`}
+            activeDot={{
+              r: 6,
+              fill: '#FFB003',
+              stroke: '#862334',
+              strokeWidth: 2,
+            }}
           />
+          <Tooltip content={<CustomTooltip />} />
         </RadarChart>
       </ResponsiveContainer>
     </div>

@@ -19,7 +19,7 @@ const StaffLogin = () => {
             provider: 'google',
             options: {
                 // Redirects back to your site (e.g., http://localhost:5173)
-                redirectTo: `${window.location.origin}/login/staff`,
+                redirectTo: `${window.location.origin}/user/dashboard`,
                 queryParams: {
                   access_type: 'offline',
                   prompt: 'consent',
@@ -31,20 +31,20 @@ const StaffLogin = () => {
             console.error('Login error:', error.message);
             alert("Login failed: " + error.message);
         } else {
-            navigate('/login/staff');
+            // Redirect to UserDashboard on successful login
+            navigate('/user/dashboard');
         }
     };
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4 relative bg-grid-pattern">
-            {/* Top Left Logo Link */}
 
             <div className="w-full max-w-[450px] bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100" ref={ref}>
                 <div className={`pt-8 pb-4 flex flex-col items-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
                     <div className="w-20 h-20 flex items-center justify-center mb-1">
-                        <img src="/images/Alvin-logo.png" alt="Logo" className="w-15 h-15" />
+                        <img src="../images/Alvin-logo.png" alt="Logo" className="w-15 h-15" />
                     </div>
-                    <h1 className="font-Geist text-2xl font-bold text-gray-900">Sign in</h1>
+                    <h1 className="font-Geist text-2xl font-bold text-gray-900">Log in</h1>
                     <p className="text-gray-500 mt-1 text-sm">Access your account</p>
                 </div>
 
