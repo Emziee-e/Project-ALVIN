@@ -3,11 +3,12 @@ import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabaseClient'
 import { getProfileForUser, saveStudentProfile } from './lib/profileService'
 
-// Your Page Imports
+// Page & Component Imports
 import LandingPage from "./pages/LandingPage/LandingPage.jsx"
+import About from "./pages/LandingPage/About.jsx"
 import Loading from "./Components/Loading.jsx"
 import Error404 from "./Components/Error404.jsx"
-import UserLogin from './pages/LoginPage/User-Login';
+import UserLogin from './pages/LoginPage/login';
 import StaffLogin from './pages/LoginPage/Staff-Login.jsx';
 import UserDashboard from './pages/User/UserDashboard.jsx';
 import InterviewHistory from './pages/User/Interview.jsx';
@@ -17,6 +18,7 @@ import ResumeUpload from './pages/User/ResumeUpload.jsx';
 import HardwareCheck from './pages/User/HardwareCheck.jsx';
 import LiveSession from './pages/User/LiveSession.jsx';
 import StaffDashboard from './pages/Staff/StaffDashboard.jsx';
+import StaffStatistics from './pages/Staff/StaffStatistics.jsx';
 import StaffSettings from './pages/Staff/StaffSettings.jsx';
 import SystemReport from './pages/Admin/SystemReport.jsx';
 import UserManagement from './pages/Admin/UserManagement.jsx';
@@ -26,24 +28,24 @@ import ProfileSetupModal from './Components/ProfileSetupModal.jsx';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
-  const [session, setSession] = useState(null) // NEW: Track the user session
-  const [role, setRole] = useState(null) // NEW: Track the user role
+  const [session, setSession] = useState(null)
+  const [role, setRole] = useState(null)
   const [roleLoading, setRoleLoading] = useState(false)
 
   useEffect(() => {
     // 1. Initial Session Check
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      // Hide loading screen after 2s (keeping your existing logic)
+
+      // Hide initial loading screen after 2s
       setTimeout(() => setIsLoading(false), 2000)
     })
 
-    // 2. Listen for Auth Changes (Sign-in/Sign-out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    // 2. Listen for Auth Changes
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession((currentSession) => {
-        // TOKEN_REFRESHED / tab-focus auth activity can provide a new session object
-        // for the same signed-in user. Keeping the existing object prevents the
-        // profile effect from rerunning and avoids remounting an active LiveSession.
         const sameUser =
           currentSession?.user?.id &&
           nextSession?.user?.id &&
@@ -60,7 +62,7 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Resolve the role from the profile tables. Users without an elevated profile are students.
+  // Resolve role dynamically from database profiles
   useEffect(() => {
     if (!session?.user?.email) {
       queueMicrotask(() => {
@@ -99,15 +101,22 @@ function App() {
         }
       } catch (error) {
         console.error('Error loading profile:', error)
-        if (isMounted) setRole('student')
+        if (isMounted) {
+          setRole('student')
+        }
       } finally {
-        if (isMounted) setRoleLoading(false)
+        if (isMounted) {
+          setRoleLoading(false)
+        }
       }
     }
 
     queueMicrotask(() => {
-      if (isMounted) setRoleLoading(true)
+      if (isMounted) {
+        setRoleLoading(true)
+      }
     })
+
     loadProfile()
 
     return () => {
@@ -115,68 +124,222 @@ function App() {
     }
   }, [session?.user?.id, session?.user?.email])
 
-  // set up modal function
-  const isUbStudent = session?.user?.email?.toLowerCase().endsWith('@ub.edu.ph') && role === 'student'
-  const needsProfileSetup = isUbStudent && !session.user.user_metadata?.profile_completed
+  // Profile setup modal status check
+  const isUbStudent =
+    session?.user?.email?.toLowerCase().endsWith('@ub.edu.ph') &&
+    role === 'student'
+
+  const needsProfileSetup =
+    isUbStudent && !session.user.user_metadata?.profile_completed
 
   const handleProfileComplete = (updatedUser) => {
-    setSession((currentSession) => currentSession ? { ...currentSession, user: updatedUser } : currentSession)
+    setSession((currentSession) =>
+      currentSession ? { ...currentSession, user: updatedUser } : currentSession
+    )
   }
 
-  // If loading, show your animation
-  if (isLoading) {
+  // App loading screen state
+  if (isLoading || (session && roleLoading && !role)) {
     return <Loading />
   }
-
-  // If session exists but role is still loading, show loading screen
-  // Only block the app while resolving the role for the first time.
-  // Background auth/profile refreshes must never unmount LiveSession.
-  if (session && roleLoading && !role) {
-    return <Loading />
-  }
-  
 
   return (
     <BrowserRouter>
       {/* Profile Setup Modal */}
-      <ProfileSetupModal isOpen={needsProfileSetup} onComplete={handleProfileComplete} />
+      <ProfileSetupModal
+        isOpen={needsProfileSetup}
+        onComplete={handleProfileComplete}
+      />
+
       <Routes>
+        {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
+        <Route path="/about" element={<About />} />
 
-        {/* Auth Routes: If logged in with a role, redirect to appropriate dashboard */}
-        <Route path="/login/student" element={session && role === 'admin' ? <Navigate to="/admin/reports" /> : session && role === 'staff' ? <Navigate to="/staff/dashboard" /> : session && (role === 'user' || role === 'student') ? <Navigate to="/user/dashboard" /> : <UserLogin />} />
-        <Route path="/login/staff" element={session && role === 'admin' ? <Navigate to="/admin/reports" /> : session && role === 'staff' ? <Navigate to="/staff/dashboard" /> : session && (role === 'user' || role === 'student') ? <Navigate to="/user/dashboard" /> : <StaffLogin />} />
-
-        {/* Protected User Routes: Check for session and user role */}
+        {/* Authentication Routes */}
         <Route
-          path="/user/dashboard"
+          path="/login"
+          element={<Navigate to="/login/student" replace />}
+        />
+        <Route
+          path="/login/student"
           element={
-          session && (role === 'user' || role === 'student') ? (
-            <div className="relative min-h-screen w-full">
-              <UserDashboard />
-              <FloatingButton />
-              </div>
+            session && role === 'admin' ? (
+              <Navigate to="/admin/reports" />
+            ) : session && role === 'staff' ? (
+              <Navigate to="/staff/dashboard" />
+            ) : session && (role === 'user' || role === 'student') ? (
+              <Navigate to="/user/dashboard" />
             ) : (
-              <Navigate to="/login/student" />
+              <UserLogin />
             )
           }
         />
-        <Route path="/user/interviews" element={session && (role === 'user' || role === 'student') ? <InterviewHistory /> : <Navigate to="/login/student" />} />
-        <Route path="/user/interview-results" element={session && (role === 'user' || role === 'student') ? <InterviewResults /> : <Navigate to="/login/student" />} />
-        <Route path="/user/settings" element={session && (role === 'user' || role === 'student') ? <UserSettings /> : <Navigate to="/login/student" />} />
-        <Route path="/user/resume-upload" element={session && (role === 'user' || role === 'student') ? <ResumeUpload /> : <Navigate to="/login/student" />} />
-        <Route path="/user/hardware-check" element={session && (role === 'user' || role === 'student') ? <HardwareCheck /> : <Navigate to="/login/student" />} />
-        <Route path="/user/live-session" element={session && (role === 'user' || role === 'student') ? <LiveSession /> : <Navigate to="/login/student" />} />
+        <Route
+          path="/login/staff"
+          element={
+            session && role === 'admin' ? (
+              <Navigate to="/admin/reports" />
+            ) : session && role === 'staff' ? (
+              <Navigate to="/staff/dashboard" />
+            ) : session && (role === 'user' || role === 'student') ? (
+              <Navigate to="/user/dashboard" />
+            ) : (
+              <StaffLogin />
+            )
+          }
+        />
 
-        {/* Protected Staff Routes: Check for session and staff role */}
-        <Route path="/staff/dashboard" element={session && role === 'staff' ? <StaffDashboard /> : <Navigate to="/login/staff" />} />
-        <Route path="/staff/settings" element={session && role === 'staff' ? <StaffSettings /> : <Navigate to="/login/staff" />} />
+        {/* Protected Student Routes */}
+        <Route
+          path="/user/dashboard"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <div className="relative min-h-screen w-full">
+                <UserDashboard />
+                <FloatingButton />
+              </div>
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/user/interviews"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <InterviewHistory />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/user/interview-results/:sessionId"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <InterviewResults />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/user/interview-results"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <InterviewResults />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/user/settings"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <UserSettings />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/user/resume-upload"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <ResumeUpload />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/user/hardware-check"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <HardwareCheck />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/user/live-session"
+          element={
+            session && (role === 'user' || role === 'student') ? (
+              <LiveSession />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
 
-        {/* Protected Admin Routes: Check for session and admin role */}
-        <Route path="/admin/reports" element={session && role === 'admin' ? <SystemReport /> : <Navigate to="/" />} />
-        <Route path="/admin/users" element={session && role === 'admin' ? <UserManagement /> : <Navigate to="/" />} />
-        <Route path="/admin/avatars" element={session && role === 'admin' ? <AvatarManagement /> : <Navigate to="/" />} />
+        {/* Protected Staff Routes */}
+        <Route
+          path="/staff/dashboard"
+          element={
+            session && role === 'staff' ? (
+              <StaffDashboard />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/staff/statistics"
+          element={
+            session && role === 'staff' ? (
+              <StaffStatistics />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/staff/settings"
+          element={
+            session && role === 'staff' ? (
+              <StaffSettings />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
 
+        {/* Protected Admin Routes */}
+        <Route
+          path="/admin/reports"
+          element={
+            session && role === 'admin' ? (
+              <SystemReport />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            session && role === 'admin' ? (
+              <UserManagement />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
+          path="/admin/avatars"
+          element={
+            session && role === 'admin' ? (
+              <AvatarManagement />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+
+        {/* Fallback Error Page */}
         <Route path="*" element={<Error404 />} />
       </Routes>
     </BrowserRouter>
