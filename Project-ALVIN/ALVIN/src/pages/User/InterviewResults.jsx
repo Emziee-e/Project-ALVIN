@@ -422,7 +422,7 @@ export default function InterviewResults() {
               </section>
 
               {/* Rubric Breakdown */}
-              <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+              <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-16">
                 {rubrics.map((r, index) => (
                   <div
                     key={r.label}
@@ -436,12 +436,21 @@ export default function InterviewResults() {
                         {r.label}
                       </h3>
                       <div className="text-3xl font-Geist font-bold mb-3 text-[#862334]">
-                        {evaluationAvailable ? `${Math.round(r.score || 0)}%` : "N/A"}
+                        {evaluationAvailable
+                          ? `${Math.round(r.score || 0)}/${Math.round(r.max_score || 25)}`
+                          : "N/A"}
                       </div>
                       <div className="h-1.5 w-full bg-[#f0f0f0] rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[#862334] rounded-full"
-                          style={{ width: `${evaluationAvailable ? `${Math.round(r.score || 0)}%` : "N/A"}` }}
+                          style={{
+                            width: `${evaluationAvailable
+                              ? Math.min(
+                                  100,
+                                  ((r.score || 0) / (r.max_score || 25)) * 100
+                                )
+                              : 0}%`,
+                          }}
                         />
                       </div>
                     </div>
