@@ -11,10 +11,9 @@ export default function EnrollStudentModal({ isOpen, onClose, onEnroll }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!studentInput.trim()) {
-      setError("Please enter a student number or email.");
+      setError("Please enter the student's UB email.");
       return;
     }
-
     setError("");
     setIsLoading(true);
 
@@ -57,7 +56,7 @@ export default function EnrollStudentModal({ isOpen, onClose, onEnroll }) {
                 Enroll Student
               </h2>
               <p className="text-xs text-gray-500">
-                Enter the student's ID number or email to enroll.
+                Enter the student's UB email address to enroll.
               </p>
             </div>
           </div>
@@ -75,11 +74,11 @@ export default function EnrollStudentModal({ isOpen, onClose, onEnroll }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-              Student Number / Email
+              UB Email Address
             </label>
             <input
-              type="text"
-              placeholder="e.g. 2023-1003 or student@ubian.edu.ph"
+              type="email"
+              placeholder="e.g. 2204421@ub.edu.ph"
               value={studentInput}
               onChange={(e) => {
                 setStudentInput(e.target.value);

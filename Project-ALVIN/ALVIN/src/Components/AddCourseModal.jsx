@@ -36,31 +36,37 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!code || !title) return;
+
+    if (!code.trim() || !title.trim()) {
+      return;
+    }
 
     const newCourse = {
-      id: `course_${Date.now()}`,
-      code,
-      title,
-      section,
+      code: code.trim(),
+      title: title.trim(),
+      section: section.trim(),
       term,
       color: selectedColor,
       imageUrl: null,
       image: null,
-      students: [],
     };
 
-    onCreateCourse(newCourse);
+    const result = await onCreateCourse(newCourse);
 
-    // Reset form & close
+    // Do not clear/close the form if Supabase failed.
+    if (result?.error) {
+      return;
+    }
+
     setCode("");
     setTitle("");
     setSection("");
     setTerm("First Semester");
     setSelectedColor(COLOR_OPTIONS[0].value);
     setIsTermOpen(false);
+
     onClose();
   };
 

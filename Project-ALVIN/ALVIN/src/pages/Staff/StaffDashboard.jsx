@@ -12,12 +12,14 @@ import {
   Mail,
   ArrowLeft,
   UserPlus,
+  UserMinus,
   CheckCircle2,
   TrendingUp,
   BookOpen,
   Pencil,
   Archive,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
@@ -25,6 +27,16 @@ import AddCourseModal from "../../Components/AddCourseModal";
 import EditCourseModal from "../../Components/EditCourseModal";
 import EnrollStudentModal from "../../Components/EnrollStudentModal";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  createCourse,
+  getMyCourses,
+  updateCourse,
+  deleteCourse,
+  findStudentByEmail,
+  enrollStudents,
+  getCourseEnrollments,
+  removeEnrollment,
+} from "../../lib/courseService";
 
 const navItems = [
   { id: "account", label: "Account" },
@@ -54,6 +66,14 @@ export default function StaffDashboard() {
   const [isConcludeModalOpen, setIsConcludeModalOpen] = useState(false);
   const [courseToConclude, setCourseToConclude] = useState(null);
 
+  // Delete Course Confirmation
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [courseToDelete, setCourseToDelete] = useState(null);
+
+  // Unenroll Student Confirmation
+  const [studentToUnenroll, setStudentToUnenroll] = useState(null);
+  const [isUnenrolling, setIsUnenrolling] = useState(false);
+
   // Dropdown Menu State
   const [activeMenuId, setActiveMenuId] = useState(null);
   const menuRef = useRef(null);
@@ -72,22 +92,12 @@ export default function StaffDashboard() {
   });
   const [imageError, setImageError] = useState(false);
 
-  const [publishedCourses, setPublishedCourses] = useState([
-    {
-      id: "cs401",
-      code: "IPCR101",
-      section: "IT 4-2",
-      term: "First Semester 2026-2027",
-      title: "Interview Preparation and Career Readiness",
-      color: "from-[#862334] to-[#B8324B]",
-      imageUrl: null,
-      students: [
-        { id: "s1", studentNo: "2204421", name: "John Ashley Alday", email: "2204421@ub.edu.ph", status: "Enrolled", dateJoined: "Aug 15, 2026" },
-      ],
-    },
-  ]);
-
+  const [publishedCourses, setPublishedCourses] = useState([]);
   const [concludedCourses, setConcludedCourses] = useState([]);
+  const [coursesLoading, setCoursesLoading] = useState(true); 
+  const [restoringCourse, setRestoringCourse] = useState(
+    location.pathname.includes("/staff/dashboard/course/")
+  );
 
   // Toast Helper
   const showToastNotification = (message) => {
@@ -165,98 +175,656 @@ export default function StaffDashboard() {
     navigate("/");
   };
 
-  const handleCreateCourse = (newCourse) => {
-    const image = newCourse.imageUrl || newCourse.image || null;
-    const courseWithStudents = {
-      ...newCourse,
-      students: newCourse.students || [],
-      imageUrl: image,
-      image: image,
-    };
-    setPublishedCourses((prev) => [courseWithStudents, ...prev]);
-    showToastNotification(`Course "${newCourse.code || newCourse.title}" successfully created!`);
+  const loadCourses = async () => {
+    try {
+      setCoursesLoading(true);
+
+      const data = await getMyCourses();
+
+      const mappedCourses = data.map(
+        mapCourseFromDatabase
+      );
+
+      setPublishedCourses(
+        mappedCourses.filter(
+          (course) =>
+            course.status === "active"
+        )
+      );
+
+      setConcludedCourses(
+        mappedCourses.filter(
+          (course) =>
+            course.status === "concluded" ||
+            course.status === "archived"
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Error loading courses:",
+        error
+      );
+
+      showToastNotification(
+        "Unable to load courses."
+      );
+    } finally {
+      setCoursesLoading(false);
+    }
   };
 
-  const confirmConcludeCourse = () => {
+  useEffect(() => {
+    loadCourses();
+  }, []);
+
+  useEffect(() => {
+    const restoreSelectedCourse = async () => {
+      const match = location.pathname.match(
+        /^\/staff\/dashboard\/course\/([^/]+)$/
+      );
+
+      // Normal dashboard page
+      if (!match) {
+        setRestoringCourse(false);
+        return;
+      }
+
+      // Wait for courses to finish loading
+      if (coursesLoading) {
+        return;
+      }
+
+      const courseId = match[1];
+
+      const course = [
+        ...publishedCourses,
+        ...concludedCourses,
+      ].find((item) => item.id === courseId);
+
+      if (!course) {
+        setRestoringCourse(false);
+
+        navigate("/staff/dashboard", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      try {
+        const enrollmentRows =
+          await getCourseEnrollments(course.id);
+
+        const students =
+          enrollmentRows.map(
+            mapEnrollmentFromDatabase
+          );
+
+        setSelectedCourse({
+          ...course,
+          students,
+        });
+      } catch (error) {
+        console.error(
+          "Error restoring course:",
+          error
+        );
+
+        showToastNotification(
+          "Unable to load course enrollment."
+        );
+      } finally {
+        setRestoringCourse(false);
+      }
+    };
+
+      restoreSelectedCourse();
+    }, [
+      location.pathname,
+      coursesLoading,
+    ]);
+
+  const mapEnrollmentFromDatabase = (row) => {
+    const student = row.student_profile;
+
+    return {
+      id: row.enrollment_id,
+
+      // Actual UUID from student_profile
+      studentId: student?.student_id || "",
+
+      // Display student number from the UB email
+      studentNo:
+        student?.ub_mail?.split("@")[0] || "",
+
+      name:
+        student?.display_name ||
+        "Unknown Student",
+
+      email:
+        student?.ub_mail || "",
+
+      status: row.enrollment_status
+        ? row.enrollment_status.charAt(0).toUpperCase() +
+          row.enrollment_status.slice(1)
+        : "Enrolled",
+
+      dateJoined: row.enrolled_at
+        ? new Date(row.enrolled_at).toLocaleDateString(
+            "en-US",
+            {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }
+          )
+        : "",
+    };
+  };
+
+  const mapCourseFromDatabase = (course) => ({
+    id: course.course_id,
+    code: course.course_code,
+    title: course.course_title,
+    section: course.section || "",
+    term: course.academic_term || "",
+    status: course.course_status,
+
+    color:
+      course.course_color ||
+      "bg-[#862334]",
+
+    imageUrl: null,
+    image: null,
+    students: [],
+  });
+
+  const handleCreateCourse = async (newCourse) => {
+    try {
+      const createdCourse = await createCourse({
+        course_title: newCourse.title,
+        course_code: newCourse.code,
+        section: newCourse.section,
+        academic_term: newCourse.term,
+        course_color: newCourse.color,
+      });
+
+      const mappedCourse =
+        mapCourseFromDatabase(createdCourse);
+
+      setPublishedCourses((prev) => [
+        mappedCourse,
+        ...prev,
+      ]);
+
+      showToastNotification(
+        `Course "${mappedCourse.code}" successfully created!`
+      );
+
+      return {
+        success: true,
+        course: mappedCourse,
+      };
+    } catch (error) {
+      console.error(
+        "Error creating course:",
+        error
+      );
+
+      showToastNotification(
+        error.message ||
+          "Unable to create course."
+      );
+
+      return {
+        error: error.message ||
+          "Unable to create course.",
+      };
+    }
+  };
+
+  const confirmConcludeCourse = async () => {
     if (!courseToConclude) return;
-    const courseId = courseToConclude.id;
-    setPublishedCourses((prev) => prev.filter((c) => c.id !== courseId));
-    setConcludedCourses((prev) => [courseToConclude, ...prev]);
-    if (selectedCourse?.id === courseId) {
-      setSelectedCourse(null);
+
+    try {
+      const savedCourse = await updateCourse(
+        courseToConclude.id,
+        {
+          course_title: courseToConclude.title,
+          course_code: courseToConclude.code,
+          section: courseToConclude.section,
+          academic_term: courseToConclude.term,
+          course_status: "concluded",
+          course_color:
+            courseToConclude.color ||
+            "bg-[#862334]",
+        }
+      );
+
+      const mappedCourse =
+        mapCourseFromDatabase(savedCourse);
+
+      // Preserve local-only values such as students/image
+      const concludedCourse = {
+        ...courseToConclude,
+        ...mappedCourse,
+        status: "concluded",
+      };
+
+      // Remove from Published Courses
+      setPublishedCourses((prev) =>
+        prev.filter(
+          (course) =>
+            course.id !== concludedCourse.id
+        )
+      );
+
+      // Add to Concluded Courses
+      setConcludedCourses((prev) => [
+        concludedCourse,
+        ...prev.filter(
+          (course) =>
+            course.id !== concludedCourse.id
+        ),
+      ]);
+
+      // Close course details if currently viewing it
+      if (
+        selectedCourse?.id ===
+        concludedCourse.id
+      ) {
+        setSelectedCourse(null);
+      }
+
+      setIsConcludeModalOpen(false);
+      setCourseToConclude(null);
+      setActiveMenuId(null);
+
+      showToastNotification(
+        `Course "${concludedCourse.code}" successfully concluded!`
+      );
+    } catch (error) {
+      console.error(
+        "Error concluding course:",
+        error
+      );
+
+      showToastNotification(
+        error.message ||
+          "Unable to conclude course."
+      );
     }
-    setIsConcludeModalOpen(false);
-    setCourseToConclude(null);
-    setActiveMenuId(null);
   };
 
-  const handleSaveEditedCourse = (updatedCourse) => {
-    setPublishedCourses((prev) =>
-      prev.map((c) => (c.id === updatedCourse.id ? updatedCourse : c))
-    );
-    setConcludedCourses((prev) =>
-      prev.map((c) => (c.id === updatedCourse.id ? updatedCourse : c))
-    );
-    if (selectedCourse?.id === updatedCourse.id) {
+  const confirmDeleteCourse = async () => {
+    if (!courseToDelete) return;
+
+    try {
+      const courseId = courseToDelete.id;
+      const courseCode = courseToDelete.code;
+
+      await deleteCourse(courseId);
+
+      // Remove from active courses
+      setPublishedCourses((prev) =>
+        prev.filter((course) => course.id !== courseId)
+      );
+
+      // Remove from concluded courses too
+      setConcludedCourses((prev) =>
+        prev.filter((course) => course.id !== courseId)
+      );
+
+      // Close course details if this course is open
+      if (selectedCourse?.id === courseId) {
+        setSelectedCourse(null);
+      }
+
+      setIsDeleteModalOpen(false);
+      setCourseToDelete(null);
+      setActiveMenuId(null);
+
+      showToastNotification(
+        `Course "${courseCode}" successfully deleted!`
+      );
+    } catch (error) {
+      console.error("Error deleting course:", error);
+
+      showToastNotification(
+        error.message || "Unable to delete course."
+      );
+    }
+  };
+
+  const handleSaveEditedCourse = async (updatedCourse) => {
+    try {
+      const savedCourse = await updateCourse(
+        updatedCourse.id,
+        {
+          course_title: updatedCourse.title,
+          course_code: updatedCourse.code,
+          section: updatedCourse.section,
+          academic_term: updatedCourse.term,
+          course_status:
+            updatedCourse.status || "active",
+          course_color:
+            updatedCourse.color ||
+            "bg-[#862334]",
+        }
+      );
+
+      const mappedCourse =
+        mapCourseFromDatabase(savedCourse);
+
+      setPublishedCourses((prev) =>
+        prev.map((course) =>
+          course.id === mappedCourse.id
+            ? {
+                ...course,
+                ...mappedCourse,
+              }
+            : course
+        )
+      );
+
+      setConcludedCourses((prev) =>
+        prev.map((course) =>
+          course.id === mappedCourse.id
+            ? {
+                ...course,
+                ...mappedCourse,
+              }
+            : course
+        )
+      );
+
+      if (
+        selectedCourse?.id ===
+        mappedCourse.id
+      ) {
+        setSelectedCourse((prev) => ({
+          ...prev,
+          ...mappedCourse,
+        }));
+      }
+
+      setIsEditModalOpen(false);
+      setEditingCourse(null);
+
+      showToastNotification(
+        `Course "${mappedCourse.code}" successfully updated!`
+      );
+
+      return {
+        success: true,
+        course: mappedCourse,
+      };
+    } catch (error) {
+      console.error(
+        "Error updating course:",
+        error
+      );
+
+      showToastNotification(
+        error.message ||
+          "Unable to update course."
+      );
+
+      return {
+        error:
+          error.message ||
+          "Unable to update course.",
+      };
+    }
+  };
+
+  const handleEnrollStudent = async (studentEmail) => {
+    if (!selectedCourse) {
+      return {
+        error: "No course selected.",
+      };
+    }
+
+    try {
+      // Find the real student using their UB email
+      const student =
+        await findStudentByEmail(studentEmail);
+
+      // Check whether the student is already displayed
+      // as enrolled in this course
+      const alreadyEnrolled =
+        selectedCourse.students?.some(
+          (enrolledStudent) =>
+            enrolledStudent.studentId ===
+            student.student_id
+        );
+
+      if (alreadyEnrolled) {
+        return {
+          error:
+            "This student is already enrolled in this course.",
+        };
+      }
+
+      // Insert course_id + student's UUID
+      await enrollStudents(
+        selectedCourse.id,
+        [student]
+      );
+
+      // Enrollment is already saved at this point. Email notification is
+      // intentionally best-effort so a Gmail failure never rolls back enrollment.
+      let emailNotificationSent = true;
+
+      try {
+        const API_BASE_URL =
+          import.meta.env.VITE_API_BASE_URL ||
+          "http://localhost:8000";
+
+        const API_KEY =
+          import.meta.env.VITE_APP_API_KEY || "";
+
+        const emailResponse = await fetch(
+          `${API_BASE_URL}/api/email/enrollment`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": API_KEY,
+            },
+            body: JSON.stringify({
+              student_email: student.ub_mail,
+              student_name:
+                student.display_name || "Student",
+              course_title: selectedCourse.title,
+              course_code: selectedCourse.code,
+              section: selectedCourse.section || "",
+              academic_term: selectedCourse.term || "",
+            }),
+          }
+        );
+
+        if (!emailResponse.ok) {
+          emailNotificationSent = false;
+
+          let emailError = null;
+          try {
+            emailError = await emailResponse.json();
+          } catch {
+            // Response body was not JSON.
+          }
+
+          console.error(
+            "Enrollment saved, but email notification failed:",
+            emailResponse.status,
+            emailError
+          );
+        }
+      } catch (emailError) {
+        emailNotificationSent = false;
+        console.error(
+          "Enrollment saved, but email notification failed:",
+          emailError
+        );
+      }
+
+      // Reload the course enrollment list from Supabase
+      const enrollmentRows =
+        await getCourseEnrollments(
+          selectedCourse.id
+        );
+
+      const students =
+        enrollmentRows.map(
+          mapEnrollmentFromDatabase
+        );
+
+      const updatedCourse = {
+        ...selectedCourse,
+        students,
+      };
+
+      // Update currently opened course
       setSelectedCourse(updatedCourse);
+
+      // Synchronize Published Courses state
+      setPublishedCourses((prev) =>
+        prev.map((course) =>
+          course.id === selectedCourse.id
+            ? updatedCourse
+            : course
+        )
+      );
+
+      showToastNotification(
+        emailNotificationSent
+          ? `${student.display_name} successfully enrolled! Email notification sent.`
+          : `${student.display_name} successfully enrolled, but the email notification could not be sent.`
+      );
+
+      return {
+        success: true,
+        student,
+        emailNotificationSent,
+      };
+    } catch (error) {
+      console.error(
+        "Error enrolling student:",
+        error
+      );
+
+      // Database unique constraint:
+      // unique(course_id, student_id)
+      if (error.code === "23505") {
+        return {
+          error:
+            "This student is already enrolled in this course.",
+        };
+      }
+
+      return {
+        error:
+          error.message ||
+          "Unable to enroll student.",
+      };
     }
-    setIsEditModalOpen(false);
-    setEditingCourse(null);
   };
 
-  const handleEnrollStudent = (studentInput) => {
-    if (!selectedCourse) return { error: "No course selected." };
+  const confirmUnenrollStudent = async () => {
+    if (!studentToUnenroll || !selectedCourse || isUnenrolling) return;
 
-    // 1. Sanitize input: Strip domain extensions (@ub.edu.ph, @ubian.edu.ph, etc.)
-    let rawId = studentInput.trim().replace(/@.*$/, "");
+    try {
+      setIsUnenrolling(true);
 
-    // 2. Remove leading 's' or 'S' if present (e.g., "s2300109" -> "2300109")
-    if (rawId.toLowerCase().startsWith("s")) {
-      rawId = rawId.slice(1);
+      // student.id is the course_enrollments.enrollment_id.
+      // This deletes only the enrollment relationship, not the student account.
+      await removeEnrollment(studentToUnenroll.id);
+
+      const enrollmentRows = await getCourseEnrollments(selectedCourse.id);
+      const students = enrollmentRows.map(mapEnrollmentFromDatabase);
+
+      const updatedCourse = {
+        ...selectedCourse,
+        students,
+      };
+
+      setSelectedCourse(updatedCourse);
+
+      setPublishedCourses((prev) =>
+        prev.map((course) =>
+          course.id === selectedCourse.id ? updatedCourse : course
+        )
+      );
+
+      setConcludedCourses((prev) =>
+        prev.map((course) =>
+          course.id === selectedCourse.id ? updatedCourse : course
+        )
+      );
+
+      showToastNotification(
+        `${studentToUnenroll.name} successfully unenrolled from ${selectedCourse.code}.`
+      );
+
+      setStudentToUnenroll(null);
+    } catch (error) {
+      console.error("Error unenrolling student:", error);
+      showToastNotification(
+        error.message || "Unable to unenroll student."
+      );
+    } finally {
+      setIsUnenrolling(false);
     }
+  };
 
-    // Check if student is already enrolled in this course
-    if (
-      selectedCourse.students?.some(
-        (s) => s.studentNo.toLowerCase() === rawId.toLowerCase()
-      )
-    ) {
-      return { error: "This student is already enrolled in this course." };
+  const handleOpenCourse = async (course) => {
+    try {
+      const enrollmentRows =
+        await getCourseEnrollments(course.id);
+
+      const students =
+        enrollmentRows.map(
+          mapEnrollmentFromDatabase
+        );
+
+      const courseWithStudents = {
+        ...course,
+        students,
+      };
+
+      setSelectedCourse(courseWithStudents);
+
+      setPublishedCourses((prev) =>
+        prev.map((item) =>
+          item.id === course.id
+            ? courseWithStudents
+            : item
+        )
+      );
+
+      setConcludedCourses((prev) =>
+        prev.map((item) =>
+          item.id === course.id
+            ? courseWithStudents
+            : item
+        )
+      );
+
+      // Keep selected course in the URL
+      navigate(
+        `/staff/dashboard/course/${course.id}`
+      );
+    } catch (error) {
+      console.error(
+        "Error loading course enrollments:",
+        error
+      );
+
+      showToastNotification(
+        error.message ||
+          "Unable to load enrolled students."
+      );
     }
-
-    // 3. Construct placeholder data (Swap with DB lookup when connecting database)
-    const cleanEmail = `${rawId}@ubian.edu.ph`;
-    const cleanName = `Student ${rawId}`;
-
-    const newStudent = {
-      id: `s_${Date.now()}`,
-      studentNo: rawId,
-      name: cleanName,
-      email: cleanEmail,
-      status: "Enrolled",
-      dateJoined: new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-    };
-
-    const updatedStudents = [newStudent, ...(selectedCourse.students || [])];
-
-    setPublishedCourses((prev) =>
-      prev.map((c) =>
-        c.id === selectedCourse.id ? { ...c, students: updatedStudents } : c
-      )
-    );
-    setConcludedCourses((prev) =>
-      prev.map((c) =>
-        c.id === selectedCourse.id ? { ...c, students: updatedStudents } : c
-      )
-    );
-    setSelectedCourse((prev) => ({ ...prev, students: updatedStudents }));
-
-    showToastNotification(`Student (${rawId}) successfully enrolled!`);
-    return { success: true };
   };
 
   const filteredCourses = publishedCourses.filter(
@@ -290,6 +858,7 @@ export default function StaffDashboard() {
     const courseImg = course.imageUrl || course.image;
     const isMenuOpen = activeMenuId === course.id;
 
+
     return (
       <div
         key={course.id}
@@ -298,7 +867,9 @@ export default function StaffDashboard() {
         <div>
           <div
             className={`h-36 relative p-4 flex flex-col justify-between overflow-visible rounded-t-2xl ${
-              !courseImg ? `bg-linear-to-r ${course.color || "from-[#862334] to-[#B8324B]"}` : "bg-gray-800"
+              !courseImg
+                ? course.color || "bg-[#862334]"
+                : "bg-gray-800"
             }`}
           >
             {courseImg && (
@@ -318,58 +889,80 @@ export default function StaffDashboard() {
                 </span>
               ) : <div />}
 
-              {!isConcluded && (
-                <div className="relative ml-auto" ref={isMenuOpen ? menuRef : null}>
+              <div className="relative ml-auto" ref={isMenuOpen ? menuRef : null}>
+              
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setActiveMenuId(isMenuOpen ? null : course.id);
+                }}
+                className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-black/30 transition-colors cursor-pointer"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+
+              {isMenuOpen && (
+                <div
+                  className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Edit Course - available for both active and concluded */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      setActiveMenuId(isMenuOpen ? null : course.id);
+
+                      setEditingCourse(course);
+                      setIsEditModalOpen(true);
+                      setActiveMenuId(null);
                     }}
-                    className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-black/30 transition-colors cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors"
                   >
-                    <MoreVertical className="w-4 h-4" />
+                    <Pencil className="w-3.5 h-3.5" />
+                    Edit Course Details
                   </button>
 
-                  {isMenuOpen && (
-                    <div
-                      className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          setEditingCourse(course);
-                          setIsEditModalOpen(true);
-                          setActiveMenuId(null);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Edit Course Details
-                      </button>
+                  {/* Only active courses can be concluded */}
+                  {!isConcluded && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          setCourseToConclude(course);
-                          setIsConcludeModalOpen(true);
-                          setActiveMenuId(null);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
-                      >
-                        <Archive className="w-3.5 h-3.5" />
-                        Conclude Course
-                      </button>
-                    </div>
+                        setCourseToConclude(course);
+                        setIsConcludeModalOpen(true);
+                        setActiveMenuId(null);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      Conclude Course
+                    </button>
                   )}
+
+                  {/* Delete - available for both active and concluded */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+
+                      setCourseToDelete(course);
+                      setIsDeleteModalOpen(true);
+                      setActiveMenuId(null);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Course
+                  </button>
                 </div>
               )}
+            </div>
             </div>
 
             <div className="text-white relative z-10">
@@ -384,7 +977,7 @@ export default function StaffDashboard() {
 
           <div className="p-4 space-y-3">
             <h3
-              onClick={() => setSelectedCourse(course)}
+              onClick={() => handleOpenCourse(course)}
               className="font-bold text-base font-Geist text-gray-900 line-clamp-2 hover:text-[#862334] cursor-pointer transition-colors leading-snug"
             >
               {course.title}
@@ -406,6 +999,20 @@ export default function StaffDashboard() {
       </div>
     );
   };
+
+  if (restoringCourse) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-gray-200 border-t-[#862334] rounded-full animate-spin" />
+
+          <p className="text-sm font-medium text-gray-500">
+            Loading course...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white font-Inter relative">
@@ -522,6 +1129,110 @@ export default function StaffDashboard() {
                 className="px-5 py-2.5 bg-[#862334] text-white rounded-full text-xs font-bold hover:bg-[#701c2b] transition-all shadow-xs cursor-pointer"
               >
                 Yes, Conclude Course
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unenroll Student Confirmation Modal */}
+      {studentToUnenroll && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
+            <button
+              type="button"
+              disabled={isUnenrolling}
+              onClick={() => setStudentToUnenroll(null)}
+              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
+              <UserMinus className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold font-Geist text-gray-900">Unenroll Student?</h3>
+              <p className="text-xs text-gray-500 leading-relaxed px-2">
+                Remove <span className="font-semibold text-gray-800">{studentToUnenroll.name}</span> from <span className="font-semibold text-gray-800">{selectedCourse?.code}</span>? This removes only the course enrollment and does not delete the student's account.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isUnenrolling}
+                onClick={() => setStudentToUnenroll(null)}
+                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUnenrolling}
+                onClick={confirmUnenrollStudent}
+                className="px-5 py-2.5 bg-red-600 text-white rounded-full text-xs font-bold hover:bg-red-700 transition-all shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isUnenrolling ? "Unenrolling..." : "Yes, Unenroll Student"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Course Confirmation Modal */}
+      {isDeleteModalOpen && courseToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsDeleteModalOpen(false);
+                setCourseToDelete(null);
+              }}
+              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold font-Geist text-gray-900">
+                Delete Course?
+              </h3>
+
+              <p className="text-xs text-gray-500 leading-relaxed px-2">
+                Are you sure you want to permanently delete{" "}
+                <span className="font-semibold text-gray-800">
+                  "{courseToDelete.title}"
+                </span>
+                ? This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setCourseToDelete(null);
+                }}
+                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmDeleteCourse}
+                className="px-5 py-2.5 bg-red-600 text-white rounded-full text-xs font-bold hover:bg-red-700 transition-all shadow-xs cursor-pointer"
+              >
+                Yes, Delete Course
               </button>
             </div>
           </div>
@@ -770,7 +1481,11 @@ export default function StaffDashboard() {
                 <div className="flex items-center gap-3">
                   {selectedCourse && (
                     <button
-                      onClick={() => setSelectedCourse(null)}
+                      onClick={() => {
+                        setSelectedCourse(null);
+                        setStudentSearch("");
+                        navigate("/staff/dashboard");
+                      }}
                       className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
                       title="Back to Dashboard"
                     >
@@ -902,7 +1617,8 @@ export default function StaffDashboard() {
                             <th className="py-3.5 px-6">Student Name</th>
                             <th className="py-3.5 px-6">Email Address</th>
                             <th className="py-3.5 px-6">Date Enrolled</th>
-                            <th className="py-3.5 px-6 text-right">Status</th>
+                            <th className="py-3.5 px-6 text-center">Status</th>
+                            <th className="py-3.5 px-6 text-center">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 text-sm">
@@ -912,18 +1628,32 @@ export default function StaffDashboard() {
                               <td className="py-4 px-6 font-bold text-gray-900">{student.name}</td>
                               <td className="py-4 px-6 text-gray-600">{student.email}</td>
                               <td className="py-4 px-6 text-gray-500 text-xs">{student.dateJoined}</td>
-                              <td className="py-4 px-6 text-right">
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  {student.status}
-                                </span>
-                              </td>
+                              <td className="py-4 px-6 text-center">
+                              <span className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                {student.status}
+                              </span>
+                            </td>
+
+                            <td className="py-4 px-6 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setStudentToUnenroll(student);
+                                  setIsUnenrollModalOpen(true);
+                                }}
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors cursor-pointer"
+                              >
+                                <UserMinus className="w-4 h-4" />
+                                Unenroll
+                              </button>
+                            </td>
                             </tr>
                           ))}
 
                           {filteredStudents.length === 0 && (
                             <tr>
-                              <td colSpan={5} className="py-12 text-center text-gray-500">
+                              <td colSpan={6} className="py-12 text-center text-gray-500">
                                 No enrolled students found matching your search.
                               </td>
                             </tr>
