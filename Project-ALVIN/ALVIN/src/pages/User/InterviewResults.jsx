@@ -17,7 +17,7 @@ import { supabase } from "../../lib/supabaseClient";
 const navItems = [
   { id: "account", label: "Account", path: null, icon: User },
   { id: "dashboard", label: "Dashboard", path: "/user/dashboard", icon: LayoutDashboard },
-  { id: "interviews", label: "Interviews", path: "/user/interviews", icon: Mic },
+  { id: "interviews", label: "History", path: "/user/interviews", icon: Mic },
 ];
 
 const API_BASE_URL =
@@ -128,9 +128,11 @@ export default function InterviewResults() {
         setResultsLoading(true);
         setResultsError("");
 
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error("Please sign in again.");
         const response = await fetch(
           `${API_BASE_URL}/api/interview/results/${encodeURIComponent(sessionId)}`,
-          { headers: { "X-API-Key": APP_API_KEY } }
+          { headers: { "X-API-Key": APP_API_KEY, Authorization: `Bearer ${session.access_token}` } }
         );
 
         if (!response.ok) {

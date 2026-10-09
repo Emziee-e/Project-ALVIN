@@ -131,8 +131,8 @@ export default function StaffStatistics() {
 
   // Search & Student Management States
   const [searchQuery, setSearchQuery] = useState("");
-  const [students, setStudents] = useState(MOCK_STUDENTS);
-  const [selectedStudent, setSelectedStudent] = useState(MOCK_STUDENTS[0]);
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [commentInput, setCommentInput] = useState("");
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -203,6 +203,36 @@ export default function StaffStatistics() {
     navigate("/");
   };
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
+  const [commentError, setCommentError] = useState("");
+
+  const staffRequest = async (path, options = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error("Please sign in again.");
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: { "X-API-Key": APP_API_KEY, Authorization: `Bearer ${session.access_token}`,
+        ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${response.status})`);
+    }
+    return response.json();
+  };
+
+  useEffect(() => {
+    let alive = true;
+    staffRequest("/api/staff/students").then((rows) => {
+      if (!alive) return;
+      const mapped = rows.map((r) => ({ ...r, initials: (r.name || "S").split(/\s+/).map(x => x[0]).slice(0,2).join("").toUpperCase() }));
+      setStudents(mapped);
+      setSelectedStudent(mapped[0] || null);
+    }).catch((err) => { if (alive) setCommentError(err.message); });
+    return () => { alive = false; };
+  }, []);
+
   // Filter students based on search query
   const filteredStudents = students.filter((student) =>
     student.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -216,29 +246,21 @@ export default function StaffStatistics() {
   };
 
   // Add observation comment to selected student
-  const handleAddComment = (e) => {
+  const handleAddComment = async (e) => {
     e.preventDefault();
     if (!commentInput.trim() || !selectedStudent) return;
-
-    const updatedStudents = students.map((s) => {
-      if (s.id === selectedStudent.id) {
-        return {
-          ...s,
-          comments: [...(s.comments || []), commentInput.trim()],
-        };
-      }
-      return s;
-    });
-
-    setStudents(updatedStudents);
-    setSelectedStudent((prev) => ({
-      ...prev,
-      comments: [...(prev?.comments || []), commentInput.trim()],
-    }));
-
-    setCommentInput("");
-    setCommentSuccess(true);
-    setTimeout(() => setCommentSuccess(false), 3000);
+    setCommentError("");
+    setCommentSuccess(false);
+    try {
+      await staffRequest("/api/staff/feedback", { method: "POST", body: JSON.stringify({
+        student_id: selectedStudent.id, message: commentInput.trim() }) });
+      const comment = commentInput.trim();
+      setStudents((prev) => prev.map((s) => s.id === selectedStudent.id ?
+        { ...s, comments: [...(s.comments || []), comment] } : s));
+      setSelectedStudent((prev) => ({ ...prev, comments: [...(prev.comments || []), comment] }));
+      setCommentInput("");
+      setCommentSuccess(true);
+    } catch (err) { setCommentError(err.message); }
   };
 
   // Download PDF function trigger
@@ -762,6 +784,7 @@ export default function StaffStatistics() {
                         Submit Comment
                       </button>
 
+                      {commentError && <p className="text-red-600 text-xs">{commentError}</p>}
                       {commentSuccess && (
                         <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
                           <CheckCircle2 className="w-4 h-4" />

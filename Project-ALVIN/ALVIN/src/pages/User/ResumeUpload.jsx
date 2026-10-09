@@ -6,7 +6,7 @@ import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "6d97711b9f2dc929bba9df972cca981c42f929c6a96861b205dac5b762d04ebd";
+const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 
 export default function ResumeUpload() {
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
@@ -78,13 +78,17 @@ export default function ResumeUpload() {
     setError("");
 
     try {
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.access_token) {
+        throw new Error("Please sign in again before starting an interview.");
+      }
       const formData = new FormData();
       formData.append("resume", file);
       formData.append("job_description", role);
 
       const response = await fetch(`${API_BASE_URL}/api/interview/start-navtalk-session`, {
         method: "POST",
-        headers: { "X-API-Key": APP_API_KEY },
+        headers: { "X-API-Key": APP_API_KEY, Authorization: `Bearer ${session.access_token}` },
         body: formData,
       });
 

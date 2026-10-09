@@ -1,3 +1,4 @@
+import { supabase } from "../../lib/supabaseClient";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Mic,
@@ -299,11 +300,13 @@ async function fetchNavTalkWsUrl(sessionId) {
 }
 
 async function postBackend(path, payload) {
+  const { data: { session } } = await supabase.auth.getSession();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-API-Key": APP_API_KEY,
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
     body: JSON.stringify(payload),
   });
