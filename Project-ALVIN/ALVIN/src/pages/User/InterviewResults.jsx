@@ -8,6 +8,8 @@ import {
   Mail,
   Calendar,
   GraduationCap,
+  BookOpen,
+  Users,
 } from "lucide-react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
@@ -42,8 +44,7 @@ export default function InterviewResults() {
   const [userProfile, setUserProfile] = useState({
     name: "Vin",
     email: "",
-    academicYear: "A.Y. 2026 - 2027",
-    degreeProgram: "BS in Computer Science",
+    enrollments: [],
     avatarUrl: null,
     initials: "V",
   });
@@ -67,13 +68,6 @@ export default function InterviewResults() {
           "Vin";
 
         const emailAddress = user.email || metadata.email || "N/A";
-        const academicYear =
-          metadata.academic_year || metadata.academicYear || "A.Y. 2026 - 2027";
-        const degreeProgram =
-          metadata.degree_program ||
-          metadata.course ||
-          metadata.department ||
-          "BS in Computer Science";
         const avatar =
           metadata.avatar_url ||
           metadata.picture ||
@@ -88,14 +82,13 @@ export default function InterviewResults() {
             ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
             : fullName.slice(0, 2).toUpperCase();
 
-        setUserProfile({
+        setUserProfile((prev) => ({
+          ...prev,
           name: fullName,
           email: emailAddress,
-          academicYear: academicYear,
-          degreeProgram: degreeProgram,
           avatarUrl: avatar,
           initials: initials,
-        });
+        }));
       }
     };
 
@@ -104,6 +97,29 @@ export default function InterviewResults() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadEnrollments = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const response = await fetch(`${API_BASE_URL}/api/student/enrollments`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "X-API-Key": APP_API_KEY,
+          },
+        });
+        if (!response.ok) throw new Error(`Enrollment request failed (${response.status})`);
+        const rows = await response.json();
+        if (active) setUserProfile((prev) => ({ ...prev, enrollments: Array.isArray(rows) ? rows : [] }));
+      } catch (error) {
+        console.error("Unable to load student enrollments:", error);
+      }
+    };
+    loadEnrollments();
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -295,33 +311,32 @@ export default function InterviewResults() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
-                <Calendar className="w-4 h-4" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  Academic Year Level
-                </span>
-                <span className="text-sm font-medium text-[#2D3B45]">
-                  {userProfile.academicYear}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
-                <GraduationCap className="w-4 h-4" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  Course / Degree Program
-                </span>
-                <span className="text-sm font-medium text-[#2D3B45]">
-                  {userProfile.degreeProgram}
-                </span>
-              </div>
-            </div>
+              {userProfile.enrollments.length ? userProfile.enrollments.map((enrollment, index) => (
+                <div key={`${enrollment.course_id}-${index}`} className="space-y-4 border-t border-gray-100 pt-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><BookOpen className="w-4 h-4" /></div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Enrolled Course</span>
+                      <span className="text-sm font-medium text-[#2D3B45] break-words">{enrollment.course_title || "Not available"}</span>
+                      {enrollment.course_code && <span className="text-xs text-gray-500">{enrollment.course_code}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Users className="w-4 h-4" /></div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Section</span>
+                      <span className="text-sm font-medium text-[#2D3B45]">{enrollment.section || "Not available"}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Calendar className="w-4 h-4" /></div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Academic Term</span>
+                      <span className="text-sm font-medium text-[#2D3B45]">{enrollment.academic_term || "Not available"}</span>
+                    </div>
+                  </div>
+                </div>
+              )) : <p className="text-sm text-gray-500">No course enrollment found.</p>}
           </div>
         </aside>
 

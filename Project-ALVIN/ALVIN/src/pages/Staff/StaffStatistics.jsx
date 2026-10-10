@@ -206,6 +206,8 @@ export default function StaffStatistics() {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
   const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
   const [commentError, setCommentError] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingText, setEditingText] = useState("");
 
   const staffRequest = async (path, options = {}) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -243,6 +245,7 @@ export default function StaffStatistics() {
     setSelectedStudent(student);
     setSearchQuery("");
     setIsSearchFocused(false);
+    setEditingCommentId(null);
   };
 
   // Add observation comment to selected student
@@ -252,14 +255,42 @@ export default function StaffStatistics() {
     setCommentError("");
     setCommentSuccess(false);
     try {
-      await staffRequest("/api/staff/feedback", { method: "POST", body: JSON.stringify({
+      const comment = await staffRequest("/api/staff/feedback", { method: "POST", body: JSON.stringify({
         student_id: selectedStudent.id, message: commentInput.trim() }) });
-      const comment = commentInput.trim();
       setStudents((prev) => prev.map((s) => s.id === selectedStudent.id ?
         { ...s, comments: [...(s.comments || []), comment] } : s));
       setSelectedStudent((prev) => ({ ...prev, comments: [...(prev.comments || []), comment] }));
       setCommentInput("");
       setCommentSuccess(true);
+    } catch (err) { setCommentError(err.message); }
+  };
+
+  const updateStudentComment = (studentId, callback) => {
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, comments: callback(s.comments || []) } : s));
+    setSelectedStudent(prev => prev?.id === studentId ? { ...prev, comments: callback(prev.comments || []) } : prev);
+  };
+
+  const handleEditComment = async (comment) => {
+    if (!editingText.trim() || !selectedStudent) return;
+    const studentId = selectedStudent.id;
+    setCommentError("");
+    try {
+      const updated = await staffRequest(`/api/staff/feedback/${comment.message_id}`, {
+        method: "PATCH", body: JSON.stringify({ message: editingText.trim() })
+      });
+      updateStudentComment(studentId, list => list.map(c => c.message_id === comment.message_id ? updated : c));
+      setEditingCommentId(null);
+      setEditingText("");
+    } catch (err) { setCommentError(err.message); }
+  };
+
+  const handleDeleteComment = async (comment) => {
+    if (!selectedStudent || !window.confirm("Delete this comment permanently?")) return;
+    const studentId = selectedStudent.id;
+    setCommentError("");
+    try {
+      await staffRequest(`/api/staff/feedback/${comment.message_id}`, { method: "DELETE" });
+      updateStudentComment(studentId, list => list.filter(c => c.message_id !== comment.message_id));
     } catch (err) { setCommentError(err.message); }
   };
 
@@ -637,7 +668,7 @@ export default function StaffStatistics() {
                                 <div>
                                   <p className="text-xs font-bold text-black">{student.name}</p>
                                   <p className="text-[10px] text-gray-500">
-                                    {student.program} • {student.yearLevel}
+                                    {(student.enrollments || []).map(e => e.course_code || e.course_title).join(", ") || "No enrollment"}
                                   </p>
                                 </div>
                               </div>
@@ -670,19 +701,14 @@ export default function StaffStatistics() {
                             {selectedStudent.name}
                           </h3>
 
-                          <div className="flex flex-wrap items-center gap-y-2 gap-x-6">
-                            <div className="flex items-center gap-2">
-                              <GraduationCap className="text-[#4a4a4a] w-4 h-4" />
-                              <p className="font-inter text-sm text-[#4a4a4a]">
-                                <span className="font-bold">Program:</span> {selectedStudent.program}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Calendar className="text-[#4a4a4a] w-4 h-4" />
-                              <p className="font-inter text-sm text-[#4a4a4a]">
-                                <span className="font-bold">Year Level:</span> {selectedStudent.yearLevel}
-                              </p>
-                            </div>
+                          <div className="space-y-2">
+                            {(selectedStudent.enrollments || []).length ? selectedStudent.enrollments.map((enrollment, i) => (
+                              <div key={`${enrollment.course_id}-${i}`} className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#4a4a4a]">
+                                <span><strong>Course:</strong> {enrollment.course_title || enrollment.course_code || "—"}</span>
+                                <span><strong>Section:</strong> {enrollment.section || "—"}</span>
+                                <span><strong>Term:</strong> {enrollment.academic_term || "—"}</span>
+                              </div>
+                            )) : <p className="text-sm text-gray-500">No course enrollment found.</p>}
                           </div>
                         </div>
                       </div>
@@ -755,12 +781,24 @@ export default function StaffStatistics() {
 
                   {selectedStudent.comments && selectedStudent.comments.length > 0 && (
                     <div className="mb-4 space-y-2">
-                      {selectedStudent.comments.map((comment, index) => (
-                        <div
-                          key={index}
-                          className="bg-gray-50 border border-gray-200 p-3 rounded-lg text-xs font-inter text-gray-800"
-                        >
-                          {comment}
+                      {selectedStudent.comments.map((comment) => (
+                        <div key={comment.message_id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg text-sm font-inter text-gray-800">
+                          {editingCommentId === comment.message_id ? (
+                            <div className="space-y-2 no-print">
+                              <textarea className="w-full border rounded p-2" value={editingText} onChange={e => setEditingText(e.target.value)} rows={3} />
+                              <button type="button" className="text-[#862334] font-bold mr-4" onClick={() => handleEditComment(comment)}>Save</button>
+                              <button type="button" onClick={() => setEditingCommentId(null)}>Cancel</button>
+                            </div>
+                          ) : <p className="whitespace-pre-wrap">{comment.message}</p>}
+                          <div className="flex items-center justify-between mt-2 gap-3">
+                            <span className="text-xs text-gray-500">{comment.created_at ? new Date(comment.created_at).toLocaleString() : ""}</span>
+                            {comment.car_ad_id === selectedStudent.current_advisor_id && editingCommentId !== comment.message_id && (
+                              <div className="flex gap-3 no-print">
+                                <button type="button" className="text-[#862334] font-semibold" onClick={() => { setEditingCommentId(comment.message_id); setEditingText(comment.message); }}>Edit</button>
+                                <button type="button" className="text-red-600 font-semibold" onClick={() => handleDeleteComment(comment)}>Delete</button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
