@@ -22,7 +22,7 @@ import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
 
 // Imports from the main content target
-import OverallStats from "./OverallStats";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import StudentLineChart from "./StudentLineChart";
 import RadarChartComponent from "./RadarChart";
 
@@ -132,6 +132,10 @@ export default function StaffStatistics() {
   // Search & Student Management States
   const [searchQuery, setSearchQuery] = useState("");
   const [students, setStudents] = useState([]);
+  const [overview, setOverview] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState("");
+
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [commentInput, setCommentInput] = useState("");
   const [commentSuccess, setCommentSuccess] = useState(false);
@@ -233,6 +237,23 @@ export default function StaffStatistics() {
       setSelectedStudent(mapped[0] || null);
     }).catch((err) => { if (alive) setCommentError(err.message); });
     return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setOverviewLoading(true);
+      try {
+        const data = await staffRequest("/api/staff/statistics/overview");
+        if (active) { setOverview(data); setOverviewError(""); }
+      } catch (error) {
+        if (active) setOverviewError(error.message);
+      } finally {
+        if (active) setOverviewLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
   }, []);
 
   // Filter students based on search query
@@ -527,7 +548,7 @@ export default function StaffStatistics() {
                     Total Mock Interviews
                   </span>
                   <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    12,842
+                    {overviewLoading ? "…" : overview ? overview.total_interviews.toLocaleString() : "—"}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
@@ -548,7 +569,7 @@ export default function StaffStatistics() {
                     Job Readiness Rate
                   </span>
                   <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    78.4%
+                    {overviewLoading ? "…" : overview?.job_readiness_rate == null ? "—" : `${overview.job_readiness_rate}%`}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
@@ -568,7 +589,7 @@ export default function StaffStatistics() {
                     Avg. Improvement
                   </span>
                   <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    +16.2%
+                    {overviewLoading ? "…" : overview?.average_improvement == null ? "—" : `${overview.average_improvement > 0 ? "+" : ""}${overview.average_improvement} pp`}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
@@ -588,7 +609,7 @@ export default function StaffStatistics() {
                     Requires Coaching
                   </span>
                   <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    48
+                    {overviewLoading ? "…" : overview ? overview.requires_coaching.toLocaleString() : "—"}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-[#862334]">
@@ -605,7 +626,31 @@ export default function StaffStatistics() {
           {/* Overall Performance Section */}
           <div className="no-print">
             <div className="bg-white rounded-lg border border-[#e5e5e5] p-8">
-              <OverallStats />
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#862334]">Cohort Analytics</p>
+                    <h2 className="text-xl font-bold text-black mt-1">Overall Class Performance Trend</h2>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500"><span className="h-3 w-3 rounded-full bg-[#862334]" />Average Performance (%)</div>
+                </div>
+                {overviewError && <p role="alert" className="text-sm text-red-700 mb-4">{overviewError}</p>}
+                <div className="h-[350px] w-full">
+                  {overviewLoading ? (
+                    <div className="h-full flex items-center justify-center text-gray-500">Loading interview statistics…</div>
+                  ) : overview?.trend?.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={overview.trend} margin={{ top: 15, right: 10, left: 0, bottom: 12 }}>
+                        <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#e5e7eb" />
+                        <XAxis dataKey="date" tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })} tick={{ fontSize: 11 }} />
+                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(value) => [`${value}%`, "Average score"]} labelFormatter={(date) => `Date: ${date}`} />
+                        <Bar dataKey="average" fill="#862334" radius={[10, 10, 0, 0]} maxBarSize={50} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-500 text-sm">No completed evaluations available yet.</div>
+                  )}
+                </div>
             </div>
           </div>
 
