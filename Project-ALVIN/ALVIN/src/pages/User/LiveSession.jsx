@@ -272,6 +272,7 @@ async function fetchNavTalkWsUrl(sessionId) {
       method: "POST",
       headers: {
         "X-API-Key": APP_API_KEY,
+        Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
       },
       body,
     }
@@ -652,6 +653,17 @@ export default function LiveSession() {
   useEffect(() => {
     currentQuestionRef.current = currentQuestion;
   }, [currentQuestion]);
+
+  // Renew the server-side NavTalk queue lease during the live interview.
+  useEffect(() => {
+    if (!navtalkSessionId || isFinishing) return;
+    const heartbeat = () => postBackend('/api/interview/queue/status', {
+      session_id: navtalkSessionId,
+    }).catch((error) => console.warn('Queue heartbeat failed:', error));
+    heartbeat();
+    const interval = setInterval(heartbeat, 20000);
+    return () => clearInterval(interval);
+  }, [navtalkSessionId, isFinishing]);
 
   useEffect(() => {
     if (!sessionData) {

@@ -233,7 +233,7 @@ export default function HardwareCheck() {
   const handleProceedToInterview = () => {
     stopAllTracks();
     
-    navigate('/user/live-session', { 
+    navigate('/user/waiting-room', { 
       state: { 
         ...location.state,
         selectedDevices 

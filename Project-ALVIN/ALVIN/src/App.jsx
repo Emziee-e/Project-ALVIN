@@ -36,6 +36,7 @@ import AvatarManagement from './pages/Admin/AvatarManagement.jsx'
 
 import FloatingButton from './Components/FloatingButton.jsx'
 import ProfileSetupModal from './Components/ProfileSetupModal.jsx'
+import WaitingRoom from "./Pages/User/WaitingRoom";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -404,6 +405,11 @@ function App() {
               />
             )
           }
+        />
+
+        <Route
+          path="/user/waiting-room"
+          element={<WaitingRoom />}
         />
 
         <Route
