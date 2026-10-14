@@ -1,3 +1,4 @@
+import { supabase } from "../../lib/supabaseClient";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Mic,
@@ -271,6 +272,7 @@ async function fetchNavTalkWsUrl(sessionId) {
       method: "POST",
       headers: {
         "X-API-Key": APP_API_KEY,
+        Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
       },
       body,
     }
@@ -299,11 +301,13 @@ async function fetchNavTalkWsUrl(sessionId) {
 }
 
 async function postBackend(path, payload) {
+  const { data: { session } } = await supabase.auth.getSession();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-API-Key": APP_API_KEY,
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
     body: JSON.stringify(payload),
   });
@@ -649,6 +653,17 @@ export default function LiveSession() {
   useEffect(() => {
     currentQuestionRef.current = currentQuestion;
   }, [currentQuestion]);
+
+  // Renew the server-side NavTalk queue lease during the live interview.
+  useEffect(() => {
+    if (!navtalkSessionId || isFinishing) return;
+    const heartbeat = () => postBackend('/api/interview/queue/status', {
+      session_id: navtalkSessionId,
+    }).catch((error) => console.warn('Queue heartbeat failed:', error));
+    heartbeat();
+    const interval = setInterval(heartbeat, 20000);
+    return () => clearInterval(interval);
+  }, [navtalkSessionId, isFinishing]);
 
   useEffect(() => {
     if (!sessionData) {
