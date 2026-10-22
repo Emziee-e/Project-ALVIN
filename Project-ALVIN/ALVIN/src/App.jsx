@@ -35,7 +35,6 @@ import UserManagement from './pages/Admin/UserManagement.jsx'
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx'
 
 import FloatingButton from './Components/FloatingButton.jsx'
-import ProfileSetupModal from './Components/ProfileSetupModal.jsx'
 import WaitingRoom from "./Pages/User/WaitingRoom";
 
 function App() {
@@ -209,34 +208,6 @@ function App() {
   ])
 
   // =========================================================
-  // STUDENT PROFILE SETUP MODAL
-  // =========================================================
-
-  const isUbStudent =
-    session?.user?.email
-      ?.toLowerCase()
-      .endsWith('@ub.edu.ph') &&
-    role === 'student'
-
-  const needsProfileSetup =
-    isUbStudent &&
-    !session?.user?.user_metadata
-      ?.profile_completed
-
-  const handleProfileComplete = (
-    updatedUser
-  ) => {
-    setSession((currentSession) =>
-      currentSession
-        ? {
-            ...currentSession,
-            user: updatedUser,
-          }
-        : currentSession
-    )
-  }
-
-  // =========================================================
   // INITIAL LOADING
   // =========================================================
 
@@ -261,12 +232,6 @@ function App() {
 
   return (
     <BrowserRouter>
-      {/* Student Profile Setup Modal */}
-      <ProfileSetupModal
-        isOpen={needsProfileSetup}
-        onComplete={handleProfileComplete}
-      />
-
       <Routes>
         {/* ============================================= */}
         {/* PUBLIC ROUTES */}

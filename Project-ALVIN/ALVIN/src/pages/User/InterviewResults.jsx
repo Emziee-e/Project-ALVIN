@@ -144,19 +144,47 @@ export default function InterviewResults() {
         setResultsLoading(true);
         setResultsError("");
 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) throw new Error("Please sign in again.");
-        const response = await fetch(
-          `${API_BASE_URL}/api/interview/results/${encodeURIComponent(sessionId)}`,
-          { headers: { "X-API-Key": APP_API_KEY, Authorization: `Bearer ${session.access_token}` } }
-        );
+        // Obtain the signed-in student's token for this request, not a cached
+        // token belonging to another student or a previous interview.
+        const getAccessToken = async (forceRefresh = false) => {
+          const { data, error } = forceRefresh
+            ? await supabase.auth.refreshSession()
+            : await supabase.auth.getSession();
+          if (error) throw new Error(`Authentication failed: ${error.message}`);
+          if (!data.session?.access_token) {
+            throw new Error("Your Google sign-in session is unavailable. Please sign in again and reopen Interview History.");
+          }
+          return data.session.access_token;
+        };
+
+        const requestResults = (token) =>
+          fetch(`${API_BASE_URL}/api/interview/results/${encodeURIComponent(sessionId)}`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              ...(APP_API_KEY ? { "X-API-Key": APP_API_KEY } : {}),
+            },
+          });
+
+        let token = await getAccessToken();
+        let response = await requestResults(token);
+
+        // A token can expire while the interview is in progress. Refresh it
+        // once on an auth failure and retry the same results request.
+        if (response.status === 401) {
+          token = await getAccessToken(true);
+          response = await requestResults(token);
+        }
 
         if (!response.ok) {
-          let detail = `Request failed (${response.status})`;
+          let detail = `Results request failed (${response.status})`;
           try {
-            const data = await response.json();
-            detail = data.detail || detail;
+            const payload = await response.json();
+            detail = typeof payload.detail === "string" ? payload.detail : detail;
           } catch {}
+          if (response.status === 401) {
+            throw new Error(`${detail}. Authentication was rejected even after refreshing the Supabase session. Check the results endpoint's token validation.`);
+          }
           throw new Error(detail);
         }
 
