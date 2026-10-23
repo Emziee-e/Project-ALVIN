@@ -40,6 +40,7 @@ export async function createCourse(values) {
         course_status: 'active',
         course_color:
             values.course_color || 'bg-[#862334]',
+        is_interviews_paused: false,
     })
     .select()
     .single()
@@ -115,16 +116,49 @@ export async function updateCourse(courseId, values) {
 
   const user = await getCurrentUser();
 
+  const updateData = {
+    course_title: values.course_title.trim(),
+    course_code: values.course_code.trim(),
+    section: values.section?.trim() || null,
+    academic_term: values.academic_term?.trim() || null,
+    course_status: values.course_status || "active",
+    course_color: values.course_color || "bg-[#862334]",
+  };
+
+  // Include is_interviews_paused if passed in values
+  if (typeof values.is_interviews_paused === "boolean") {
+    updateData.is_interviews_paused = values.is_interviews_paused;
+  }
+
   const { data, error } = await supabase
     .from("course_info")
-    .update({
-      course_title: values.course_title.trim(),
-      course_code: values.course_code.trim(),
-      section: values.section?.trim() || null,
-      academic_term: values.academic_term?.trim() || null,
-      course_status: values.course_status || "active",
-      course_color: values.course_color || "bg-[#862334]",
-    })
+    .update(updateData)
+    .eq("course_id", courseId)
+    .eq("car_ad_id", user.id)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+// ======================================================
+// TOGGLE COURSE INTERVIEWS PAUSE STATUS
+// ======================================================
+
+export async function toggleCourseInterviews(courseId, isPaused) {
+  if (!courseId) {
+    throw new Error("Course ID is required.");
+  }
+
+  const user = await getCurrentUser();
+
+  const { data, error } = await supabase
+    .from("course_info")
+    .update({ is_interviews_paused: isPaused })
     .eq("course_id", courseId)
     .eq("car_ad_id", user.id)
     .select()

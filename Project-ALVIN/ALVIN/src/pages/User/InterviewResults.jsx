@@ -49,6 +49,15 @@ export default function InterviewResults() {
     initials: "V",
   });
   const [imageError, setImageError] = useState(false);
+  const [enrollmentsLoaded, setEnrollmentsLoaded] = useState(false);
+
+  // Interviews are paused if any enrolled course is paused by the Career Advisor.
+  const isInterviewPaused = userProfile.enrollments.some(
+    (e) =>
+      e?.is_interviews_paused === true ||
+      String(e?.is_interviews_paused).toLowerCase() === "true"
+  );
+  const newSessionDisabled = !enrollmentsLoaded || isInterviewPaused;
 
   useEffect(() => {
     let isMounted = true;
@@ -113,7 +122,11 @@ export default function InterviewResults() {
         });
         if (!response.ok) throw new Error(`Enrollment request failed (${response.status})`);
         const rows = await response.json();
-        if (active) setUserProfile((prev) => ({ ...prev, enrollments: Array.isArray(rows) ? rows : [] }));
+        if (active) {
+          setUserProfile((prev) => ({ ...prev, enrollments: Array.isArray(rows) ? rows : [] }));
+          // Only enable "New Session" after a successful availability check.
+          setEnrollmentsLoaded(true);
+        }
       } catch (error) {
         console.error("Unable to load student enrollments:", error);
       }
@@ -458,8 +471,24 @@ export default function InterviewResults() {
                     Download PDF
                   </button>
                   <button
-                    onClick={() => navigate("/user/resume-upload")}
-                    className="px-6 py-3 bg-[#862334] text-white hover:bg-[#6e1c2a] transition-all font-bold uppercase text-xs tracking-widest font-Geist rounded-md shadow-sm cursor-pointer"
+                    type="button"
+                    onClick={() => {
+                      if (!newSessionDisabled) navigate("/user/resume-upload");
+                    }}
+                    disabled={newSessionDisabled}
+                    aria-disabled={newSessionDisabled}
+                    title={
+                      !enrollmentsLoaded
+                        ? "Checking course availability"
+                        : isInterviewPaused
+                        ? "Paused by Career Advisor"
+                        : "New Session"
+                    }
+                    className={`px-6 py-3 transition-all font-bold uppercase text-xs tracking-widest font-Geist rounded-md shadow-sm ${
+                      newSessionDisabled
+                        ? "bg-gray-300 text-gray-500 opacity-60 grayscale cursor-not-allowed"
+                        : "bg-[#862334] text-white hover:bg-[#6e1c2a] cursor-pointer"
+                    }`}
                   >
                     New Session
                   </button>

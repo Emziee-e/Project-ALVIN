@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   User,
   LayoutDashboard,
@@ -20,6 +21,9 @@ import {
   Archive,
   AlertTriangle,
   Trash2,
+  PauseCircle,
+  PlayCircle,
+  Pause,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
@@ -66,15 +70,25 @@ export default function StaffDashboard() {
   const [isConcludeModalOpen, setIsConcludeModalOpen] = useState(false);
   const [courseToConclude, setCourseToConclude] = useState(null);
 
+  // Pause/Resume Interviews Modal State
+  const [isPauseModalOpen, setIsPauseModalOpen] = useState(false);
+  const [courseToTogglePause, setCourseToTogglePause] = useState(null);
+  const [isTogglingPause, setIsTogglingPause] = useState(false);
+
   // Delete Course Confirmation
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [courseToDelete, setCourseToDelete] = useState(null);
 
-  // Unenroll Student Confirmation
+  // Enrollment action confirmation
   const [studentToUnenroll, setStudentToUnenroll] = useState(null);
+  const [studentAction, setStudentAction] = useState("unenroll");
   const [isUnenrolling, setIsUnenrolling] = useState(false);
+  const [activeStudentMenuId, setActiveStudentMenuId] = useState(null);
+  const [studentMenuPosition, setStudentMenuPosition] = useState({ top: 0, left: 0 });
+  const studentMenuRef = useRef(null);
+  const studentMenuTriggerRef = useRef(null);
 
-  // Dropdown Menu State
+  // Course dropdown state
   const [activeMenuId, setActiveMenuId] = useState(null);
   const menuRef = useRef(null);
 
@@ -118,10 +132,50 @@ export default function StaffDashboard() {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setActiveMenuId(null);
       }
+      const clickedStudentTrigger = studentMenuTriggerRef.current?.contains(event.target);
+      const clickedStudentMenu = studentMenuRef.current?.contains(event.target);
+      if (!clickedStudentTrigger && !clickedStudentMenu) {
+        setActiveStudentMenuId(null);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Keep the floating student menu aligned with its trigger while scrolling/resizing.
+  useLayoutEffect(() => {
+    if (activeStudentMenuId == null) return;
+
+    const updateStudentMenuPosition = () => {
+      const trigger = studentMenuTriggerRef.current;
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = 176;
+      const menuHeight = 92;
+      const gap = 8;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const openAbove = spaceBelow < menuHeight + gap && rect.top > menuHeight + gap;
+      const left = Math.min(
+        Math.max(8, rect.right - menuWidth),
+        Math.max(8, window.innerWidth - menuWidth - 8)
+      );
+      const top = openAbove
+        ? Math.max(8, rect.top - menuHeight - gap)
+        : Math.min(rect.bottom + gap, Math.max(8, window.innerHeight - menuHeight - 8));
+
+      setStudentMenuPosition({ top, left });
+    };
+
+    updateStudentMenuPosition();
+    window.addEventListener("resize", updateStudentMenuPosition);
+    window.addEventListener("scroll", updateStudentMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateStudentMenuPosition);
+      window.removeEventListener("scroll", updateStudentMenuPosition, true);
+    };
+  }, [activeStudentMenuId]);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -181,14 +235,11 @@ export default function StaffDashboard() {
 
       const data = await getMyCourses();
 
-      const mappedCourses = data.map(
-        mapCourseFromDatabase
-      );
+      const mappedCourses = data.map(mapCourseFromDatabase);
 
       setPublishedCourses(
         mappedCourses.filter(
-          (course) =>
-            course.status === "active"
+          (course) => course.status === "active"
         )
       );
 
@@ -200,14 +251,9 @@ export default function StaffDashboard() {
         )
       );
     } catch (error) {
-      console.error(
-        "Error loading courses:",
-        error
-      );
+      console.error("Error loading courses:", error);
 
-      showToastNotification(
-        "Unable to load courses."
-      );
+      showToastNotification("Unable to load courses.");
     } finally {
       setCoursesLoading(false);
     }
@@ -223,13 +269,11 @@ export default function StaffDashboard() {
         /^\/staff\/dashboard\/course\/([^/]+)$/
       );
 
-      // Normal dashboard page
       if (!match) {
         setRestoringCourse(false);
         return;
       }
 
-      // Wait for courses to finish loading
       if (coursesLoading) {
         return;
       }
@@ -252,74 +296,58 @@ export default function StaffDashboard() {
       }
 
       try {
-        const enrollmentRows =
-          await getCourseEnrollments(course.id);
+        const enrollmentRows = await getCourseEnrollments(course.id);
 
-        const students =
-          enrollmentRows.map(
-            mapEnrollmentFromDatabase
-          );
+        const students = enrollmentRows.map(mapEnrollmentFromDatabase);
 
         setSelectedCourse({
           ...course,
           students,
         });
       } catch (error) {
-        console.error(
-          "Error restoring course:",
-          error
-        );
+        console.error("Error restoring course:", error);
 
-        showToastNotification(
-          "Unable to load course enrollment."
-        );
+        showToastNotification("Unable to load course enrollment.");
       } finally {
         setRestoringCourse(false);
       }
     };
 
-      restoreSelectedCourse();
-    }, [
-      location.pathname,
-      coursesLoading,
-    ]);
+    restoreSelectedCourse();
+  }, [location.pathname, coursesLoading]);
 
   const mapEnrollmentFromDatabase = (row) => {
     const student = row.student_profile;
 
     return {
       id: row.enrollment_id,
-
-      // Actual UUID from student_profile
       studentId: student?.student_id || "",
-
-      // Display student number from the UB email
-      studentNo:
-        student?.ub_mail?.split("@")[0] || "",
-
-      name:
-        student?.display_name ||
-        "Unknown Student",
-
-      email:
-        student?.ub_mail || "",
-
+      studentNo: student?.ub_mail?.split("@")[0] || "",
+      name: student?.display_name || "Unknown Student",
+      email: student?.ub_mail || "",
       status: row.enrollment_status
         ? row.enrollment_status.charAt(0).toUpperCase() +
           row.enrollment_status.slice(1)
         : "Enrolled",
-
       dateJoined: row.enrolled_at
-        ? new Date(row.enrolled_at).toLocaleDateString(
-            "en-US",
-            {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            }
-          )
+        ? new Date(row.enrolled_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
         : "",
     };
+  };
+
+  // Normalize Supabase values because boolean fields can arrive as booleans,
+  // 0/1, or strings such as "true" / "false".
+  const toBoolean = (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1;
+    if (typeof value === "string") {
+      return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
+    }
+    return false;
   };
 
   const mapCourseFromDatabase = (course) => ({
@@ -329,11 +357,8 @@ export default function StaffDashboard() {
     section: course.section || "",
     term: course.academic_term || "",
     status: course.course_status,
-
-    color:
-      course.course_color ||
-      "bg-[#862334]",
-
+    is_interviews_paused: toBoolean(course.is_interviews_paused),
+    color: course.course_color || "bg-[#862334]",
     imageUrl: null,
     image: null,
     students: [],
@@ -349,13 +374,9 @@ export default function StaffDashboard() {
         course_color: newCourse.color,
       });
 
-      const mappedCourse =
-        mapCourseFromDatabase(createdCourse);
+      const mappedCourse = mapCourseFromDatabase(createdCourse);
 
-      setPublishedCourses((prev) => [
-        mappedCourse,
-        ...prev,
-      ]);
+      setPublishedCourses((prev) => [mappedCourse, ...prev]);
 
       showToastNotification(
         `Course "${mappedCourse.code}" successfully created!`
@@ -366,20 +387,74 @@ export default function StaffDashboard() {
         course: mappedCourse,
       };
     } catch (error) {
-      console.error(
-        "Error creating course:",
-        error
-      );
+      console.error("Error creating course:", error);
 
       showToastNotification(
-        error.message ||
-          "Unable to create course."
+        error.message || "Unable to create course."
       );
 
       return {
-        error: error.message ||
-          "Unable to create course.",
+        error: error.message || "Unable to create course.",
       };
+    }
+  };
+
+  const confirmTogglePauseInterviews = async () => {
+    if (!courseToTogglePause || isTogglingPause) return;
+
+    const currentPauseState = toBoolean(courseToTogglePause.is_interviews_paused);
+    const newPauseState = !currentPauseState;
+
+    try {
+      setIsTogglingPause(true);
+
+      const savedCourse = await updateCourse(courseToTogglePause.id, {
+        course_title: courseToTogglePause.title,
+        course_code: courseToTogglePause.code,
+        section: courseToTogglePause.section,
+        academic_term: courseToTogglePause.term,
+        course_status: courseToTogglePause.status || "active",
+        course_color: courseToTogglePause.color || "bg-[#862334]",
+        is_interviews_paused: newPauseState,
+      });
+
+      const updatedCourse = {
+        ...courseToTogglePause,
+        ...mapCourseFromDatabase(savedCourse),
+        is_interviews_paused: newPauseState,
+      };
+
+      setPublishedCourses((prev) =>
+        prev.map((c) => (c.id === updatedCourse.id ? updatedCourse : c))
+      );
+
+      setConcludedCourses((prev) =>
+        prev.map((c) => (c.id === updatedCourse.id ? updatedCourse : c))
+      );
+
+      if (selectedCourse?.id === updatedCourse.id) {
+        setSelectedCourse((prev) => ({
+          ...prev,
+          is_interviews_paused: newPauseState,
+        }));
+      }
+
+      setIsPauseModalOpen(false);
+      setCourseToTogglePause(null);
+      setActiveMenuId(null);
+
+      showToastNotification(
+        newPauseState
+          ? `Interviews paused for students in ${updatedCourse.code}.`
+          : `Interviews resumed for students in ${updatedCourse.code}.`
+      );
+    } catch (error) {
+      console.error("Error toggling pause state:", error);
+      showToastNotification(
+        error.message || "Unable to update interview status for this course."
+      );
+    } finally {
+      setIsTogglingPause(false);
     }
   };
 
@@ -387,52 +462,34 @@ export default function StaffDashboard() {
     if (!courseToConclude) return;
 
     try {
-      const savedCourse = await updateCourse(
-        courseToConclude.id,
-        {
-          course_title: courseToConclude.title,
-          course_code: courseToConclude.code,
-          section: courseToConclude.section,
-          academic_term: courseToConclude.term,
-          course_status: "concluded",
-          course_color:
-            courseToConclude.color ||
-            "bg-[#862334]",
-        }
-      );
+      const savedCourse = await updateCourse(courseToConclude.id, {
+        course_title: courseToConclude.title,
+        course_code: courseToConclude.code,
+        section: courseToConclude.section,
+        academic_term: courseToConclude.term,
+        course_status: "concluded",
+        course_color: courseToConclude.color || "bg-[#862334]",
+        is_interviews_paused: courseToConclude.is_interviews_paused,
+      });
 
-      const mappedCourse =
-        mapCourseFromDatabase(savedCourse);
+      const mappedCourse = mapCourseFromDatabase(savedCourse);
 
-      // Preserve local-only values such as students/image
       const concludedCourse = {
         ...courseToConclude,
         ...mappedCourse,
         status: "concluded",
       };
 
-      // Remove from Published Courses
       setPublishedCourses((prev) =>
-        prev.filter(
-          (course) =>
-            course.id !== concludedCourse.id
-        )
+        prev.filter((course) => course.id !== concludedCourse.id)
       );
 
-      // Add to Concluded Courses
       setConcludedCourses((prev) => [
         concludedCourse,
-        ...prev.filter(
-          (course) =>
-            course.id !== concludedCourse.id
-        ),
+        ...prev.filter((course) => course.id !== concludedCourse.id),
       ]);
 
-      // Close course details if currently viewing it
-      if (
-        selectedCourse?.id ===
-        concludedCourse.id
-      ) {
+      if (selectedCourse?.id === concludedCourse.id) {
         setSelectedCourse(null);
       }
 
@@ -444,14 +501,10 @@ export default function StaffDashboard() {
         `Course "${concludedCourse.code}" successfully concluded!`
       );
     } catch (error) {
-      console.error(
-        "Error concluding course:",
-        error
-      );
+      console.error("Error concluding course:", error);
 
       showToastNotification(
-        error.message ||
-          "Unable to conclude course."
+        error.message || "Unable to conclude course."
       );
     }
   };
@@ -465,17 +518,14 @@ export default function StaffDashboard() {
 
       await deleteCourse(courseId);
 
-      // Remove from active courses
       setPublishedCourses((prev) =>
         prev.filter((course) => course.id !== courseId)
       );
 
-      // Remove from concluded courses too
       setConcludedCourses((prev) =>
         prev.filter((course) => course.id !== courseId)
       );
 
-      // Close course details if this course is open
       if (selectedCourse?.id === courseId) {
         setSelectedCourse(null);
       }
@@ -498,31 +548,22 @@ export default function StaffDashboard() {
 
   const handleSaveEditedCourse = async (updatedCourse) => {
     try {
-      const savedCourse = await updateCourse(
-        updatedCourse.id,
-        {
-          course_title: updatedCourse.title,
-          course_code: updatedCourse.code,
-          section: updatedCourse.section,
-          academic_term: updatedCourse.term,
-          course_status:
-            updatedCourse.status || "active",
-          course_color:
-            updatedCourse.color ||
-            "bg-[#862334]",
-        }
-      );
+      const savedCourse = await updateCourse(updatedCourse.id, {
+        course_title: updatedCourse.title,
+        course_code: updatedCourse.code,
+        section: updatedCourse.section,
+        academic_term: updatedCourse.term,
+        course_status: updatedCourse.status || "active",
+        course_color: updatedCourse.color || "bg-[#862334]",
+        is_interviews_paused: toBoolean(updatedCourse.is_interviews_paused),
+      });
 
-      const mappedCourse =
-        mapCourseFromDatabase(savedCourse);
+      const mappedCourse = mapCourseFromDatabase(savedCourse);
 
       setPublishedCourses((prev) =>
         prev.map((course) =>
           course.id === mappedCourse.id
-            ? {
-                ...course,
-                ...mappedCourse,
-              }
+            ? { ...course, ...mappedCourse }
             : course
         )
       );
@@ -530,18 +571,12 @@ export default function StaffDashboard() {
       setConcludedCourses((prev) =>
         prev.map((course) =>
           course.id === mappedCourse.id
-            ? {
-                ...course,
-                ...mappedCourse,
-              }
+            ? { ...course, ...mappedCourse }
             : course
         )
       );
 
-      if (
-        selectedCourse?.id ===
-        mappedCourse.id
-      ) {
+      if (selectedCourse?.id === mappedCourse.id) {
         setSelectedCourse((prev) => ({
           ...prev,
           ...mappedCourse,
@@ -560,69 +595,45 @@ export default function StaffDashboard() {
         course: mappedCourse,
       };
     } catch (error) {
-      console.error(
-        "Error updating course:",
-        error
-      );
+      console.error("Error updating course:", error);
 
       showToastNotification(
-        error.message ||
-          "Unable to update course."
+        error.message || "Unable to update course."
       );
 
       return {
-        error:
-          error.message ||
-          "Unable to update course.",
+        error: error.message || "Unable to update course.",
       };
     }
   };
 
   const handleEnrollStudent = async (studentEmail) => {
     if (!selectedCourse) {
-      return {
-        error: "No course selected.",
-      };
+      return { error: "No course selected." };
     }
 
     try {
-      // Find the real student using their UB email
-      const student =
-        await findStudentByEmail(studentEmail);
+      const student = await findStudentByEmail(studentEmail);
 
-      // Check whether the student is already displayed
-      // as enrolled in this course
-      const alreadyEnrolled =
-        selectedCourse.students?.some(
-          (enrolledStudent) =>
-            enrolledStudent.studentId ===
-            student.student_id
-        );
+      const alreadyEnrolled = selectedCourse.students?.some(
+        (enrolledStudent) => enrolledStudent.studentId === student.student_id
+      );
 
       if (alreadyEnrolled) {
         return {
-          error:
-            "This student is already enrolled in this course.",
+          error: "This student is already enrolled in this course.",
         };
       }
 
-      // Insert course_id + student's UUID
-      await enrollStudents(
-        selectedCourse.id,
-        [student]
-      );
+      await enrollStudents(selectedCourse.id, [student]);
 
-      // Enrollment is already saved at this point. Email notification is
-      // intentionally best-effort so a Gmail failure never rolls back enrollment.
       let emailNotificationSent = true;
 
       try {
         const API_BASE_URL =
-          import.meta.env.VITE_API_BASE_URL ||
-          "http://localhost:8000";
+          import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-        const API_KEY =
-          import.meta.env.VITE_APP_API_KEY || "";
+        const API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 
         const emailResponse = await fetch(
           `${API_BASE_URL}/api/email/enrollment`,
@@ -634,8 +645,7 @@ export default function StaffDashboard() {
             },
             body: JSON.stringify({
               student_email: student.ub_mail,
-              student_name:
-                student.display_name || "Student",
+              student_name: student.display_name || "Student",
               course_title: selectedCourse.title,
               course_code: selectedCourse.code,
               section: selectedCourse.section || "",
@@ -646,99 +656,11 @@ export default function StaffDashboard() {
 
         if (!emailResponse.ok) {
           emailNotificationSent = false;
-
-          let emailError = null;
-          try {
-            emailError = await emailResponse.json();
-          } catch {
-            // Response body was not JSON.
-          }
-
-          console.error(
-            "Enrollment saved, but email notification failed:",
-            emailResponse.status,
-            emailError
-          );
         }
       } catch (emailError) {
         emailNotificationSent = false;
-        console.error(
-          "Enrollment saved, but email notification failed:",
-          emailError
-        );
+        console.error("Enrollment saved, but email notification failed:", emailError);
       }
-
-      // Reload the course enrollment list from Supabase
-      const enrollmentRows =
-        await getCourseEnrollments(
-          selectedCourse.id
-        );
-
-      const students =
-        enrollmentRows.map(
-          mapEnrollmentFromDatabase
-        );
-
-      const updatedCourse = {
-        ...selectedCourse,
-        students,
-      };
-
-      // Update currently opened course
-      setSelectedCourse(updatedCourse);
-
-      // Synchronize Published Courses state
-      setPublishedCourses((prev) =>
-        prev.map((course) =>
-          course.id === selectedCourse.id
-            ? updatedCourse
-            : course
-        )
-      );
-
-      showToastNotification(
-        emailNotificationSent
-          ? `${student.display_name} successfully enrolled! Email notification sent.`
-          : `${student.display_name} successfully enrolled, but the email notification could not be sent.`
-      );
-
-      return {
-        success: true,
-        student,
-        emailNotificationSent,
-      };
-    } catch (error) {
-      console.error(
-        "Error enrolling student:",
-        error
-      );
-
-      // Database unique constraint:
-      // unique(course_id, student_id)
-      if (error.code === "23505") {
-        return {
-          error:
-            "This student is already enrolled in this course.",
-        };
-      }
-
-      return {
-        error:
-          error.message ||
-          "Unable to enroll student.",
-      };
-    }
-  };
-
-  const confirmUnenrollStudent = async () => {
-    if (!studentToUnenroll || !selectedCourse || isUnenrolling) return;
-
-    try {
-      setIsUnenrolling(true);
-
-      // student.id is the course_enrollments.enrollment_id.
-      // This deletes only the enrollment relationship, not the student account.
-      await removeEnrollment(studentToUnenroll.id);
 
       const enrollmentRows = await getCourseEnrollments(selectedCourse.id);
       const students = enrollmentRows.map(mapEnrollmentFromDatabase);
@@ -756,6 +678,70 @@ export default function StaffDashboard() {
         )
       );
 
+      showToastNotification(
+        emailNotificationSent
+          ? `${student.display_name} successfully enrolled! Email notification sent.`
+          : `${student.display_name} successfully enrolled, but the email notification could not be sent.`
+      );
+
+      return {
+        success: true,
+        student,
+        emailNotificationSent,
+      };
+    } catch (error) {
+      console.error("Error enrolling student:", error);
+
+      if (error.code === "23505") {
+        return {
+          error: "This student is already enrolled in this course.",
+        };
+      }
+
+      return {
+        error: error.message || "Unable to enroll student.",
+      };
+    }
+  };
+
+  const confirmUnenrollStudent = async () => {
+    if (!studentToUnenroll || !selectedCourse || isUnenrolling) return;
+
+    const action = studentAction;
+    const student = studentToUnenroll;
+
+    try {
+      setIsUnenrolling(true);
+
+      if (action === "drop") {
+        const { error } = await supabase
+          .from("course_enrollments")
+          .update({ enrollment_status: "dropped" })
+          .eq("enrollment_id", student.id);
+
+        if (error) throw error;
+      } else {
+        await removeEnrollment(student.id);
+      }
+
+      let students;
+      if (action === "drop") {
+        students = (selectedCourse.students || []).map((item) =>
+          item.id === student.id ? { ...item, status: "Dropped" } : item
+        );
+      } else {
+        const enrollmentRows = await getCourseEnrollments(selectedCourse.id);
+        students = enrollmentRows.map(mapEnrollmentFromDatabase);
+      }
+
+      const updatedCourse = { ...selectedCourse, students };
+      setSelectedCourse(updatedCourse);
+
+      setPublishedCourses((prev) =>
+        prev.map((course) =>
+          course.id === selectedCourse.id ? updatedCourse : course
+        )
+      );
       setConcludedCourses((prev) =>
         prev.map((course) =>
           course.id === selectedCourse.id ? updatedCourse : course
@@ -763,14 +749,17 @@ export default function StaffDashboard() {
       );
 
       showToastNotification(
-        `${studentToUnenroll.name} successfully unenrolled from ${selectedCourse.code}.`
+        action === "drop"
+          ? `${student.name} marked as dropped from ${selectedCourse.code}.`
+          : `${student.name} successfully unenrolled from ${selectedCourse.code}.`
       );
 
       setStudentToUnenroll(null);
+      setActiveStudentMenuId(null);
     } catch (error) {
-      console.error("Error unenrolling student:", error);
+      console.error(`Error ${action === "drop" ? "dropping" : "unenrolling"} student:`, error);
       showToastNotification(
-        error.message || "Unable to unenroll student."
+        error.message || `Unable to ${action === "drop" ? "drop" : "unenroll"} student.`
       );
     } finally {
       setIsUnenrolling(false);
@@ -779,13 +768,8 @@ export default function StaffDashboard() {
 
   const handleOpenCourse = async (course) => {
     try {
-      const enrollmentRows =
-        await getCourseEnrollments(course.id);
-
-      const students =
-        enrollmentRows.map(
-          mapEnrollmentFromDatabase
-        );
+      const enrollmentRows = await getCourseEnrollments(course.id);
+      const students = enrollmentRows.map(mapEnrollmentFromDatabase);
 
       const courseWithStudents = {
         ...course,
@@ -795,35 +779,17 @@ export default function StaffDashboard() {
       setSelectedCourse(courseWithStudents);
 
       setPublishedCourses((prev) =>
-        prev.map((item) =>
-          item.id === course.id
-            ? courseWithStudents
-            : item
-        )
+        prev.map((item) => (item.id === course.id ? courseWithStudents : item))
       );
 
       setConcludedCourses((prev) =>
-        prev.map((item) =>
-          item.id === course.id
-            ? courseWithStudents
-            : item
-        )
+        prev.map((item) => (item.id === course.id ? courseWithStudents : item))
       );
 
-      // Keep selected course in the URL
-      navigate(
-        `/staff/dashboard/course/${course.id}`
-      );
+      navigate(`/staff/dashboard/course/${course.id}`);
     } catch (error) {
-      console.error(
-        "Error loading course enrollments:",
-        error
-      );
-
-      showToastNotification(
-        error.message ||
-          "Unable to load enrolled students."
-      );
+      console.error("Error loading course enrollments:", error);
+      showToastNotification(error.message || "Unable to load enrolled students.");
     }
   };
 
@@ -857,7 +823,7 @@ export default function StaffDashboard() {
   const renderCourseCard = (course, isConcluded = false) => {
     const courseImg = course.imageUrl || course.image;
     const isMenuOpen = activeMenuId === course.id;
-
+    const isPaused = course.is_interviews_paused;
 
     return (
       <div
@@ -883,86 +849,121 @@ export default function StaffDashboard() {
             {courseImg && <div className="absolute inset-0 bg-black/40 rounded-t-2xl z-0" />}
 
             <div className="flex items-center justify-between relative z-20">
-              {course.section ? (
-                <span className="bg-black/35 text-white font-mono font-semibold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-xs shadow-xs">
-                  {course.section}
-                </span>
-              ) : <div />}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {course.section ? (
+                  <span className="bg-black/35 text-white font-mono font-semibold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-xs shadow-xs">
+                    {course.section}
+                  </span>
+                ) : null}
+
+                {/* Visual badge indicator when interviews are paused */}
+                {isPaused && (
+                  <span className="bg-amber-500/90 text-white font-sans font-bold text-[10px] px-2 py-0.5 rounded-full backdrop-blur-xs shadow-xs flex items-center gap-1">
+                    <Pause className="w-3 h-3 stroke-[2.5]" />
+                    PAUSED
+                  </span>
+                )}
+              </div>
 
               <div className="relative ml-auto" ref={isMenuOpen ? menuRef : null}>
-              
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  setActiveMenuId(isMenuOpen ? null : course.id);
-                }}
-                className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-black/30 transition-colors cursor-pointer"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-
-              {isMenuOpen && (
-                <div
-                  className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden"
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setActiveMenuId(isMenuOpen ? null : course.id);
+                  }}
+                  className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-black/30 transition-colors cursor-pointer"
                 >
-                  {/* Edit Course - available for both active and concluded */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
+                  <MoreVertical className="w-4 h-4" />
+                </button>
 
-                      setEditingCourse(course);
-                      setIsEditModalOpen(true);
-                      setActiveMenuId(null);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors"
+                {isMenuOpen && (
+                  <div
+                    className="absolute right-0 top-8 w-52 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <Pencil className="w-3.5 h-3.5" />
-                    Edit Course Details
-                  </button>
-
-                  {/* Only active courses can be concluded */}
-                  {!isConcluded && (
+                    {/* Toggle Pause / Resume Interviews */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
 
-                        setCourseToConclude(course);
-                        setIsConcludeModalOpen(true);
+                        setCourseToTogglePause(course);
+                        setIsPauseModalOpen(true);
                         setActiveMenuId(null);
                       }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-800 hover:bg-amber-50 hover:text-amber-800 flex items-center gap-2 cursor-pointer transition-colors"
                     >
-                      <Archive className="w-3.5 h-3.5" />
-                      Conclude Course
+                      {isPaused ? (
+                        <>
+                          <PlayCircle className="w-4 h-4 text-emerald-600" />
+                          Resume Interviews
+                        </>
+                      ) : (
+                        <>
+                          <PauseCircle className="w-4 h-4 text-amber-600" />
+                          Pause Interviews
+                        </>
+                      )}
                     </button>
-                  )}
 
-                  {/* Delete - available for both active and concluded */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
+                    {/* Edit Course */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
 
-                      setCourseToDelete(course);
-                      setIsDeleteModalOpen(true);
-                      setActiveMenuId(null);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Delete Course
-                  </button>
-                </div>
-              )}
-            </div>
+                        setEditingCourse(course);
+                        setIsEditModalOpen(true);
+                        setActiveMenuId(null);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-800 hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Edit Course Details
+                    </button>
+
+                    {/* Conclude Course */}
+                    {!isConcluded && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+
+                          setCourseToConclude(course);
+                          setIsConcludeModalOpen(true);
+                          setActiveMenuId(null);
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-800 hover:bg-[#862334]/10 hover:text-[#862334] flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
+                      >
+                        <Archive className="w-3.5 h-3.5" />
+                        Conclude Course
+                      </button>
+                    )}
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+
+                        setCourseToDelete(course);
+                        setIsDeleteModalOpen(true);
+                        setActiveMenuId(null);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Course
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="text-white relative z-10">
@@ -988,11 +989,15 @@ export default function StaffDashboard() {
                 <Users className="w-4 h-4 text-[#862334]" />
                 {course.students?.length || course.studentsCount || 0} Students
               </span>
-              {isConcluded && (
+              {isConcluded ? (
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
                   Concluded
                 </span>
-              )}
+              ) : isPaused ? (
+                <span className="text-[10px] font-bold tracking-tight px-2 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200">
+                  Interviews Paused
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1005,10 +1010,7 @@ export default function StaffDashboard() {
       <div className="flex h-screen w-full items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-3 border-gray-200 border-t-[#862334] rounded-full animate-spin" />
-
-          <p className="text-sm font-medium text-gray-500">
-            Loading course...
-          </p>
+          <p className="text-sm font-medium text-gray-500">Loading course...</p>
         </div>
       </div>
     );
@@ -1016,7 +1018,6 @@ export default function StaffDashboard() {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white font-Inter relative">
-      {/* Inline Keyframes for Toast Progress Bar */}
       <style>{`
         @keyframes shrinkWidth {
           from { width: 100%; }
@@ -1027,7 +1028,7 @@ export default function StaffDashboard() {
         }
       `}</style>
 
-      {/* Success Toast Banner with Progress Bar */}
+      {/* Success Toast Banner */}
       {toast.show && (
         <div
           key={toast.key}
@@ -1054,7 +1055,7 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Extracted Modals */}
+      {/* Modals */}
       <SignOutModal
         isOpen={isSignOutModalOpen}
         onClose={() => setIsSignOutModalOpen(false)}
@@ -1086,6 +1087,96 @@ export default function StaffDashboard() {
         />
       )}
 
+      {/* Pause/Resume Interviews Confirmation Modal */}
+      {isPauseModalOpen && courseToTogglePause && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
+            <button
+              type="button"
+              disabled={isTogglingPause}
+              onClick={() => {
+                setIsPauseModalOpen(false);
+                setCourseToTogglePause(null);
+              }}
+              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto ${
+                courseToTogglePause.is_interviews_paused
+                  ? "bg-emerald-50 text-emerald-600"
+                  : "bg-amber-50 text-amber-600"
+              }`}
+            >
+              {courseToTogglePause.is_interviews_paused ? (
+                <PlayCircle className="w-6 h-6" />
+              ) : (
+                <PauseCircle className="w-6 h-6" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold font-Geist text-gray-900">
+                {courseToTogglePause.is_interviews_paused
+                  ? "Resume Interviews?"
+                  : "Pause Interviews?"}
+              </h3>
+              <p className="text-xs text-gray-500 leading-relaxed px-2">
+                {courseToTogglePause.is_interviews_paused ? (
+                  <>
+                    Are you sure you want to resume interviews for{" "}
+                    <span className="font-semibold text-gray-800">
+                      "{courseToTogglePause.title}"
+                    </span>
+                    ? Enrolled students will be able to start AI interviews again.
+                  </>
+                ) : (
+                  <>
+                    Are you sure you want to pause interviews for{" "}
+                    <span className="font-semibold text-gray-800">
+                      "{courseToTogglePause.title}"
+                    </span>
+                    ? Students enrolled in this course will temporarily be restricted from starting new AI interviews.
+                  </>
+                )}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isTogglingPause}
+                onClick={() => {
+                  setIsPauseModalOpen(false);
+                  setCourseToTogglePause(null);
+                }}
+                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isTogglingPause}
+                onClick={confirmTogglePauseInterviews}
+                className={`px-5 py-2.5 text-white rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-60 ${
+                  courseToTogglePause.is_interviews_paused
+                    ? "bg-emerald-600 hover:bg-emerald-700"
+                    : "bg-amber-600 hover:bg-amber-700"
+                }`}
+              >
+                {isTogglingPause
+                  ? "Updating..."
+                  : courseToTogglePause.is_interviews_paused
+                  ? "Yes, Resume Interviews"
+                  : "Yes, Pause Interviews"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Conclude Course Confirmation Modal */}
       {isConcludeModalOpen && courseToConclude && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
@@ -1096,7 +1187,7 @@ export default function StaffDashboard() {
                 setIsConcludeModalOpen(false);
                 setCourseToConclude(null);
               }}
-              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1153,9 +1244,19 @@ export default function StaffDashboard() {
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold font-Geist text-gray-900">Unenroll Student?</h3>
+              <h3 className="text-xl font-bold font-Geist text-gray-900">
+                {studentAction === "drop" ? "Drop Student?" : "Unenroll Student?"}
+              </h3>
               <p className="text-xs text-gray-500 leading-relaxed px-2">
-                Remove <span className="font-semibold text-gray-800">{studentToUnenroll.name}</span> from <span className="font-semibold text-gray-800">{selectedCourse?.code}</span>? This removes only the course enrollment and does not delete the student's account.
+                {studentAction === "drop" ? (
+                  <>
+                    Mark <span className="font-semibold text-gray-800">{studentToUnenroll.name}</span> as dropped from <span className="font-semibold text-gray-800">{selectedCourse?.code}</span>? The enrollment record will be kept for history.
+                  </>
+                ) : (
+                  <>
+                    Remove <span className="font-semibold text-gray-800">{studentToUnenroll.name}</span> from <span className="font-semibold text-gray-800">{selectedCourse?.code}</span>? This removes only the course enrollment and does not delete the student's account.
+                  </>
+                )}
               </p>
             </div>
 
@@ -1174,7 +1275,9 @@ export default function StaffDashboard() {
                 onClick={confirmUnenrollStudent}
                 className="px-5 py-2.5 bg-red-600 text-white rounded-full text-xs font-bold hover:bg-red-700 transition-all shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isUnenrolling ? "Unenrolling..." : "Yes, Unenroll Student"}
+                {isUnenrolling
+                  ? (studentAction === "drop" ? "Dropping..." : "Unenrolling...")
+                  : (studentAction === "drop" ? "Yes, Drop Student" : "Yes, Unenroll Student")}
               </button>
             </div>
           </div>
@@ -1185,7 +1288,6 @@ export default function StaffDashboard() {
       {isDeleteModalOpen && courseToDelete && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
-
             <button
               type="button"
               onClick={() => {
@@ -1205,7 +1307,6 @@ export default function StaffDashboard() {
               <h3 className="text-xl font-bold font-Geist text-gray-900">
                 Delete Course?
               </h3>
-
               <p className="text-xs text-gray-500 leading-relaxed px-2">
                 Are you sure you want to permanently delete{" "}
                 <span className="font-semibold text-gray-800">
@@ -1455,6 +1556,7 @@ export default function StaffDashboard() {
                         <th className="py-3.5 px-6">Course Code</th>
                         <th className="py-3.5 px-6">Course Title</th>
                         <th className="py-3.5 px-6">Section</th>
+                        <th className="py-3.5 px-6 text-center">Interviews Status</th>
                         <th className="py-3.5 px-6 text-right">Enrolled Students</th>
                       </tr>
                     </thead>
@@ -1464,6 +1566,17 @@ export default function StaffDashboard() {
                           <td className="py-4 px-6 font-mono font-medium text-gray-700">{c.code}</td>
                           <td className="py-4 px-6 font-bold text-gray-900">{c.title}</td>
                           <td className="py-4 px-6 text-gray-600">{c.section || "N/A"}</td>
+                          <td className="py-4 px-6 text-center">
+                            {c.is_interviews_paused ? (
+                              <span className="inline-flex items-center gap-1 font-semibold text-xs px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                <Pause className="w-3 h-3" /> Paused
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 font-semibold text-xs px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Active
+                              </span>
+                            )}
+                          </td>
                           <td className="py-4 px-6 text-right font-semibold text-gray-800">
                             {c.students?.length || 0}
                           </td>
@@ -1493,9 +1606,16 @@ export default function StaffDashboard() {
                     </button>
                   )}
                   <div>
-                    <h1 className="text-3xl font-black font-Geist text-gray-900">
-                      {selectedCourse ? selectedCourse.title : "Dashboard"}
-                    </h1>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h1 className="text-3xl font-black font-Geist text-gray-900">
+                        {selectedCourse ? selectedCourse.title : "Dashboard"}
+                      </h1>
+                      {selectedCourse?.is_interviews_paused && (
+                        <span className="bg-amber-100 text-amber-800 font-bold text-xs px-2.5 py-1 rounded-full flex items-center gap-1 border border-amber-200">
+                          <Pause className="w-3 h-3 stroke-[2.5]" /> Interviews Paused
+                        </span>
+                      )}
+                    </div>
                     {selectedCourse && (
                       <p className="text-xs text-gray-500 mt-1">
                         {selectedCourse.code} • Section {selectedCourse.section} • Enrolled Student Roster
@@ -1618,7 +1738,6 @@ export default function StaffDashboard() {
                             <th className="py-3.5 px-6">Email Address</th>
                             <th className="py-3.5 px-6">Date Enrolled</th>
                             <th className="py-3.5 px-6 text-center">Status</th>
-                            <th className="py-3.5 px-6 text-center">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 text-sm">
@@ -1629,31 +1748,103 @@ export default function StaffDashboard() {
                               <td className="py-4 px-6 text-gray-600">{student.email}</td>
                               <td className="py-4 px-6 text-gray-500 text-xs">{student.dateJoined}</td>
                               <td className="py-4 px-6 text-center">
-                              <span className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                {student.status}
-                              </span>
-                            </td>
+                                <div className="inline-flex">
+                                  <button
+                                    ref={activeStudentMenuId === student.id ? studentMenuTriggerRef : null}
+                                    type="button"
+                                    aria-haspopup="menu"
+                                    aria-expanded={activeStudentMenuId === student.id}
+                                    aria-label={`Enrollment actions for ${student.name}; status ${student.status}`}
+                                    disabled={isUnenrolling || student.status.toLowerCase() !== "enrolled"}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (activeStudentMenuId === student.id) {
+                                        setActiveStudentMenuId(null);
+                                      } else {
+                                        const rect = event.currentTarget.getBoundingClientRect();
+                                        const menuWidth = 176;
+                                        const menuHeight = 92;
+                                        const gap = 8;
+                                        const spaceBelow = window.innerHeight - rect.bottom;
+                                        const openAbove = spaceBelow < menuHeight + gap && rect.top > menuHeight + gap;
+                                        const left = Math.min(
+                                          Math.max(8, rect.right - menuWidth),
+                                          Math.max(8, window.innerWidth - menuWidth - 8)
+                                        );
+                                        const top = openAbove
+                                          ? Math.max(8, rect.top - menuHeight - gap)
+                                          : Math.min(rect.bottom + gap, Math.max(8, window.innerHeight - menuHeight - 8));
+                                        setStudentMenuPosition({ top, left });
+                                        setActiveStudentMenuId(student.id);
+                                      }
+                                    }}
+                                    className={`inline-flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                                      student.status.toLowerCase() === "enrolled"
+                                        ? "text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                                        : "text-gray-600 bg-gray-100 border-gray-200 cursor-default"
+                                    } disabled:opacity-70`}
+                                  >
+                                    {student.status.toLowerCase() === "enrolled" && (
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                    )}
+                                    {student.status}
+                                    {student.status.toLowerCase() === "enrolled" && (
+                                      <span aria-hidden="true" className="ml-0.5">▾</span>
+                                    )}
+                                  </button>
 
-                            <td className="py-4 px-6 text-center">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setStudentToUnenroll(student);
-                                  setIsUnenrollModalOpen(true);
-                                }}
-                                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors cursor-pointer"
-                              >
-                                <UserMinus className="w-4 h-4" />
-                                Unenroll
-                              </button>
-                            </td>
+                                  {activeStudentMenuId === student.id && createPortal(
+                                    <div
+                                      ref={studentMenuRef}
+                                      role="menu"
+                                      aria-label={`Actions for ${student.name}`}
+                                      onMouseDown={(event) => event.stopPropagation()}
+                                      style={{
+                                        position: "fixed",
+                                        top: studentMenuPosition.top,
+                                        left: studentMenuPosition.left,
+                                        width: 176,
+                                        zIndex: 9999,
+                                      }}
+                                      className="bg-white rounded-xl shadow-lg border border-gray-200 py-1 text-left"
+                                    >
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setStudentAction("unenroll");
+                                          setStudentToUnenroll(student);
+                                          setActiveStudentMenuId(null);
+                                        }}
+                                        className="w-full px-3.5 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                      >
+                                        <UserMinus className="w-4 h-4 text-gray-500" />
+                                        Unenroll
+                                      </button>
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setStudentAction("drop");
+                                          setStudentToUnenroll(student);
+                                          setActiveStudentMenuId(null);
+                                        }}
+                                        className="w-full px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-gray-100"
+                                      >
+                                        <UserMinus className="w-4 h-4" />
+                                        Drop Student
+                                      </button>
+                                    </div>,
+                                    document.body
+                                  )}
+                                </div>
+                              </td>
                             </tr>
                           ))}
 
                           {filteredStudents.length === 0 && (
                             <tr>
-                              <td colSpan={6} className="py-12 text-center text-gray-500">
+                              <td colSpan={5} className="py-12 text-center text-gray-500">
                                 No enrolled students found matching your search.
                               </td>
                             </tr>

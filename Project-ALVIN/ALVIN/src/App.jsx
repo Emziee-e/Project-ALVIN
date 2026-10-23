@@ -34,7 +34,6 @@ import SystemReport from './pages/Admin/SystemReport.jsx'
 import UserManagement from './pages/Admin/UserManagement.jsx'
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx'
 
-import FloatingButton from './Components/FloatingButton.jsx'
 import WaitingRoom from "./Pages/User/WaitingRoom";
 
 function App() {
@@ -327,10 +326,7 @@ function App() {
             session &&
             (role === 'user' ||
               role === 'student') ? (
-              <div className="relative min-h-screen w-full">
-                <UserDashboard />
-                <FloatingButton />
-              </div>
+              <UserDashboard />
             ) : (
               <Navigate
                 to="/login"
