@@ -35,6 +35,7 @@ import UserManagement from './pages/Admin/UserManagement.jsx'
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx'
 
 import WaitingRoom from "./Pages/User/WaitingRoom";
+import EnrollmentGate from './Components/EnrollmentGate.jsx'
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -320,13 +321,17 @@ function App() {
         {/* PROTECTED STUDENT ROUTES */}
         {/* ============================================= */}
 
+        {/*
+         * All student pages sit behind EnrollmentGate.
+         * Students without an active course enrollment see an
+         * "enrollment required" page instead of the system.
+         */}
         <Route
-          path="/user/dashboard"
           element={
             session &&
             (role === 'user' ||
               role === 'student') ? (
-              <UserDashboard />
+              <EnrollmentGate />
             ) : (
               <Navigate
                 to="/login"
@@ -334,124 +339,52 @@ function App() {
               />
             )
           }
-        />
+        >
+          <Route
+            path="/user/dashboard"
+            element={<UserDashboard />}
+          />
 
-        <Route
-          path="/user/interviews"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <InterviewHistory />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
+          <Route
+            path="/user/interviews"
+            element={<InterviewHistory />}
+          />
 
-        <Route
-          path="/user/interview-results/:sessionId"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <InterviewResults />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
+          <Route
+            path="/user/interview-results/:sessionId"
+            element={<InterviewResults />}
+          />
 
-        <Route
-          path="/user/waiting-room"
-          element={<WaitingRoom />}
-        />
+          <Route
+            path="/user/interview-results"
+            element={<InterviewResults />}
+          />
 
-        <Route
-          path="/user/interview-results"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <InterviewResults />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
+          <Route
+            path="/user/waiting-room"
+            element={<WaitingRoom />}
+          />
 
-        <Route
-          path="/user/settings"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <UserSettings />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
+          <Route
+            path="/user/settings"
+            element={<UserSettings />}
+          />
 
-        <Route
-          path="/user/resume-upload"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <ResumeUpload />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
+          <Route
+            path="/user/resume-upload"
+            element={<ResumeUpload />}
+          />
 
-        <Route
-          path="/user/hardware-check"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <HardwareCheck />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
+          <Route
+            path="/user/hardware-check"
+            element={<HardwareCheck />}
+          />
 
-        <Route
-          path="/user/live-session"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <LiveSession />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
+          <Route
+            path="/user/live-session"
+            element={<LiveSession />}
+          />
+        </Route>
 
         {/* ============================================= */}
         {/* PROTECTED CAREER ADVISOR ROUTES */}
