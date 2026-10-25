@@ -1659,7 +1659,7 @@ export default function StaffDashboard() {
                     </div>
                     <button
                       onClick={() => setIsEnrollModalOpen(true)}
-                      className="flex items-center gap-2 bg-[#862334] text-white px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-[#701c2b] transition-all shadow-xs cursor-pointer"
+                      className="flex items-center gap-2 bg-[#862334] text-white px-4 py-2 rounded-xl text-sm font-bold font-Geist hover:bg-[#701c2b] transition-all shadow-xs active:scale-95 cursor-pointer"
                     >
                       <UserPlus className="w-4 h-4" /> Enroll Student
                     </button>
