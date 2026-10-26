@@ -1,206 +1,132 @@
-import React, { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import React, { useState } from 'react';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
+import { ChevronDown } from 'lucide-react';
 
-// Mock data generator based on report type
-const getMockData = (type) => {
-  switch (type) {
-    case 'Daily':
-      return Array.from({ length: 24 }, (_, i) => ({
-        label: `${i}:00`,
-        x: Math.floor(Math.random() * 10) + 2,
-      }));
-    case 'Monthly':
-      return Array.from({ length: 30 }, (_, i) => ({
-        label: `Day ${i + 1}`,
-        x: Math.floor(Math.random() * 20) + 10,
-      }));
-    case 'Weekly':
-    default:
-      return [
-        { label: 'MON', x: 8 },
-        { label: 'TUE', x: 5 },
-        { label: 'WED', x: 9 },
-        { label: 'THU', x: 7 },
-        { label: 'FRI', x: 6 },
-        { label: 'SAT', x: 9 },
-        { label: 'SUN', x: 8 },
-      ];
-  }
-};
+const WEEKLY_USER_DATA = [
+  { label: 'MON', weekly: 12, monthly: 28 },
+  { label: 'TUE', weekly: 15, monthly: 30 },
+  { label: 'WED', weekly: 18, monthly: 35 },
+  { label: 'THU', weekly: 20, monthly: 40 },
+  { label: 'FRI', weekly: 16, monthly: 38 },
+  { label: 'SAT', weekly: 22, monthly: 42 },
+  { label: 'SUN', weekly: 20, monthly: 40 },
+];
 
-export default function BarCharts({ reportType = 'Weekly', ...props }) {
-  const data = useMemo(() => getMockData(reportType), [reportType]);
-  const barCategoryGap = props?.barCategoryGap ?? 0.1;
-  const barGap = props?.barGap ?? 0.1;
+const MONTHLY_USER_DATA = [
+  { label: 'Week 1', weekly: 14, monthly: 25 },
+  { label: 'Week 2', weekly: 18, monthly: 32 },
+  { label: 'Week 3', weekly: 20, monthly: 40 },
+  { label: 'Week 4', weekly: 25, monthly: 48 },
+];
 
-  // Adjust bar size based on data volume
-  const barSize = reportType === 'Daily' ? 20 : reportType === 'Monthly' ? 15 : 100;
+export default function barChart() {
+  const [timeframe, setTimeframe] = useState('Weekly');
+  const data = timeframe === 'Weekly' ? WEEKLY_USER_DATA : MONTHLY_USER_DATA;
 
   return (
-    <div className="w-full h-[400px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          barCategoryGap={`${barCategoryGap * 100}%`}
-          barGap={`${barGap * 100}%`}
-          margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
-        >
-          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e5e5" />
-          <XAxis
-            dataKey="label"
-            axisLine={{ stroke: '#9ca3af' }}
-            tickLine={false}
-            tick={{ fill: '#6b7280', fontSize: reportType === 'Weekly' ? 12 : 10 }}
-          />
-          <YAxis
-            axisLine={{ stroke: '#9ca3af' }}
-            tickLine={false}
-            tick={{ fill: '#6b7280', fontSize: 12 }}
-          />
-          <Tooltip
-            cursor={{ fill: '#f3f4f6', stroke: '#d1d5db', strokeWidth: 2 }}
-            contentStyle={{
-              backgroundColor: '#ffffff',
-              border: '1px solid #e5e5e5',
-              borderRadius: '8px',
-              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-            }}
-            formatter={(value) => [`x : ${value}`, '']}
-          />
-          <Bar
-            dataKey="x"
-            fill="#862334"
-            isAnimationActive={true}
-            barSize={barSize}
-            radius={[0, 0, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="w-full flex flex-col h-full">
+      {/* Chart Header */}
+      <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-white">
+        <h3 className="text-lg font-bold font-[Geist,Inter] text-black">
+          User Activity Trend
+        </h3>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#862334]"></span>
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                Weekly (20)
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFB003]"></span>
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                Monthly (40)
+              </span>
+            </div>
+          </div>
+
+          <div className="relative group">
+            <select
+              value={timeframe}
+              onChange={(e) => setTimeframe(e.target.value)}
+              className="appearance-none bg-white text-gray-700 text-[10px] font-Inter font-bold py-2 px-4 pr-10 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-300 cursor-pointer uppercase tracking-wider transition-all hover:bg-gray-50"
+            >
+              <option value="Weekly">Weekly</option>
+              <option value="Monthly">Monthly</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors group-hover:text-gray-600" />
+          </div>
+        </div>
+      </div>
+
+      {/* Area Chart Container */}
+      <div className="p-6 w-full h-[400px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+            <defs>
+              <linearGradient id="colorWeekly" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#862334" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#862334" stopOpacity={0.0} />
+              </linearGradient>
+              <linearGradient id="colorMonthly" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#FFB003" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#FFB003" stopOpacity={0.0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e5e5" />
+            <XAxis
+              dataKey="label"
+              axisLine={{ stroke: '#9ca3af' }}
+              tickLine={false}
+              tick={{ fill: '#6b7280', fontSize: 12 }}
+            />
+            <YAxis
+              axisLine={{ stroke: '#9ca3af' }}
+              tickLine={false}
+              tick={{ fill: '#6b7280', fontSize: 12 }}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e5e5e5',
+                borderRadius: '8px',
+                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                fontSize: '12px',
+              }}
+              formatter={(value, name) => [
+                `${value} Active Users`,
+                name === 'weekly' ? 'Weekly Active' : 'Monthly Active',
+              ]}
+            />
+            <Area
+              type="monotone"
+              dataKey="monthly"
+              stroke="#FFB003"
+              strokeWidth={2.5}
+              fillOpacity={1}
+              fill="url(#colorMonthly)"
+            />
+            <Area
+              type="monotone"
+              dataKey="weekly"
+              stroke="#862334"
+              strokeWidth={2.5}
+              fillOpacity={1}
+              fill="url(#colorWeekly)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
-  );
-}
-
-/**
- * Renders a simple form to control the band scale properties.
- * Each property is a slider input, ranging from 0 to 1 in 0.01 steps.
- * Calls onChange with the new values when an input changes.
- * @param onChange
- * @param sessionStoreValues data from session storage, or null if this is the first visit
- */
-export function BarAlignControls({ onChange, sessionStoreValues }) {
-  const [state, setState] = React.useState(
-    sessionStoreValues ?? {
-      paddingInner: 0,
-      paddingOuter: 0.8,
-      align: 0.7,
-      barGap: 0.1,
-      barCategoryGap: 0.1,
-    },
-  );
-
-  const handleChange = (key, value) => {
-    const newState = { ...state, [key]: value };
-    setState(newState);
-    onChange(newState);
-  };
-
-  // Emit initial state only on mount so the chart is correct
-  React.useEffect(() => {
-    onChange(state);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <form>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <tbody>
-          <tr>
-            <td style={{ padding: '8px' }}>
-              <label htmlFor="bar-align-bar-gap">BarChart.barGap</label>
-            </td>
-            <td style={{ padding: '8px' }}>
-              <input
-                id="bar-align-bar-gap"
-                type="range"
-                min="0"
-                max="0.5"
-                step="0.01"
-                value={state.barGap}
-                onChange={e => handleChange('barGap', parseFloat(e.target.value))}
-              />
-            </td>
-            <td style={{ padding: '8px' }}>{`${(state.barGap * 100).toFixed(0)}%`}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '8px' }}>
-              <label htmlFor="bar-align-bar-category-gap">BarChart.barCategoryGap</label>
-            </td>
-            <td style={{ padding: '8px' }}>
-              <input
-                id="bar-align-bar-category-gap"
-                type="range"
-                min="0"
-                max="0.5"
-                step="0.01"
-                value={state.barCategoryGap}
-                onChange={e => handleChange('barCategoryGap', parseFloat(e.target.value))}
-              />
-            </td>
-            <td style={{ padding: '8px' }}>{`${(state.barCategoryGap * 100).toFixed(0)}%`}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '8px' }}>
-              <label htmlFor="bar-align-padding-inner">bandScale.paddingInner</label>
-            </td>
-            <td style={{ padding: '8px' }}>
-              <input
-                id="bar-align-padding-inner"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={state.paddingInner}
-                onChange={e => handleChange('paddingInner', parseFloat(e.target.value))}
-              />
-            </td>
-            <td style={{ padding: '8px' }}>{state.paddingInner.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '8px' }}>
-              <label htmlFor="bar-align-padding-outer">bandScale.paddingOuter</label>
-            </td>
-            <td style={{ padding: '8px' }}>
-              <input
-                id="bar-align-padding-outer"
-                type="range"
-                min="0"
-                max="10"
-                step="0.01"
-                value={state.paddingOuter}
-                onChange={e => handleChange('paddingOuter', parseFloat(e.target.value))}
-              />
-            </td>
-            <td style={{ padding: '8px' }}>{state.paddingOuter.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: '8px' }}>
-              <label htmlFor="bar-align-align">bandScale.align</label>
-            </td>
-            <td style={{ padding: '8px' }}>
-              <input
-                id="bar-align-align"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={state.align}
-                onChange={e => handleChange('align', parseFloat(e.target.value))}
-              />
-            </td>
-            <td style={{ padding: '8px' }}>{state.align.toFixed(2)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </form>
   );
 }

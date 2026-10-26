@@ -323,7 +323,7 @@ export default function AvatarManagement() {
         </aside>
 
         {/* ── Main Content ── */}
-        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen min-w-0">
+        <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
             {/* Same generous padding as User Management and System Report */}
             <div className="px-12 sm:px-16 md:px-20 lg:px-28 py-8 space-y-8 w-full">
