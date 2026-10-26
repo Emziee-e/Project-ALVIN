@@ -9,7 +9,7 @@ import {
   Calendar,
   GraduationCap,
 } from "lucide-react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useParams } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
 import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
@@ -20,75 +20,20 @@ const navItems = [
   { id: "interviews", label: "Interviews", path: "/user/interviews", icon: Mic },
 ];
 
-const rubrics = [
-  { label: "Behavior", number: "01", score: 85 },
-  { label: "Communication", number: "02", score: 70 },
-  { label: "Confidence", number: "03", score: 90 },
-];
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-const actionItems = [
-  {
-    num: "01",
-    text: (
-      <>
-        Avoid filler words like “um” or “uh” to{" "}
-        <strong className="text-black">improve clarity</strong>.
-      </>
-    ),
-  },
-  {
-    num: "02",
-    text: (
-      <>
-        Maintain <strong className="text-black">steady eye contact</strong> and a{" "}
-        <strong className="text-black">confident posture</strong>.
-      </>
-    ),
-  },
-  {
-    num: "03",
-    text: (
-      <>
-        Practice keeping your answers under{" "}
-        <strong className="text-black">2 minutes</strong> to maintain engagement.
-      </>
-    ),
-  },
-  {
-    num: "04",
-    text: (
-      <>
-        Use <strong className="text-black">specific examples and metrics</strong>{" "}
-        to support your points.
-      </>
-    ),
-  },
-];
-
-const questions = [
-  {
-    question:
-      '"Can you briefly introduce yourself and walk me through your background?"',
-    answer:
-      '"I’m a full-stack developer with a strong focus on backend systems and scalable architectures. I recently worked at DataCore Solutions, where I contributed to building APIs that handled high-volume requests. I’ve worked with technologies like Node.js, PostgreSQL, and Docker, and I’m particularly interested in designing efficient systems that can scale reliably."',
-    critique:
-      '"Your introduction is clear and well-structured, and you highlighted relevant technologies effectively. However, it would be stronger if you included a specific achievement or measurable impact to make your profile more memorable."',
-    highlight: true,
-  },
-  {
-    question:
-      '"Tell me about yourself and what makes you a good fit for this role."',
-    answer:
-      '"I’m a software engineer with experience in building web applications and working in agile teams. In my previous role at DevLink, I worked on improving frontend performance and collaborated closely with backend engineers to optimize API usage. I enjoy solving performance-related problems and continuously improving user experience."',
-    critique:
-      '"You demonstrated strong alignment with the role and emphasized collaboration well. To improve, consider tailoring your answer more specifically to the company and including a concrete example of impact, such as performance improvements or user metrics."',
-    highlight: false,
-  },
-];
+const APP_API_KEY =
+  import.meta.env.VITE_APP_API_KEY || "";
 
 export default function InterviewResults() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { sessionId } = useParams();
+
+  const [results, setResults] = useState(null);
+  const [resultsLoading, setResultsLoading] = useState(true);
+  const [resultsError, setResultsError] = useState("");
 
   const [activeNav, setActiveNav] = useState("interviews");
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
@@ -169,6 +114,52 @@ export default function InterviewResults() {
     }
   }, [location.pathname]);
 
+  useEffect(() => {
+    let active = true;
+
+    const fetchResults = async () => {
+      if (!sessionId) {
+        setResultsError("Missing interview session ID.");
+        setResultsLoading(false);
+        return;
+      }
+
+      try {
+        setResultsLoading(true);
+        setResultsError("");
+
+        const response = await fetch(
+          `${API_BASE_URL}/api/interview/results/${encodeURIComponent(sessionId)}`,
+          { headers: { "X-API-Key": APP_API_KEY } }
+        );
+
+        if (!response.ok) {
+          let detail = `Request failed (${response.status})`;
+          try {
+            const data = await response.json();
+            detail = data.detail || detail;
+          } catch {}
+          throw new Error(detail);
+        }
+
+        const data = await response.json();
+        if (active) setResults(data);
+      } catch (error) {
+        console.error("Failed to load interview results:", error);
+        if (active) {
+          setResultsError(error?.message || "Failed to load interview results.");
+        }
+      } finally {
+        if (active) setResultsLoading(false);
+      }
+    };
+
+    fetchResults();
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
+
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -178,6 +169,42 @@ export default function InterviewResults() {
       console.error("Error signing out:", error.message);
     }
   };
+
+  if (resultsLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-white">
+        <div className="text-center">
+          <p className="font-Geist font-bold uppercase tracking-widest text-[#862334]">Loading Interview Results</p>
+          <p className="font-Inter text-sm text-[#4b5563] mt-3">Preparing your evaluation report...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (resultsError || !results) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-white">
+        <div className="text-center max-w-lg px-6">
+          <h2 className="font-Geist text-2xl font-bold mb-3">Results Unavailable</h2>
+          <p className="font-Inter text-[#4b5563] mb-6">
+            {resultsError || "The interview results could not be loaded."}
+          </p>
+          <button
+            onClick={() => navigate("/user/interviews")}
+            className="px-6 py-3 bg-[#862334] text-white font-Geist font-bold uppercase text-xs tracking-widest"
+          >
+            Interview History
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const evaluationAvailable = results.evaluation_available !== false;
+  const overallScore = Math.round(results.overall_rating || 0);
+  const rubrics = results.rubrics || [];
+  const questions = results.questions || [];
+  const recommendations = results.recommendations || [];
 
   return (
     <>
@@ -373,14 +400,11 @@ export default function InterviewResults() {
                     Session Result //
                   </h2>
                   <div className="text-[110px] sm:text-[130px] font-Geist font-bold leading-none tracking-tighter text-black">
-                    84<span className="text-[#862334]">%</span>
+                    {evaluationAvailable ? overallScore : "N/A"}<span className="text-[#862334]">{evaluationAvailable ? "%" : ""}</span>
                   </div>
                   <div className="flex items-center gap-4 mt-4 flex-wrap">
                     <span className="bg-[#862334] text-white px-5 py-1 text-xs font-bold uppercase tracking-widest rounded-sm">
-                      Status: Pass
-                    </span>
-                    <span className="text-[#4b5563] text-xs font-medium font-Inter">
-                      Session duration: 42m 12s
+                      Interview Completed
                     </span>
                   </div>
                 </div>
@@ -399,25 +423,25 @@ export default function InterviewResults() {
 
               {/* Rubric Breakdown */}
               <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-                {rubrics.map((r) => (
+                {rubrics.map((r, index) => (
                   <div
                     key={r.label}
                     className="bg-white border border-[#e5e5e5] p-6 rounded-xl relative overflow-hidden group shadow-sm hover:border-gray-300 transition-all"
                   >
                     <div className="relative z-10">
                       <p className="text-[#4b5563] font-Inter uppercase text-[11px] tracking-widest mb-1 font-medium">
-                        Rubric {r.number}
+                        Rubric {String(index + 1).padStart(2, "0")}
                       </p>
                       <h3 className="text-xl font-Geist font-bold mb-4">
                         {r.label}
                       </h3>
                       <div className="text-3xl font-Geist font-bold mb-3 text-[#862334]">
-                        {r.score}%
+                        {evaluationAvailable ? `${Math.round(r.score || 0)}%` : "N/A"}
                       </div>
                       <div className="h-1.5 w-full bg-[#f0f0f0] rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[#862334] rounded-full"
-                          style={{ width: `${r.score}%` }}
+                          style={{ width: `${evaluationAvailable ? `${Math.round(r.score || 0)}%` : "N/A"}` }}
                         />
                       </div>
                     </div>
@@ -434,7 +458,7 @@ export default function InterviewResults() {
                       Transcript <span className="text-[#862334]">&amp;</span> Feedback
                     </h2>
                     <span className="bg-gray-50 border border-[#e5e5e5] px-3 py-1 text-xs font-Inter font-medium uppercase text-[#4b5563] rounded-full">
-                      2 Questions Total
+                      {questions.length} {questions.length === 1 ? "Question" : "Questions"} Total
                     </span>
                   </div>
 
@@ -443,7 +467,7 @@ export default function InterviewResults() {
                       <div
                         key={i}
                         className={`border-l-4 pl-6 py-1 relative ${
-                          q.highlight ? "border-[#862334]" : "border-gray-200"
+                          i === 0 ? "border-[#862334]" : "border-gray-200"
                         }`}
                       >
                         <h4 className="text-[#4b5563] font-Inter uppercase text-[11px] tracking-wider mb-2 font-semibold">
@@ -485,13 +509,13 @@ export default function InterviewResults() {
                       Key Recommendations
                     </h3>
                     <ul className="space-y-5 p-0 m-0 list-none">
-                      {actionItems.map((item) => (
-                        <li key={item.num} className="flex gap-3">
+                      {recommendations.map((recommendation, index) => (
+                        <li key={index} className="flex gap-3">
                           <span className="text-[#862334] font-Geist font-bold text-xs flex-shrink-0 mt-0.5">
-                            {item.num}
+                            {String(index + 1).padStart(2, "0")}
                           </span>
                           <p className="text-xs text-[#4b5563] leading-relaxed font-Inter">
-                            {item.text}
+                            {recommendation}
                           </p>
                         </li>
                       ))}

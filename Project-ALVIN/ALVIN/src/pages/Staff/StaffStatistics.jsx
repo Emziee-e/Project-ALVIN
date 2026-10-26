@@ -12,6 +12,10 @@ import {
   Download,
   CheckCircle2,
   Send,
+  Mic,
+  FileBarChart,
+  Users,
+  TrendingUp,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
@@ -455,9 +459,98 @@ export default function StaffStatistics() {
 
       {/* Main Container */}
       <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
-        <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10">
+        <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8">
+
+          {/* ========================================================= */}
+          {/* 4-COLUMN KPI METRIC CARDS                                  */}
+          {/* ========================================================= */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
+
+            {/* CARD 1: Total Mock Interviews */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Total Mock Interviews
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    12,842
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
+                  <Mic className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] font-medium mt-3">
+                <span className="text-emerald-600 font-bold">+12%</span>
+                <span className="text-gray-400">this week</span>
+              </div>
+            </div>
+
+            {/* CARD 2: Job Readiness Rate */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Job Readiness Rate
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    78.4%
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
+                  <FileBarChart className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium mt-3">
+                <span>Scored 80%+ on last attempt</span>
+              </div>
+            </div>
+
+            {/* CARD 3: Avg. Skill Improvement */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Avg. Improvement
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    +16.2%
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium mt-3">
+                <span>Between 1st & latest attempt</span>
+              </div>
+            </div>
+
+            {/* CARD 4: Requires Coaching */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Requires Coaching
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    48
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-[#862334]">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-500 text-[11px] font-semibold mt-3">
+                <span>Students scoring below 60%</span>
+              </div>
+            </div>
+
+          </div>
+
           {/* Overall Performance Section */}
-          <div className="mb-12 no-print">
+          <div className="no-print">
             <div className="bg-white rounded-lg border border-[#e5e5e5] p-8">
               <OverallStats />
             </div>

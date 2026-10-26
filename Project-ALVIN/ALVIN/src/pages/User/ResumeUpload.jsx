@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
-import {FileText,UploadCloud,Target,Briefcase,AlertCircle} from 'lucide-react';
+import { ChevronRight, FileText, UploadCloud, Target, Briefcase, AlertCircle, Loader2 } from 'lucide-react';
 import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
 import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
-export default function ResumeUpload() { 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "6d97711b9f2dc929bba9df972cca981c42f929c6a96861b205dac5b762d04ebd";
+
+export default function ResumeUpload() {
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
+
   const [role, setRole] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [fileName, setFileName] = useState(null);
+  const [file, setFile] = useState(null);
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
 
   useEffect(() => {
@@ -49,28 +54,73 @@ export default function ResumeUpload() {
     e.preventDefault();
     setDragOver(false);
     setError("");
-    const file = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
-    if (file && file.type === "application/pdf") {
-      setFileName(file.name);
-    } else if (file) {
+
+    const uploadedFile = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
+
+    if (uploadedFile && uploadedFile.type === "application/pdf") {
+      setFile(uploadedFile);
+    } else if (uploadedFile) {
       setError("Please upload a PDF file.");
     }
   };
 
-  const handleInitialize = () => {
-    if (!fileName) {
+  const handleInitialize = async () => {
+    if (!file) {
       setError("Please upload your resume before proceeding to the interview.");
       return;
     }
-    navigate('/user/hardware-check');
+    if (!role.trim()) {
+      setError("Please enter your target job role.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+      formData.append("job_description", role);
+
+      const response = await fetch(`${API_BASE_URL}/api/interview/start-navtalk-session`, {
+        method: "POST",
+        headers: { "X-API-Key": APP_API_KEY },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to initialize session. Please check backend logs.");
+      }
+
+      const sessionData = await response.json();
+
+      if (!sessionData?.session_id) {
+        throw new Error("Backend did not return a valid NavTalk session configuration.");
+      }
+
+      navigate('/user/hardware-check', {
+        state: {
+          sessionData,
+          role,
+          fileName: file.name
+        }
+      });
+
+    } catch (err) {
+      console.error("Initialization error:", err);
+      setError(err.message || "Failed to initialize interview session.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <>
-
+      {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
       <div className="flex min-h-screen bg-white text-black font-Geist">
+        {/* Modal */}
         <SignOutModal
           isOpen={isSignOutModalOpen}
           onClose={() => setIsSignOutModalOpen(false)}
@@ -80,25 +130,26 @@ export default function ResumeUpload() {
         {/* ── Main ── */}
         <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
 
-          {/* Top Header */}
+          {/* Top Header (Original No-Sidebar Layout) */}
           <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
             <div className="flex items-center">
               <Link to="/user/dashboard" className="inline-flex items-center gap-0">
-                <img src={Logo} alt="Alvin logo" className="h-9 w-auto flex-shrink-0 block" />
-                <div className="hidden sm:flex h-9 items-center text-maroon font-Geist text-[2rem] leading-none tracking-[-0.05em] uppercase whitespace-nowrap">
-                  LVIN
-                </div>
+                <img src={Logo} alt="Alvin logo" className="h-14 w-auto flex-shrink-0 block" />
               </Link>
             </div>
 
             <div className="flex items-center gap-6">
-              {avatarUrl && (
+              {avatarUrl ? (
                 <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
                   <img
                     src={avatarUrl}
                     alt="User avatar"
                     className="w-full h-full object-cover"
                   />
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex items-center justify-center text-[#862334] text-xs font-bold font-[Space_Grotesk,sans-serif]">
+                  VN
                 </div>
               )}
             </div>
@@ -107,7 +158,6 @@ export default function ResumeUpload() {
           {/* ── SessionSetup Main Content ── */}
           <div className="flex-1 overflow-y-auto px-8 md:px-24 py-12 w-full">
             <div className="max-w-[1200px] mx-auto">
-
 
               {/* Bento Grid */}
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
@@ -135,9 +185,9 @@ export default function ResumeUpload() {
                         <UploadCloud size={40} className={`transition-colors ${dragOver ? "text-[#862334]" : "text-[#4a4a4a]"}`} />
                       </div>
 
-                      {fileName ? (
+                      {file ? (
                         <>
-                          <h4 className="font-[Space_Grotesk,sans-serif] text-lg font-medium mb-1 text-[#862334]">{fileName}</h4>
+                          <h4 className="font-[Space_Grotesk,sans-serif] text-lg font-medium mb-1 text-[#862334]">{file.name}</h4>
                           <p className="font-[Manrope,sans-serif] text-sm text-[#4a4a4a] opacity-70">File ready for analysis</p>
                         </>
                       ) : (
@@ -185,6 +235,7 @@ export default function ResumeUpload() {
                             onChange={e => setRole(e.target.value)}
                             placeholder="e.g., Junior Software Engineer"
                             className="w-full bg-[#f9f9f9] border border-[#e5e5e5] focus:ring-1 focus:ring-[#862334] focus:outline-none py-4 px-4 text-black placeholder:text-[#d1d1d1] font-Inter transition-all rounded-[2px]"
+                            disabled={isLoading}
                           />
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40">
                             <Briefcase size={20} className="text-[#4a4a4a]" />
@@ -214,9 +265,17 @@ export default function ResumeUpload() {
                       )}
                       <button
                         onClick={handleInitialize}
-                        className="w-full py-5 bg-maroon hover:bg-[#ffb003] text-white font-Geist font-black text-lg tracking-tight hover:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 rounded-[2px] uppercase"
+                        disabled={isLoading}
+                        className="w-full py-5 bg-[#862334] hover:bg-[#ffb003] disabled:bg-gray-400 text-white font-Geist font-black text-lg tracking-tight hover:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 rounded-[2px] uppercase cursor-pointer"
                       >
-                        Initialize Interview
+                        {isLoading ? (
+                          <>
+                            <Loader2 className="animate-spin" size={20} />
+                            Analyzing Resume...
+                          </>
+                        ) : (
+                          "Initialize Interview"
+                        )}
                       </button>
                     </div>
                     <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-gradient-to-br from-[#862334] via-transparent to-[#ffb003]" />
@@ -228,6 +287,7 @@ export default function ResumeUpload() {
           </div>
         </main>
 
+        {/* Decorative glow */}
         <div
           className="fixed top-0 right-0 w-[60vw] h-[614px] pointer-events-none -z-10 opacity-10"
           style={{ background: "radial-gradient(ellipse at top right, rgba(134,35,52,0.15) 0%, transparent 70%)" }}

@@ -31,33 +31,34 @@ function HowItWorks() {
   const [ref, isInView] = useInView();
 
   return (
-    <section id="how-it-works" className="relative py-16 md:py-24 lg:py-32 bg-[#F5F0E6] text-[#111827] overflow-hidden border-t border-[#EAE5D9]">
-
-      {/* Soft Ambient Glow */}
+    <section
+      id="how-it-works"
+      className="relative py-16 md:py-24 lg:py-32 bg-[#2D0C13] text-white overflow-hidden border-t border-[#862334]/30"
+    >
+      {/* Soft Ambient Radial Glow - Warm Amber Accent */}
       <div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-96 pointer-events-none rounded-full blur-[120px]"
         style={{
-          background: "radial-gradient(circle, rgba(217, 119, 6, 0.08) 0%, transparent 70%)"
+          background:
+            "radial-gradient(circle, rgba(255, 176, 3, 0.12) 0%, transparent 70%)",
         }}
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-16 md:mb-20">
-
-          {/* Geist Mono Label Header */}
-          <div className="inline-flex items-center justify-center gap-2 text-xs font-mono uppercase tracking-widest text-[#862334] mb-4 font-semibold">
+          {/* Amber Monospace Header Label */}
+          <div className="inline-flex items-center justify-center gap-2 text-xs font-mono uppercase tracking-widest text-[#FFB003] mb-4 font-semibold">
             <span>02</span>
-            <span className="w-6 h-px bg-[#862334]/40" />
+            <span className="w-6 h-px bg-[#FFB003]/40" />
             <span>HOW IT WORKS</span>
           </div>
 
-          <h2 className="font-Geist text-3xl md:text-4xl lg:text-5xl font-black text-[#111827] mt-2 mb-6 text-balance tracking-tight">
-            Your Path to <span className="text-[#862334]">Interview Success</span>
+          <h2 className="font-Geist text-3xl md:text-4xl lg:text-5xl font-black text-white mt-2 mb-6 text-balance tracking-tight">
+            Your Path to <span className="text-[#FFB003]">Interview Success</span>
           </h2>
 
-          <p className="font-Inter text-base sm:text-lg text-[#4B5563] text-pretty leading-relaxed max-w-2xl mx-auto">
+          <p className="font-Inter text-base sm:text-lg text-gray-300 text-pretty leading-relaxed max-w-2xl mx-auto">
             Getting started with ALVIN is simple. Follow these four steps
             and start acing your interviews.
           </p>
@@ -65,11 +66,10 @@ function HowItWorks() {
 
         {/* Steps Container */}
         <div className="relative" ref={ref}>
-
-          {/* Waveform Line precisely connecting directly into Step 04 box */}
+          {/* Waveform Line - Light Amber with High Opacity */}
           <div className="hidden lg:flex absolute top-[16px] left-[12.5%] right-[6.5%] h-[32px] items-center justify-between pointer-events-none z-10">
             <svg
-              className="w-full h-full text-[#862334]/45 overflow-visible"
+              className="w-full h-full text-[#FFB003]/60 overflow-visible"
               viewBox="0 0 1080 40"
               fill="none"
               preserveAspectRatio="none"
@@ -82,7 +82,8 @@ function HowItWorks() {
                 style={{
                   strokeDasharray: 1080,
                   strokeDashoffset: isInView ? 0 : 1080,
-                  transition: "stroke-dashoffset 2.4s cubic-bezier(0.25, 1, 0.5, 1)",
+                  transition:
+                    "stroke-dashoffset 2.4s cubic-bezier(0.25, 1, 0.5, 1)",
                 }}
               />
             </svg>
@@ -98,19 +99,20 @@ function HowItWorks() {
                   key={index}
                   className="flex flex-col items-center text-center group"
                 >
-                  {/* Step Badge */}
+                  {/* Step Badge - Dark Glass Base with Amber/White Borders */}
                   <div
-                    className={`w-16 h-16 rounded-2xl bg-[#F5F0E6] border-2 flex items-center justify-center mb-6 relative z-20 shadow-2xs transition-all duration-800 ${
+                    className={`w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border-2 flex items-center justify-center mb-6 relative z-20 shadow-lg transition-all duration-800 ${
                       isInView
-                        ? "opacity-100 translate-x-0 border-[#862334]"
-                        : "opacity-0 -translate-x-8 border-[#862334]/20"
+                        ? "opacity-100 translate-x-0 border-[#FFB003]"
+                        : "opacity-0 -translate-x-8 border-white/20"
                     }`}
                     style={{
                       transitionDelay: `${lineSyncDelay}ms`,
-                      transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)"
+                      transitionTimingFunction:
+                        "cubic-bezier(0.16, 1, 0.3, 1)",
                     }}
                   >
-                    <span className="text-base font-bold font-mono text-[#862334]">
+                    <span className="text-base font-bold font-mono text-[#FFB003]">
                       {item.step}
                     </span>
                   </div>
@@ -118,18 +120,21 @@ function HowItWorks() {
                   {/* Content Box */}
                   <div
                     className={`max-w-xs flex flex-col items-center transition-all duration-800 ${
-                      isInView ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-8"
+                      isInView
+                        ? "opacity-100 translate-x-0"
+                        : "opacity-0 -translate-x-8"
                     }`}
                     style={{
                       transitionDelay: `${lineSyncDelay + 150}ms`,
-                      transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)"
+                      transitionTimingFunction:
+                        "cubic-bezier(0.16, 1, 0.3, 1)",
                     }}
                   >
-                    <h3 className="text-lg font-bold font-Geist text-[#111827] mb-3">
+                    <h3 className="text-lg font-bold font-Geist text-white mb-3">
                       {item.title}
                     </h3>
 
-                    <p className="font-Inter text-[#4B5563] text-sm leading-relaxed">
+                    <p className="font-Inter text-gray-300 text-sm leading-relaxed">
                       {item.description}
                     </p>
                   </div>
@@ -137,9 +142,7 @@ function HowItWorks() {
               );
             })}
           </div>
-
         </div>
-
       </div>
     </section>
   );

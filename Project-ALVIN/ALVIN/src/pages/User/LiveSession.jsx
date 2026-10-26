@@ -1,187 +1,3283 @@
-import { useState, useEffect, useRef } from "react";
-import { Mic, MicOff, Video, VideoOff, Smartphone, MoreVertical, LayoutDashboard, Settings, LogOut, MessageSquare, Play, Square, Signal, Camera } from 'lucide-react';
-import Logo from '/images/Alvin-logo.png';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  LogOut,
+  Sparkles,
+  AlertCircle,
+  AlertTriangle,
+} from "lucide-react";
+import Logo from "/images/Alvin-logo.png";
+import { useNavigate, useLocation } from "react-router-dom";
 import EndSessionModal from "../../Components/EndSessionModal";
 import Loading from "../../Components/Loading";
 
-const transcript = [
-  {
-    speaker: "ALVIN",
-    time: "14:02:10",
-    text: "Can you briefly introduce yourself and walk me through your background?",
-    isAlvin: true,
-  },
-  {
-    speaker: "YOU",
-    time: "14:02:45",
-    text: "I’m a full-stack developer with a strong focus on backend systems and scalable architectures. I recently worked at DataCore Solutions, where I contributed to building APIs that handled high-volume requests. I’ve worked with technologies like Node.js, PostgreSQL, and Docker, and I’m particularly interested in designing efficient systems that can scale reliably.",
-    isAlvin: false,
-  },
-  {
-    speaker: "ALVIN",
-    time: "14:03:12",
-    text: "Tell me about yourself and what makes you a good fit for this role?",
-    isAlvin: true,
-  },
-];
+const NavTalkMessageType = Object.freeze({
+  CONNECTED_SUCCESS: "conversation.connected.success",
+  CONNECTED_FAIL: "conversation.connected.fail",
+  CONNECTED_CLOSE: "conversation.connected.close",
+  CONNECTED_WARNING: "conversation.connected.warning",
+  INSUFFICIENT_BALANCE: "conversation.connected.insufficient_balance",
+  GPU_FULL: "conversation.connected.gpu_full",
+  CONNECTION_LIMIT_EXCEEDED:
+    "conversation.connected.connection_limit_exceeded",
+  BACKEND_ERROR: "conversation.connected.backend_error",
 
-const metrics = [
-  { label: "Confidence Score", value: "94%", accent: true },
-  { label: "Sentiment", value: "Positive", accent: false },
-  { label: "Clarity", value: "High", accent: false },
-  { label: "Keywords", value: "Innovation, Scale", accent: false },
-];
+  SESSION_CREATED: "realtime.session.created",
+  SESSION_UPDATED: "realtime.session.updated",
+  INPUT_CONFIG: "realtime.input_config",
+  REALTIME_STATUS: "realtime.status",
+
+  WEB_RTC_OFFER: "webrtc.signaling.offer",
+  WEB_RTC_ANSWER: "webrtc.signaling.answer",
+  WEB_RTC_ICE_CANDIDATE: "webrtc.signaling.iceCandidate",
+
+  SPEECH_STARTED: "realtime.input_audio_buffer.speech_started",
+  SPEECH_STOPPED: "realtime.input_audio_buffer.speech_stopped",
+  INPUT_AUDIO_TRANSCRIPTION_COMPLETED:
+    "realtime.conversation.item.input_audio_transcription.completed",
+
+  RESPONSE_AUDIO_DELTA: "realtime.response.audio.delta",
+  RESPONSE_AUDIO_TRANSCRIPT_DELTA: "realtime.response.audio_transcript.delta",
+  RESPONSE_AUDIO_DONE: "realtime.response.audio.done",
+
+  INPUT_AUDIO_BUFFER_APPEND: "realtime.input_audio_buffer.append",
+});
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
+const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
+
+const CANDIDATE_FINALIZATION_GRACE_MS = 150;
+const CANDIDATE_LOCAL_SILENCE_MS = 900;
+const CANDIDATE_TRANSCRIPT_SETTLE_MS = 1800;
+const CANDIDATE_SPEECH_RMS_THRESHOLD = 0.012;
+
+// Detect when NavTalk WebRTC audio has actually stopped playing.
+const AVATAR_AUDIO_RMS_THRESHOLD = 0.0015;
+const AVATAR_END_SILENCE_MS = 800;
+const AVATAR_POST_DONE_MIN_WAIT_MS = 350;
+const AVATAR_PLAYBACK_CHECK_MS = 100;
+const AVATAR_ESTIMATED_CHARS_PER_SECOND = 15;
+const AVATAR_MIN_TURN_MS = 1200;
+const CLOSING_GRACE_MS = 4000;
+
+function floatTo16BitPCM(float32Array) {
+  const buffer = new ArrayBuffer(float32Array.length * 2);
+  const view = new DataView(buffer);
+
+  for (let i = 0; i < float32Array.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32Array[i]));
+
+    view.setInt16(
+      i * 2,
+      s < 0 ? s * 0x8000 : s * 0x7fff,
+      true
+    );
+  }
+
+  return buffer;
+}
+
+function appendTranscriptDelta(existingText, deltaText) {
+  const existing = String(existingText || "");
+  const delta = String(deltaText || "");
+
+  if (!delta) return existing;
+  if (!existing) return delta;
+
+  const prev = existing.slice(-1);
+  const next = delta.charAt(0);
+
+  // NavTalk/OpenAIRealtime transcript deltas can arrive without the whitespace
+  // that was present in natural speech. Preserve explicit whitespace when it
+  // exists; otherwise add a boundary between word-like chunks.
+  if (/\s/.test(prev) || /\s/.test(next)) {
+    return existing + delta;
+  }
+
+  // No space before punctuation / closing marks.
+  if (/^[,.;:!?%)\]}]/.test(delta)) {
+    return existing + delta;
+  }
+
+  // No space after opening punctuation.
+  if (/[([{]$/.test(existing)) {
+    return existing + delta;
+  }
+
+  // Keep apostrophe contractions/possessives together.
+  if (/^[’']/.test(delta) || /[’']$/.test(existing)) {
+    return existing + delta;
+  }
+
+  // If both sides look like text tokens, NavTalk likely omitted a word boundary.
+  if (/[A-Za-z0-9]$/.test(existing) && /^[A-Za-z0-9]/.test(delta)) {
+    return existing + " " + delta;
+  }
+
+  // A new capitalized word after sentence punctuation needs a space.
+  if (/[.!?]$/.test(existing) && /^[A-Z]/.test(delta)) {
+    return existing + " " + delta;
+  }
+
+  return existing + delta;
+}
+
+function parseGeminiRoadmap(navtalkPrompt) {
+  const prompt = String(navtalkPrompt || "");
+  const roadmap = [];
+
+  const regex =
+    /Q(\d{2}):\s*(.+?)(?:\r?\n)Intent:\s*(.*?)(?=\r?\n\r?\nQ\d{2}:|\r?\n\r?\n#|$)/gs;
+
+  let match;
+  while ((match = regex.exec(prompt)) !== null) {
+    roadmap.push({
+      id: `Q${match[1]}`,
+      question: match[2].trim(),
+      intent: match[3].trim(),
+    });
+  }
+
+  return roadmap;
+}
+
+function normalizeQuestionForMatch(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findClosestGeminiQuestion(spokenQuestion, roadmap) {
+  const spokenTokens = new Set(
+    normalizeQuestionForMatch(spokenQuestion)
+      .split(" ")
+      .filter((word) => word.length > 2)
+  );
+
+  if (!spokenTokens.size || !roadmap?.length) return null;
+
+  let best = null;
+
+  for (const item of roadmap) {
+    const candidateTokens = new Set(
+      normalizeQuestionForMatch(item.question)
+        .split(" ")
+        .filter((word) => word.length > 2)
+    );
+
+    if (!candidateTokens.size) continue;
+
+    let overlap = 0;
+    for (const token of spokenTokens) {
+      if (candidateTokens.has(token)) overlap += 1;
+    }
+
+    const union = new Set([...spokenTokens, ...candidateTokens]).size;
+    const score = union ? overlap / union : 0;
+
+    if (!best || score > best.score) {
+      best = { ...item, score };
+    }
+  }
+
+  return best;
+}
+
+const CLOSING_REGEX =
+  /(that concludes|this concludes|concludes (our|the) interview|end of (our|the) interview|interview is (now )?(complete|over|finished)|thank you for (your time|joining|coming)|best of luck|good luck)/i;
+
+// Closing statements never contain a question mark. That guard prevents a
+// false positive from muting the mic in the middle of the interview.
+function isClosingStatement(text) {
+  const t = String(text || "").trim();
+  return !!t && !t.includes("?") && CLOSING_REGEX.test(t);
+}
+
+const PROMPT_START =
+  /^(please\s+)?(tell|describe|walk|explain|share|give|talk|introduce|discuss|outline|take me|think of|can you|could you|how|what|why|when|where|which|who)\b/i;
+
+function extractDisplayedQuestion(alvinText) {
+  const text = String(alvinText || "").trim();
+  if (!text) return "";
+
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  // 1. The last sentence containing a question mark.
+  for (let i = sentences.length - 1; i >= 0; i -= 1) {
+    if (sentences[i].includes("?")) return sentences[i];
+  }
+
+  // 2. Imperative prompts ("Tell me about...", "Describe...").
+  for (let i = sentences.length - 1; i >= 0; i -= 1) {
+    if (PROMPT_START.test(sentences[i])) {
+      return sentences.slice(i).join(" ");
+    }
+  }
+
+  // 3. Last resort: show the whole turn so the UI never stays stuck.
+  return text.length >= 30 ? text : "";
+}
+
+function base64EncodeAudio(uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+async function fetchNavTalkWsUrl(sessionId) {
+  const body = new FormData();
+  body.append("session_id", sessionId);
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/interview/navtalk-connection`,
+    {
+      method: "POST",
+      headers: {
+        "X-API-Key": APP_API_KEY,
+      },
+      body,
+    }
+  );
+
+  if (!response.ok) {
+    let detail = `Request failed (${response.status})`;
+
+    try {
+      const errorJson = await response.json();
+      detail = errorJson.detail || detail;
+    } catch {
+      // Ignore invalid error JSON.
+    }
+
+    throw new Error(detail);
+  }
+
+  const data = await response.json();
+
+  if (!data.ws_url) {
+    throw new Error("Backend response missing ws_url.");
+  }
+
+  return data.ws_url;
+}
+
+async function postBackend(path, payload) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": APP_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let detail = `Request failed (${response.status})`;
+
+    try {
+      const errorJson = await response.json();
+      detail = errorJson.detail || detail;
+    } catch {
+      // Ignore invalid error JSON.
+    }
+
+    throw new Error(detail);
+  }
+
+  return response.json();
+}
+
+function extractText(value) {
+  if (!value) return "";
+
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (typeof value === "object") {
+    return (
+      value.text ||
+      value.transcript ||
+      value.content ||
+      value.message ||
+      value.value ||
+      ""
+    )
+      .toString()
+      .trim();
+  }
+
+  return "";
+}
+
+function extractCandidateText(data) {
+  const candidates = [
+    data?.data?.transcript,
+    data?.data?.text,
+    data?.data?.content,
+    data?.data?.input?.transcript,
+    data?.data?.audio?.transcript,
+    data?.transcript,
+    data?.text,
+    data?.content,
+  ];
+
+  for (const candidate of candidates) {
+    const text = extractText(candidate);
+
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+
+function extractNavTalkSessionId(message) {
+  const candidates = [
+    message?.session_id,
+    message?.sessionId,
+    message?.roomId,
+    message?.room_id,
+    message?.data?.session_id,
+    message?.data?.sessionId,
+    message?.data?.roomId,
+    message?.data?.room_id,
+    message?.data?.session?.id,
+    message?.data?.session?.session_id,
+  ];
+
+  for (const value of candidates) {
+    if (value) return String(value);
+  }
+
+  return "";
+}
+
+// --- SDP normalization -----------------------------------------------------
+// The RTCPeerConnection SDP parser (Chrome/Firefox/Safari) is strict about
+// line endings: every line MUST end with CRLF ("\r\n"). SDP that has passed
+// through JSON re-serialization on a backend, a proxy, or a logging layer
+// often gets its line endings collapsed to bare "\n" or, in some cases, has
+// lines concatenated together entirely. That produces errors like:
+//   "Failed to parse SessionDescription. a=setup:actpass Invalid SDP line."
+// where the parser reads one attribute line and then finds the next line's
+// content still attached to it because no proper CRLF separated them.
+//
+// This normalizer is defensive: it splits on any line-ending variant,
+// drops empty lines that can appear from bad joins, and rejoins with a
+// strict CRLF plus a trailing CRLF (required at the end of an SDP body).
+function normalizeSdp(sdp) {
+  if (typeof sdp !== "string") return sdp;
+
+  return sdp
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\r\n")
+    .concat("\r\n");
+}
+// ----------------------------------------------------------------------------
+
+function extractSDP(data) {
+  const candidates = [
+    data?.data?.sdp,
+    data?.data?.offer?.sdp,
+    data?.data?.answer?.sdp,
+    data?.sdp,
+    data?.offer?.sdp,
+    data?.answer?.sdp,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return normalizeSdp(candidate.trim());
+    }
+
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      typeof candidate.sdp === "string" &&
+      candidate.sdp.trim()
+    ) {
+      return normalizeSdp(candidate.sdp.trim());
+    }
+  }
+
+  return "";
+}
+
+function extractIceCandidate(data) {
+  const candidates = [
+    data?.data?.candidate,
+    data?.candidate,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    if (typeof candidate === "string") {
+      return {
+        candidate,
+      };
+    }
+
+    if (typeof candidate === "object") {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 export default function LiveSession() {
   const navigate = useNavigate();
-  const videoRef = useRef(null);
-  const [elapsed, setElapsed] = useState(0);
+  const location = useLocation();
+
+  const sessionData = location.state?.sessionData || null;
+
+  const navtalkSessionId = sessionData?.session_id || "";
+
+  const targetRole =
+    location.state?.role ||
+    sessionData?.role ||
+    "Software Engineer";
+
+  const candidateName =
+    sessionData?.candidate_name ||
+    "Candidate";
+
+  const openingMessage =
+    sessionData?.opening_message ||
+    location.state?.opening_message ||
+    "";
+
+  const openingQuestion =
+    sessionData?.opening_question ||
+    location.state?.opening_question ||
+    "";
+
+  const navtalkVoice =
+    sessionData?.voice ||
+    "cedar";
+
+  const navtalkAiPrompt =
+    sessionData?.navtalk_ai_prompt ||
+    "";
+
+  const navtalkVideoRef = useRef(null);
+  const localVideoRef = useRef(null);
+
+  const localStreamRef = useRef(null);
+
+  const pcRef = useRef(null);
+  const wsRef = useRef(null);
+  const navtalkSessionIdRef = useRef("");
+  const mqttModeRegisteredRef = useRef(false);
+  const backendSyncTimerRef = useRef(null);
+
+  const silenceTimerRef = useRef(null);
+  const pendingSilenceStartTimeoutRef = useRef(null);
+  const responseTranscriptLengthRef = useRef(0);
+  const responseTranscriptTextRef = useRef("");
+  const avatarSpeakingGateRef = useRef(false);
+  const avatarGateFailsafeTimeoutRef = useRef(null);
+
+  const remoteAudioContextRef = useRef(null);
+  const remoteAudioAnalyserRef = useRef(null);
+  const remoteAudioSourceRef = useRef(null);
+  const remoteAudioMonitorFrameRef = useRef(null);
+  const avatarPlaybackCheckTimeoutRef = useRef(null);
+  const avatarAudioActiveRef = useRef(false);
+  const avatarLastAudioAtRef = useRef(0);
+  const avatarTurnStartedAtRef = useRef(0);
+  const avatarMinimumPlaybackEndAtRef = useRef(0);
+
+  const retryCountRef = useRef(0);
+
+  const cancelledRef = useRef(false);
+
+  const micActiveRef = useRef(true);
+
+  const rtcConfigRef = useRef({
+    iceServers: [
+      {
+        urls: "stun:stun.l.google.com:19302",
+      },
+    ],
+  });
+
+  const micAudioContextRef = useRef(null);
+  const micProcessorRef = useRef(null);
+  const micSourceRef = useRef(null);
+  const startAudioStreamingRef = useRef(() => {});
+
+  const openingSentRef = useRef(false);
+  const realtimePromptReadyRef = useRef(false);
+  const consoleGreetingFinishedRef = useRef(false);
+  const q01TriggeredRef = useRef(false);
+  // The Console First Message is produced by NavTalk itself and may not emit the
+  // same realtime.response.audio.done lifecycle as model-generated turns.
+  // Detect its actual WebRTC playback instead so Q01 can be triggered without
+  // waiting for candidate speech.
+  const consoleGreetingAudioSeenRef = useRef(false);
+  const consoleGreetingLastAudioAtRef = useRef(0);
+  // Candidate speech is accepted only after a real interview question has
+  // completely finished playing. The Console greeting never opens an answer window.
+  const candidateAnswerEnabledRef = useRef(false);
+  // Lets the closing/playback callbacks request the normal finalization flow
+  // without creating a dependency-order cycle with handleConfirmEnd.
+  const autoEndInterviewRef = useRef(() => {});
+  const interviewEndedRef = useRef(false);
+  const interviewEndedAtRef = useRef(0);
+  const closingPendingRef = useRef(false);
+  const closingGraceTimerRef = useRef(null);
+  const sessionReadyRef = useRef(false);
+  const candidateSpeakingRef = useRef(false);
+  const candidateSpeechStopTimerRef = useRef(null);
+  const candidateAnswerFinalizeTimerRef = useRef(null);
+  const candidateVadSpeakingRef = useRef(false);
+  const candidatePendingTranscriptRef = useRef("");
+  const candidateLastTranscriptAtRef = useRef(0);
+  const candidateLastAudioAtRef = useRef(0);
+  const candidateLocalSpeakingRef = useRef(false);
+  const generatingQuestionRef = useRef(false);
+  const speakingSyncRequestRef = useRef(null);
+
+  const conversationHistoryRef = useRef([]);
+  const pendingTranscriptRequestsRef = useRef(new Set());
+  const transcriptQueueRef = useRef(Promise.resolve());
+  const answerQuestionRef = useRef("");
+
+  const currentQuestionRef = useRef(openingQuestion);
+
+  const candidateAnswerBufferRef = useRef("");
+
+  const remoteStreamRef = useRef(null);
+
   const [micActive, setMicActive] = useState(true);
   const [camActive, setCamActive] = useState(true);
-  const [sessionStarted, setSessionStarted] = useState(false);
+
+  const [connectionInitiated, setConnectionInitiated] =
+    useState(false);
+
+  const [sessionStarted, setSessionStarted] =
+    useState(false);
+
   const [countdown, setCountdown] = useState(null);
-  const [isEndModalOpen, setIsEndModalOpen] = useState(false);
-  const [isFinishing, setIsFinishing] = useState(false);
+
+  const [isEndModalOpen, setIsEndModalOpen] =
+    useState(false);
+
+  const [isFinishing, setIsFinishing] =
+    useState(false);
+
+  const [avatarConnected, setAvatarConnected] =
+    useState(false);
+
+  const [statusMessage, setStatusMessage] =
+    useState("Initializing navtalk.Brain runtime...");
+
+  const [disconnectedReason, setDisconnectedReason] =
+    useState(null);
+
+  const [finalizationError, setFinalizationError] =
+    useState(null);
+
+  const [showSilenceWarning, setShowSilenceWarning] =
+    useState(false);
+
+  const [currentQuestion, setCurrentQuestion] =
+    useState(openingQuestion);
+
+  const [interviewComplete, setInterviewComplete] =
+    useState(false);
 
   useEffect(() => {
-    let id;
-    if (sessionStarted && countdown === 0) {
-      id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    currentQuestionRef.current = currentQuestion;
+  }, [currentQuestion]);
+
+  useEffect(() => {
+    if (!sessionData) {
+      navigate("/user/resume-upload", {
+        replace: true,
+      });
     }
-    return () => clearInterval(id);
-  }, [sessionStarted, countdown]);
+  }, [sessionData, navigate]);
+
+  useEffect(() => {
+    micActiveRef.current = micActive;
+  }, [micActive]);
+
+  const syncCandidateSpeaking = useCallback(
+    (speaking) => {
+      if (!navtalkSessionId) {
+        return;
+      }
+
+      const requestId = Symbol("candidate-speaking");
+
+      speakingSyncRequestRef.current = requestId;
+
+      postBackend(
+        "/api/interview/candidate-speaking",
+        {
+          session_id: navtalkSessionId,
+          speaking,
+        }
+      ).catch((error) => {
+        if (
+          speakingSyncRequestRef.current === requestId
+        ) {
+          console.warn(
+            "Candidate speaking sync failed:",
+            error
+          );
+        }
+      });
+    },
+    [navtalkSessionId]
+  );
+
+  // Serialize transcript writes so ALVIN and candidate lines arrive in order.
+  const enqueueTranscript = useCallback(
+    (speaker, text, question) => {
+      if (!navtalkSessionId || !text) return Promise.resolve();
+
+      const task = transcriptQueueRef.current
+        .catch(() => {})
+        .then(() =>
+          postBackend("/api/interview/native-transcript", {
+            session_id: navtalkSessionId,
+            speaker,
+            text,
+            ...(question ? { question } : {}),
+          })
+        )
+        .catch((error) =>
+          console.warn(`Failed to store ${speaker} transcript:`, error)
+        );
+
+      transcriptQueueRef.current = task;
+      pendingTranscriptRequestsRef.current.add(task);
+      task.finally(() => pendingTranscriptRequestsRef.current.delete(task));
+      return task;
+    },
+    [navtalkSessionId]
+  );
+
+  // Send any unfinished candidate answer before ending the session.
+  const flushCandidateAnswer = useCallback(() => {
+    if (candidateAnswerFinalizeTimerRef.current) {
+      clearTimeout(candidateAnswerFinalizeTimerRef.current);
+      candidateAnswerFinalizeTimerRef.current = null;
+    }
+
+    const text = candidateAnswerBufferRef.current.trim();
+    if (!text) return Promise.resolve();
+
+    candidateAnswerBufferRef.current = "";
+    candidatePendingTranscriptRef.current = "";
+    candidateSpeakingRef.current = false;
+    candidateLocalSpeakingRef.current = false;
+    syncCandidateSpeaking(false);
+
+    return enqueueTranscript(
+      "Candidate",
+      text,
+      answerQuestionRef.current || currentQuestionRef.current
+    );
+  }, [enqueueTranscript, syncCandidateSpeaking]);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    if (pendingSilenceStartTimeoutRef.current) {
+      clearTimeout(pendingSilenceStartTimeoutRef.current);
+      pendingSilenceStartTimeoutRef.current = null;
+    }
+
+    setShowSilenceWarning(false);
+  }, []);
+
+  const cancelClosing = useCallback(() => {
+    if (!closingPendingRef.current) return;
+
+    closingPendingRef.current = false;
+
+    if (closingGraceTimerRef.current) {
+      clearTimeout(closingGraceTimerRef.current);
+      closingGraceTimerRef.current = null;
+    }
+
+    setStatusMessage("ALVIN is listening...");
+    console.log("Closing cancelled: candidate is still answering.");
+  }, []);
+
+  const armAvatarSpeakingGate = useCallback(() => {
+    avatarSpeakingGateRef.current = true;
+
+    if (avatarGateFailsafeTimeoutRef.current) {
+      clearTimeout(avatarGateFailsafeTimeoutRef.current);
+    }
+
+    // Failsafe: if audio.done never arrives for this turn (dropped
+    // event, generation failure, etc.), don't leave the candidate's
+    // mic muted for the rest of the interview.
+    avatarGateFailsafeTimeoutRef.current = setTimeout(() => {
+      avatarGateFailsafeTimeoutRef.current = null;
+      avatarSpeakingGateRef.current = false;
+    }, 25000);
+  }, []);
+
+  const disarmAvatarSpeakingGate = useCallback(
+    (delayMs = 0) => {
+      if (avatarGateFailsafeTimeoutRef.current) {
+        clearTimeout(avatarGateFailsafeTimeoutRef.current);
+        avatarGateFailsafeTimeoutRef.current = null;
+      }
+
+      setTimeout(() => {
+        avatarSpeakingGateRef.current = false;
+      }, delayMs);
+    },
+    []
+  );
+
+  const registerNavTalkSession = useCallback(
+    async (remoteNavTalkSessionId) => {
+      if (!remoteNavTalkSessionId || mqttModeRegisteredRef.current) {
+        return false;
+      }
+
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        if (cancelledRef.current) return false;
+
+        try {
+          const result = await postBackend(
+            "/api/interview/navtalk-native-started",
+            {
+              session_id: navtalkSessionId,
+              navtalk_session_id: remoteNavTalkSessionId,
+            }
+          );
+
+          if (result?.ok) {
+            navtalkSessionIdRef.current = remoteNavTalkSessionId;
+            mqttModeRegisteredRef.current = true;
+            sessionReadyRef.current = true;
+
+            setStatusMessage(
+              "NavTalk realtime AI connected. Starting interview..."
+            );
+
+            console.log(
+              "NavTalk native AI session registered:",
+              remoteNavTalkSessionId
+            );
+
+            if (localStreamRef.current) {
+              console.log(
+                "Starting PCM audio for NavTalk realtime AI..."
+              );
+              startAudioStreamingRef.current();
+            } else {
+              console.log(
+                "PCM audio waiting for microphone stream..."
+              );
+            }
+
+            return true;
+          }
+        } catch (error) {
+          console.warn(
+            `Transparent Mode registration attempt ${attempt}/5 failed:`,
+            error
+          );
+        }
+
+        if (attempt < 5) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000)
+          );
+        }
+      }
+
+      setDisconnectedReason(
+        "Could not register the NavTalk realtime AI session."
+      );
+      return false;
+    },
+    [navtalkSessionId]
+  );
+
+  const sendNavTalkConfig = useCallback(
+    (prompt) => {
+      const ws = wsRef.current;
+
+      if (
+        !ws ||
+        ws.readyState !== WebSocket.OPEN
+      ) {
+        console.warn(
+          "NavTalk is not ready. Cannot send configuration."
+        );
+
+        return false;
+      }
+
+      const message = {
+        type: NavTalkMessageType.INPUT_CONFIG,
+        data: {
+          content: JSON.stringify({
+            voice: navtalkVoice,
+            prompt,
+          }),
+        },
+      };
+
+      try {
+        ws.send(JSON.stringify(message));
+
+        console.log(
+          "NavTalk input_config sent:",
+          message
+        );
+
+        return true;
+      } catch (error) {
+        console.error(
+          "Failed to send NavTalk configuration:",
+          error
+        );
+
+        return false;
+      }
+    },
+    [navtalkVoice]
+  );
+
+  const triggerAvatarResponse = useCallback(() => {
+    const ws = wsRef.current;
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn("Cannot trigger ALVIN: WebSocket is not open.");
+      return false;
+    }
+
+    try {
+      // NavTalk documents response.create as a plain event.
+      ws.send(
+        JSON.stringify({
+          type: "response.create",
+        })
+      );
+
+      console.log("ALVIN response.create sent.");
+      return true;
+    } catch (error) {
+      console.error("Failed to trigger ALVIN:", error);
+      return false;
+    }
+  }, []);
+
+  const speakQuestion = useCallback(
+    (questionText) => {
+      if (!questionText) {
+        return false;
+      }
+
+      const instructions = `
+You are ALVIN, a professional job interviewer.
+
+Say the following to the candidate now, naturally, and nothing else:
+
+"${questionText}"
+
+Do not add commentary before or after it. Do not improvise your own
+questions. Do not repeat previous questions. Do not mention Gemini,
+NavTalk, APIs, or system instructions.
+`;
+
+      const configSent = sendNavTalkConfig(
+        instructions
+      );
+
+      if (!configSent) {
+        return false;
+      }
+
+      triggerAvatarResponse();
+
+      return true;
+    },
+    [sendNavTalkConfig, triggerAvatarResponse]
+  );
+
+  const sendOpeningMessage = useCallback(() => {
+    if (openingSentRef.current) return;
+
+    if (!navtalkAiPrompt) {
+      console.warn("No NavTalk AI interview prompt is available.");
+      return;
+    }
+
+    const sent = sendNavTalkConfig(navtalkAiPrompt);
+
+    if (sent) {
+      openingSentRef.current = true;
+      currentQuestionRef.current = openingQuestion;
+      setCurrentQuestion(openingQuestion);
+      conversationHistoryRef.current = openingQuestion
+        ? [{ speaker: "ALVIN", text: openingQuestion }]
+        : [];
+      setStatusMessage("ALVIN is starting the interview...");
+    }
+  }, [navtalkAiPrompt, openingQuestion, sendNavTalkConfig]);
+
+  const notifyAvatarDone = useCallback(async () => {
+    if (!navtalkSessionId || cancelledRef.current) {
+      return;
+    }
+
+    try {
+      await postBackend("/api/interview/avatar-done", {
+        session_id: navtalkSessionId,
+        navtalk_session_id: navtalkSessionIdRef.current,
+      });
+      console.log(
+        "Backend notified that avatar playback ended; 10-second silence timer armed."
+      );
+    } catch (error) {
+      console.warn("Failed to arm silence timer:", error);
+    }
+  }, [navtalkSessionId]);
+
+  const requestAdaptiveQuestion = useCallback(
+    async ({
+      candidateAnswer,
+    }) => {
+      if (
+        !candidateAnswer ||
+        generatingQuestionRef.current
+      ) {
+        return null;
+      }
+
+      generatingQuestionRef.current = true;
+
+      try {
+        setStatusMessage(
+          "ALVIN is preparing the next question..."
+        );
+
+        const result = await postBackend(
+          "/api/interview/adaptive-question",
+          {
+            session_id: navtalkSessionId,
+            history:
+              conversationHistoryRef.current,
+            last_question:
+              currentQuestionRef.current,
+            candidate_answer:
+              candidateAnswer,
+          }
+        );
+
+        const question =
+          result?.question?.trim();
+        const reply =
+          result?.reply?.trim();
+        const advanced =
+          result?.advanced === true;
+
+        if (!question) {
+          throw new Error(
+            "Gemini returned an empty question."
+          );
+        }
+
+        if (advanced) {
+          currentQuestionRef.current =
+            question;
+          setCurrentQuestion(question);
+        }
+
+        console.log(
+          "Gemini decision:",
+          {
+            advanced,
+            question,
+            reply,
+          }
+        );
+
+        return {
+          question,
+          reply,
+          advanced,
+        };
+      } catch (error) {
+        console.error(
+          "Adaptive question error:",
+          error
+        );
+
+        return null;
+      } finally {
+        generatingQuestionRef.current = false;
+      }
+    },
+    [navtalkSessionId, speakQuestion]
+  );
+
+  const requestSimplifiedQuestion =
+    useCallback(
+      async () => {
+        const question =
+          currentQuestionRef.current;
+
+        if (!question) {
+          return null;
+        }
+
+        try {
+          const result = await postBackend(
+            "/api/interview/simplify-question",
+            {
+              session_id:
+                navtalkSessionId,
+              history:
+                conversationHistoryRef.current,
+              question,
+              candidate_answer:
+                candidateAnswerBufferRef.current,
+            }
+          );
+
+          const simplified =
+            result?.question?.trim();
+
+          if (!simplified) {
+            throw new Error(
+              "Gemini returned an empty simplified question."
+            );
+          }
+
+          return simplified;
+        } catch (error) {
+          console.error(
+            "Question simplification error:",
+            error
+          );
+
+          return null;
+        }
+      },
+      [navtalkSessionId]
+    );
+
+  const startSilenceTimer = useCallback(() => {
+    clearSilenceTimer();
+  }, [clearSilenceTimer]);
 
   const handleStartInterview = () => {
+    if (!navtalkSessionId) {
+      setDisconnectedReason(
+        "Missing interview session ID."
+      );
+
+      return;
+    }
+
+    cancelledRef.current = false;
+
+    openingSentRef.current = false;
+    realtimePromptReadyRef.current = false;
+    consoleGreetingFinishedRef.current = false;
+    q01TriggeredRef.current = false;
+    consoleGreetingAudioSeenRef.current = false;
+    consoleGreetingLastAudioAtRef.current = 0;
+    candidateAnswerEnabledRef.current = false;
+    interviewEndedRef.current = false;
+    setInterviewComplete(false);
+
+    avatarSpeakingGateRef.current = false;
+
+    if (avatarGateFailsafeTimeoutRef.current) {
+      clearTimeout(avatarGateFailsafeTimeoutRef.current);
+      avatarGateFailsafeTimeoutRef.current = null;
+    }
+
+    sessionReadyRef.current = false;
+
+    retryCountRef.current = 0;
+
     setCountdown(5);
+
+    setConnectionInitiated(true);
   };
 
   useEffect(() => {
     let timer;
-    if (countdown !== null && countdown > 0) {
-      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-    } else if (countdown === 0) {
-      setSessionStarted(true);
+
+    if (
+      countdown !== null &&
+      countdown > 0
+    ) {
+      timer = setTimeout(() => {
+        setCountdown(
+          countdown - 1
+        );
+      }, 1000);
     }
-    return () => clearTimeout(timer);
-  }, [countdown]);
 
-  useEffect(() => {
-    let stream = null;
-    const startCamera = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        console.error("Error accessing media devices:", err);
-      }
-    };
-
-    if (camActive) {
-      startCamera();
-    } else {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = videoRef.current.srcObject.getTracks();
-        tracks.forEach(track => track.stop());
-        videoRef.current.srcObject = null;
-      }
+    if (countdown === 0) {
+      setSessionStarted(true);
     }
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (timer) {
+        clearTimeout(timer);
       }
     };
-  }, [camActive]);
+  }, [countdown]);
 
-  const formatTime = (s) => {
-    const h = String(Math.floor(s / 3600)).padStart(2, "0");
-    const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
-    const sec = String(s % 60).padStart(2, "0");
-    return `${h}:${m}:${sec}`;
-  };
-
-  const handleConfirmEnd = () => {
-    setIsEndModalOpen(false);
-    setIsFinishing(true);
-
-    // Turn off camera and mic
-    setCamActive(false);
-    setMicActive(false);
-
-    // Close the camera stream explicitly
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
+  useEffect(() => {
+    if (!connectionInitiated) {
+      return;
     }
 
-    // Simulate a brief loading state before navigation
-    setTimeout(() => {
-      navigate('/user/interview-results');
-    }, 2000);
+    let mounted = true;
+
+    navigator.mediaDevices
+      .getUserMedia({
+        video: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+      .then((stream) => {
+        if (!mounted) {
+          stream
+            .getTracks()
+            .forEach((track) =>
+              track.stop()
+            );
+
+          return;
+        }
+
+        localStreamRef.current =
+          stream;
+
+        console.log("Camera and microphone access granted.",
+          stream.getAudioTracks().map((track) => ({
+            label: track.label,
+            enabled: track.enabled,
+            readyState: track.readyState,
+          }))
+        );
+
+        if (
+          localVideoRef.current
+        ) {
+          localVideoRef.current.srcObject =
+            stream;
+
+          localVideoRef.current
+            .play()
+            .catch(() => {});
+        }
+
+        if (sessionReadyRef.current) {
+          startAudioStreamingRef.current();
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "Error accessing local media:",
+          error
+        );
+
+        setDisconnectedReason(
+          "Camera or microphone permission was denied."
+        );
+      });
+
+    return () => {
+      mounted = false;
+
+      if (
+        localStreamRef.current
+      ) {
+        localStreamRef.current
+          .getTracks()
+          .forEach((track) =>
+            track.stop()
+          );
+
+        localStreamRef.current =
+          null;
+      }
+    };
+  }, [connectionInitiated]);
+
+  useEffect(() => {
+    if (
+      localStreamRef.current
+    ) {
+      localStreamRef.current
+        .getAudioTracks()
+        .forEach((track) => {
+          track.enabled =
+            micActive;
+        });
+    }
+  }, [micActive]);
+
+  useEffect(() => {
+    if (
+      localStreamRef.current
+    ) {
+      localStreamRef.current
+        .getVideoTracks()
+        .forEach((track) => {
+          track.enabled =
+            camActive;
+        });
+    }
+  }, [camActive]);
+
+  const startAudioStreaming =
+    useCallback(() => {
+      if (interviewEndedRef.current) return;
+
+      if (
+        !localStreamRef.current
+      ) {
+        console.warn(
+          "Cannot start audio streaming: local stream unavailable."
+        );
+
+        return;
+      }
+
+      if (
+        micAudioContextRef.current
+      ) {
+        return;
+      }
+
+      try {
+        const AudioContextClass =
+          window.AudioContext ||
+          window.webkitAudioContext;
+
+        const audioContext =
+          new AudioContextClass({
+            sampleRate: 24000,
+          });
+
+        audioContext.resume().catch((error) => {
+          console.warn("AudioContext resume failed:", error);
+        });
+
+        const source =
+          audioContext.createMediaStreamSource(
+            localStreamRef.current
+          );
+
+        const processor =
+          audioContext.createScriptProcessor(
+            8192,
+            1,
+            1
+          );
+
+        processor.onaudioprocess =
+          (event) => {
+            if (
+              !micActiveRef.current ||
+              interviewEndedRef.current ||
+              avatarSpeakingGateRef.current ||
+              !candidateAnswerEnabledRef.current
+            ) {
+              return;
+            }
+
+            const ws =
+              wsRef.current;
+
+            if (
+              !ws ||
+              ws.readyState !==
+                WebSocket.OPEN
+            ) {
+              return;
+            }
+
+            const input =
+              event.inputBuffer.getChannelData(
+                0
+              );
+
+            let sumSquares = 0;
+            for (let i = 0; i < input.length; i += 1) {
+              sumSquares += input[i] * input[i];
+            }
+
+            const rms = Math.sqrt(
+              sumSquares / Math.max(1, input.length)
+            );
+
+            if (rms >= CANDIDATE_SPEECH_RMS_THRESHOLD) {
+              if (closingPendingRef.current) cancelClosing();
+
+              candidateLastAudioAtRef.current = performance.now();
+              candidateLocalSpeakingRef.current = true;
+
+              if (!candidateSpeakingRef.current) {
+                candidateSpeakingRef.current = true;
+                clearSilenceTimer();
+                setShowSilenceWarning(false);
+                syncCandidateSpeaking(true);
+                console.log(
+                  "Local microphone speech detected; answer finalization paused."
+                );
+              }
+            }
+
+            const pcm =
+              floatTo16BitPCM(
+                input
+              );
+
+            const base64 =
+              base64EncodeAudio(
+                new Uint8Array(pcm)
+              );
+
+            const chunkSize =
+              4096;
+
+            for (
+              let i = 0;
+              i < base64.length;
+              i += chunkSize
+            ) {
+              const chunk =
+                base64.slice(
+                  i,
+                  i + chunkSize
+                );
+
+              try {
+                ws.send(
+                  JSON.stringify({
+                    type:
+                      NavTalkMessageType.INPUT_AUDIO_BUFFER_APPEND,
+                    data: {
+                      audio: chunk,
+                    },
+                  })
+                );
+              } catch {
+                return;
+              }
+            }
+          };
+
+        source.connect(processor);
+
+        processor.connect(
+          audioContext.destination
+        );
+
+        micAudioContextRef.current =
+          audioContext;
+
+        micProcessorRef.current =
+          processor;
+
+        micSourceRef.current =
+          source;
+
+        console.log(
+          "PCM audio streaming started."
+        );
+      } catch (error) {
+        console.error(
+          "Error starting PCM audio streaming:",
+          error
+        );
+      }
+    }, [
+      clearSilenceTimer,
+      syncCandidateSpeaking,
+      cancelClosing,
+    ]);
+
+  useEffect(() => {
+    startAudioStreamingRef.current = startAudioStreaming;
+  }, [startAudioStreaming]);
+
+  const stopAudioStreaming =
+    useCallback(() => {
+      if (
+        micProcessorRef.current
+      ) {
+        try {
+          micProcessorRef.current.disconnect();
+        } catch {}
+
+        micProcessorRef.current =
+          null;
+      }
+
+      if (
+        micSourceRef.current
+      ) {
+        try {
+          micSourceRef.current.disconnect();
+        } catch {}
+
+        micSourceRef.current =
+          null;
+      }
+
+      if (
+        micAudioContextRef.current
+      ) {
+        try {
+          if (
+            micAudioContextRef.current
+              .state !== "closed"
+          ) {
+            micAudioContextRef.current.close();
+          }
+        } catch {}
+
+        micAudioContextRef.current =
+          null;
+      }
+    }, []);
+
+  const stopMicAfterInterview = useCallback(() => {
+    if (interviewEndedRef.current) return;
+
+    interviewEndedRef.current = true;
+    interviewEndedAtRef.current = performance.now();
+    micActiveRef.current = false;
+
+    setMicActive(false);
+    setInterviewComplete(true);
+    setStatusMessage("Interview complete.");
+
+    stopAudioStreaming();
+    clearSilenceTimer();
+    syncCandidateSpeaking(false);
+
+    localStreamRef.current
+      ?.getAudioTracks()
+      .forEach((track) => (track.enabled = false));
+
+    console.log("Interview complete: microphone stopped.");
+  }, [stopAudioStreaming, clearSilenceTimer, syncCandidateSpeaking]);
+
+  // Called after the outro has FINISHED PLAYING. Ends the interview only if
+  // the candidate stays quiet for the grace window.
+  const beginClosingGrace = useCallback(() => {
+    if (closingGraceTimerRef.current) {
+      clearTimeout(closingGraceTimerRef.current);
+    }
+
+    setStatusMessage("Wrapping up...");
+
+    closingGraceTimerRef.current = setTimeout(() => {
+      closingGraceTimerRef.current = null;
+
+      if (!closingPendingRef.current) return;
+
+      if (
+        candidateVadSpeakingRef.current ||
+        candidateLocalSpeakingRef.current
+      ) {
+        cancelClosing();
+        return;
+      }
+
+      closingPendingRef.current = false;
+      stopMicAfterInterview();
+    }, CLOSING_GRACE_MS);
+  }, [cancelClosing, stopMicAfterInterview]);
+
+  const stopRemoteAudioMonitor = useCallback(() => {
+    if (remoteAudioMonitorFrameRef.current) {
+      cancelAnimationFrame(remoteAudioMonitorFrameRef.current);
+      remoteAudioMonitorFrameRef.current = null;
+    }
+
+    if (avatarPlaybackCheckTimeoutRef.current) {
+      clearTimeout(avatarPlaybackCheckTimeoutRef.current);
+      avatarPlaybackCheckTimeoutRef.current = null;
+    }
+
+    if (remoteAudioSourceRef.current) {
+      try {
+        remoteAudioSourceRef.current.disconnect();
+      } catch {}
+      remoteAudioSourceRef.current = null;
+    }
+
+    if (remoteAudioContextRef.current) {
+      try {
+        if (remoteAudioContextRef.current.state !== "closed") {
+          remoteAudioContextRef.current.close();
+        }
+      } catch {}
+      remoteAudioContextRef.current = null;
+    }
+
+    remoteAudioAnalyserRef.current = null;
+    avatarAudioActiveRef.current = false;
+    avatarLastAudioAtRef.current = 0;
+  }, []);
+
+  const startRemoteAudioMonitor = useCallback(
+    (stream) => {
+      if (!stream?.getAudioTracks?.().length) {
+        console.warn("NavTalk remote stream has no audio track to monitor.");
+        return;
+      }
+
+      stopRemoteAudioMonitor();
+
+      try {
+        const AudioContextClass =
+          window.AudioContext || window.webkitAudioContext;
+        const audioContext = new AudioContextClass();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+
+        remoteAudioContextRef.current = audioContext;
+        remoteAudioSourceRef.current = source;
+        remoteAudioAnalyserRef.current = analyser;
+
+        audioContext.resume().catch(() => {});
+
+        const samples = new Float32Array(analyser.fftSize);
+
+        const monitor = () => {
+          if (cancelledRef.current || !remoteAudioAnalyserRef.current) {
+            return;
+          }
+
+          analyser.getFloatTimeDomainData(samples);
+
+          let sumSquares = 0;
+          for (let i = 0; i < samples.length; i += 1) {
+            sumSquares += samples[i] * samples[i];
+          }
+
+          const rms = Math.sqrt(sumSquares / Math.max(1, samples.length));
+
+          const now = performance.now();
+
+          if (rms >= AVATAR_AUDIO_RMS_THRESHOLD) {
+            avatarAudioActiveRef.current = true;
+            avatarLastAudioAtRef.current = now;
+
+            // Before Q01, any remote avatar audio is the NavTalk Console
+            // First Message. Remember that we actually heard it.
+            if (!q01TriggeredRef.current) {
+              consoleGreetingAudioSeenRef.current = true;
+              consoleGreetingLastAudioAtRef.current = now;
+            }
+          } else if (
+            !q01TriggeredRef.current &&
+            realtimePromptReadyRef.current &&
+            consoleGreetingAudioSeenRef.current &&
+            consoleGreetingLastAudioAtRef.current > 0 &&
+            now - consoleGreetingLastAudioAtRef.current >= AVATAR_END_SILENCE_MS
+          ) {
+            // The Console First Message has really finished playing. NavTalk's
+            // built-in greeting can wait for user input by default, so explicitly
+            // request the first model response here. The prompt guarantees that
+            // the first generated response is roadmap Q01.
+            consoleGreetingFinishedRef.current = true;
+            q01TriggeredRef.current = true;
+            candidateAnswerEnabledRef.current = false;
+
+            console.log(
+              "Console greeting WebRTC playback ended; automatically triggering Q01 without candidate reply."
+            );
+            setStatusMessage("ALVIN is asking the first question...");
+            triggerAvatarResponse();
+          }
+
+          remoteAudioMonitorFrameRef.current =
+            requestAnimationFrame(monitor);
+        };
+
+        monitor();
+        console.log("NavTalk WebRTC audio monitor started.");
+      } catch (error) {
+        console.warn("Could not monitor NavTalk WebRTC audio:", error);
+      }
+    },
+    [stopRemoteAudioMonitor, triggerAvatarResponse]
+  );
+
+  const waitForActualAvatarPlaybackEnd = useCallback(() => {
+    if (avatarPlaybackCheckTimeoutRef.current) {
+      clearTimeout(avatarPlaybackCheckTimeoutRef.current);
+      avatarPlaybackCheckTimeoutRef.current = null;
+    }
+
+    const startedWaitingAt = performance.now();
+
+    const checkPlayback = () => {
+      if (cancelledRef.current) return;
+
+      const now = performance.now();
+      const lastAudioAt = avatarLastAudioAtRef.current;
+      const silenceFor = lastAudioAt > 0 ? now - lastAudioAt : 0;
+      const minimumPlaybackElapsed =
+        now >= avatarMinimumPlaybackEndAtRef.current;
+      const audioHasSettled =
+        !avatarAudioActiveRef.current ||
+        silenceFor >= AVATAR_END_SILENCE_MS;
+
+      if (
+        now - startedWaitingAt >= AVATAR_POST_DONE_MIN_WAIT_MS &&
+        minimumPlaybackElapsed &&
+        audioHasSettled
+      ) {
+        avatarAudioActiveRef.current = false;
+        avatarSpeakingGateRef.current = false;
+        avatarTurnStartedAtRef.current = 0;
+        avatarMinimumPlaybackEndAtRef.current = 0;
+
+        if (avatarGateFailsafeTimeoutRef.current) {
+          clearTimeout(avatarGateFailsafeTimeoutRef.current);
+          avatarGateFailsafeTimeoutRef.current = null;
+        }
+
+        console.log(
+          "Avatar WebRTC audio actually finished playing."
+        );
+
+        // First avatar turn is NavTalk Console First Message (greeting only).
+        // Do not arm the candidate silence timer yet. Ask Gemini-generated Q01.
+        if (!q01TriggeredRef.current) {
+          consoleGreetingFinishedRef.current = true;
+
+          if (realtimePromptReadyRef.current) {
+            q01TriggeredRef.current = true;
+            console.log(
+              "Console greeting finished; triggering exact Gemini-generated Q01."
+            );
+            setStatusMessage("ALVIN is asking the first question...");
+            triggerAvatarResponse();
+          } else {
+            console.log(
+              "Console greeting finished before realtime prompt was ready; Q01 deferred."
+            );
+          }
+          return;
+        }
+
+        if (interviewEndedRef.current) {
+          setStatusMessage("Interview complete. You may end the session.");
+          return;
+        }
+
+        if (closingPendingRef.current) {
+          console.log(
+            "Outro finished playing; stopping microphone and automatically finalizing interview."
+          );
+          closingPendingRef.current = false;
+          candidateAnswerEnabledRef.current = false;
+          stopMicAfterInterview();
+
+          // Allow React/state cleanup to settle, then use the exact same safe
+          // shutdown + results flow as the manual End Interview action.
+          setTimeout(() => {
+            autoEndInterviewRef.current?.();
+          }, 150);
+          return;
+        }
+
+        // A question has now FINISHED playing. Only now may candidate speech
+        // become part of an answer. This deliberately excludes the Console greeting.
+        candidateAnswerEnabledRef.current = true;
+        setStatusMessage("ALVIN is listening...");
+        notifyAvatarDone();
+        return;
+      }
+
+      // Do not use a short timeout fallback here. A fallback can arm the
+      // backend countdown while buffered WebRTC audio is still playing.
+      // The existing avatar gate failsafe remains the emergency escape hatch.
+
+      avatarPlaybackCheckTimeoutRef.current = setTimeout(
+        checkPlayback,
+        AVATAR_PLAYBACK_CHECK_MS
+      );
+    };
+
+    checkPlayback();
+  }, [notifyAvatarDone, triggerAvatarResponse, stopMicAfterInterview]);
+
+  const attachRemoteStream =
+    useCallback((stream) => {
+      if (!stream) {
+        return;
+      }
+
+      remoteStreamRef.current =
+        stream;
+
+      startRemoteAudioMonitor(stream);
+
+      const video =
+        navtalkVideoRef.current;
+
+      if (!video) {
+        return;
+      }
+
+      if (
+        video.srcObject !== stream
+      ) {
+        video.srcObject = stream;
+      }
+
+      video.muted = false;
+      video.autoplay = true;
+      video.playsInline = true;
+
+      setAvatarConnected(true);
+
+      setStatusMessage(
+        "ALVIN is connected."
+      );
+
+      const playVideo = async () => {
+        try {
+          await video.play();
+          console.log(
+            "NavTalk avatar video playing."
+          );
+        } catch (error) {
+          if (
+            error?.name !==
+            "AbortError"
+          ) {
+            console.warn(
+              "Avatar autoplay failed:",
+              error
+            );
+          }
+        }
+      };
+
+      playVideo();
+    }, [startRemoteAudioMonitor]);
+
+  const handleOffer =
+    useCallback(
+      async (navData) => {
+        try {
+          console.log(
+            "Processing NavTalk WebRTC offer."
+          );
+
+          // extractSDP already runs the SDP through normalizeSdp(),
+          // guaranteeing strict CRLF line endings before it ever
+          // reaches setRemoteDescription.
+          const sdp =
+            extractSDP({
+              data: navData,
+            });
+
+          if (!sdp) {
+            console.error(
+              "NavTalk WebRTC offer did not contain a valid SDP:",
+              navData
+            );
+
+            throw new Error(
+              "NavTalk WebRTC offer is missing SDP."
+            );
+          }
+
+          if (
+            !sdp
+              .trim()
+              .startsWith("v=")
+          ) {
+            console.error(
+              "Invalid SDP received from NavTalk:",
+              sdp
+            );
+
+            throw new Error(
+              "NavTalk returned an invalid WebRTC SDP."
+            );
+          }
+
+          if (
+            pcRef.current
+          ) {
+            try {
+              pcRef.current.close();
+            } catch {}
+          }
+
+          const pc =
+            new RTCPeerConnection(
+              rtcConfigRef.current
+            );
+
+          pcRef.current = pc;
+
+          pc.ontrack = (event) => {
+            console.log(
+              "NavTalk remote track received."
+            );
+
+            if (
+              event.streams &&
+              event.streams[0]
+            ) {
+              attachRemoteStream(
+                event.streams[0]
+              );
+
+              return;
+            }
+
+            const stream =
+              remoteStreamRef.current ||
+              new MediaStream();
+
+            stream.addTrack(
+              event.track
+            );
+
+            attachRemoteStream(
+              stream
+            );
+          };
+
+          pc.onicecandidate =
+            (event) => {
+              if (
+                !event.candidate
+              ) {
+                return;
+              }
+
+              const ws =
+                wsRef.current;
+
+              if (
+                !ws ||
+                ws.readyState !==
+                  WebSocket.OPEN
+              ) {
+                return;
+              }
+
+              try {
+                ws.send(
+                  JSON.stringify({
+                    type:
+                      NavTalkMessageType.WEB_RTC_ICE_CANDIDATE,
+                    data: {
+                      candidate:
+                        event.candidate,
+                    },
+                  })
+                );
+              } catch (error) {
+                console.error(
+                  "Failed to send ICE candidate:",
+                  error
+                );
+              }
+            };
+
+          pc.onconnectionstatechange =
+            () => {
+              console.log(
+                "WebRTC connection state:",
+                pc.connectionState
+              );
+
+              if (
+                pc.connectionState ===
+                "connected"
+              ) {
+                setAvatarConnected(
+                  true
+                );
+
+                setStatusMessage(
+                  "ALVIN is connected."
+                );
+              }
+
+              if (
+                pc.connectionState ===
+                  "failed" ||
+                pc.connectionState ===
+                  "disconnected"
+              ) {
+                console.warn(
+                  "WebRTC connection state:",
+                  pc.connectionState
+                );
+              }
+            };
+
+          await pc.setRemoteDescription(
+            {
+              type: "offer",
+              sdp,
+            }
+          );
+
+          console.log(
+            "NavTalk remote SDP accepted."
+          );
+
+          const answer =
+            await pc.createAnswer();
+
+          await pc.setLocalDescription(
+            answer
+          );
+
+          const ws =
+            wsRef.current;
+
+          if (
+            !ws ||
+            ws.readyState !==
+              WebSocket.OPEN
+          ) {
+            throw new Error(
+              "WebSocket closed before WebRTC answer could be sent."
+            );
+          }
+
+          // Normalize the outbound answer SDP too. pc.localDescription.sdp
+          // from the browser is already well-formed, but this keeps the
+          // send path consistent and defends against any transport that
+          // might re-flatten line endings before it reaches NavTalk.
+          ws.send(
+            JSON.stringify({
+              type:
+                NavTalkMessageType.WEB_RTC_ANSWER,
+              data: {
+                sdp: {
+                  type: "answer",
+                  sdp: normalizeSdp(
+                    pc.localDescription
+                      ?.sdp || ""
+                  ),
+                },
+              },
+            })
+          );
+
+          console.log(
+            "WebRTC answer sent to NavTalk."
+          );
+        } catch (error) {
+          console.error(
+            "WebRTC connection failed.",
+            error
+          );
+
+          setDisconnectedReason(
+            error?.message ||
+              "Failed to establish the avatar video connection."
+          );
+        }
+      },
+      [attachRemoteStream]
+    );
+
+  const handleIceCandidate =
+    useCallback(
+      async (navData) => {
+        try {
+          const candidate =
+            extractIceCandidate({
+              data: navData,
+            });
+
+          if (!candidate) {
+            return;
+          }
+
+          const pc =
+            pcRef.current;
+
+          if (!pc) {
+            console.warn(
+              "Received ICE candidate before PeerConnection exists."
+            );
+
+            return;
+          }
+
+          if (
+            pc.signalingState ===
+            "closed"
+          ) {
+            return;
+          }
+
+          await pc.addIceCandidate(
+            new RTCIceCandidate(
+              candidate
+            )
+          );
+        } catch (error) {
+          console.error(
+            "Error adding ICE candidate:",
+            error
+          );
+        }
+      },
+      []
+    );
+
+  const initNavTalkSession =
+    useCallback(async () => {
+      cancelledRef.current =
+        false;
+
+      openingSentRef.current =
+        false;
+      mqttModeRegisteredRef.current = false;
+      navtalkSessionIdRef.current = "";
+
+      avatarSpeakingGateRef.current = false;
+
+      if (avatarGateFailsafeTimeoutRef.current) {
+        clearTimeout(
+          avatarGateFailsafeTimeoutRef.current
+        );
+        avatarGateFailsafeTimeoutRef.current = null;
+      }
+
+      sessionReadyRef.current =
+        false;
+
+      setAvatarConnected(false);
+
+      if (
+        wsRef.current
+      ) {
+        try {
+          wsRef.current.close();
+        } catch {}
+
+        wsRef.current = null;
+      }
+
+      if (
+        pcRef.current
+      ) {
+        try {
+          pcRef.current.close();
+        } catch {}
+
+        pcRef.current = null;
+      }
+
+      remoteStreamRef.current =
+        null;
+
+      stopAudioStreaming();
+
+      let wsUrl;
+
+      try {
+        setStatusMessage(
+          "Requesting NavTalk session..."
+        );
+
+        wsUrl =
+          await fetchNavTalkWsUrl(
+            navtalkSessionId
+          );
+      } catch (error) {
+        if (
+          cancelledRef.current
+        ) {
+          return;
+        }
+
+        console.error(
+          "Failed to fetch NavTalk connection URL:",
+          error
+        );
+
+        setDisconnectedReason(
+          error?.message ||
+            "Failed to prepare live session."
+        );
+
+        return;
+      }
+
+      if (
+        cancelledRef.current
+      ) {
+        return;
+      }
+
+      console.log(
+        "Connecting to NavTalk..."
+      );
+
+      const ws =
+        new WebSocket(wsUrl);
+
+      ws.binaryType =
+        "arraybuffer";
+
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (
+          cancelledRef.current
+        ) {
+          try {
+            ws.close();
+          } catch {}
+
+          return;
+        }
+
+        console.log(
+          "NavTalk WebSocket connected."
+        );
+
+        setStatusMessage(
+          "Connecting ALVIN realtime interview..."
+        );
+
+        // Do NOT send realtime.input_config here.
+        // NavTalk can discard provider frames before realtime input is READY.
+      };
+
+      ws.onmessage =
+        async (messageEvent) => {
+          if (
+            cancelledRef.current
+          ) {
+            return;
+          }
+
+          if (
+            typeof messageEvent.data !==
+            "string"
+          ) {
+            return;
+          }
+
+          let message;
+
+          try {
+            message =
+              JSON.parse(
+                messageEvent.data
+              );
+          } catch (error) {
+            console.error(
+              "Failed to parse NavTalk message:",
+              error
+            );
+
+            return;
+          }
+
+          const type =
+            message?.type;
+
+          const navData =
+            message?.data || {};
+
+          console.log(
+            "NavTalk event:",
+            type,
+            message
+          );
+
+          switch (type) {
+            case NavTalkMessageType.CONNECTED_SUCCESS: {
+              console.log(
+                "NavTalk connection successful."
+              );
+
+              if (
+                Array.isArray(
+                  navData.iceServers
+                ) &&
+                navData.iceServers
+                  .length > 0
+              ) {
+                rtcConfigRef.current = {
+                  iceServers:
+                    navData.iceServers,
+                };
+              }
+
+              const remoteSessionId =
+                extractNavTalkSessionId(message);
+
+              if (!remoteSessionId) {
+                console.error(
+                  "NavTalk connected.success did not contain a session ID:",
+                  message
+                );
+                setDisconnectedReason(
+                  "NavTalk did not return a realtime session ID."
+                );
+                break;
+              }
+
+              console.log(
+                "NavTalk session ID received:",
+                remoteSessionId
+              );
+
+              await registerNavTalkSession(
+                remoteSessionId
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.CONNECTED_WARNING: {
+              console.warn(
+                "NavTalk warning:",
+                message?.message ||
+                  navData?.message ||
+                  ""
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.CONNECTED_FAIL: {
+              setDisconnectedReason(
+                message?.message ||
+                  navData?.message ||
+                  "NavTalk connection failed."
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.INSUFFICIENT_BALANCE: {
+              setDisconnectedReason(
+                "NavTalk account has insufficient balance."
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.CONNECTION_LIMIT_EXCEEDED: {
+              setDisconnectedReason(
+                "NavTalk connection limit has been exceeded."
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.BACKEND_ERROR: {
+              setDisconnectedReason(
+                message?.message ||
+                  "NavTalk backend error."
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.GPU_FULL: {
+              if (
+                retryCountRef.current <
+                  3 &&
+                !cancelledRef.current
+              ) {
+                retryCountRef.current +=
+                  1;
+
+                const retryNumber =
+                  retryCountRef.current;
+
+                setStatusMessage(
+                  `NavTalk GPU is busy. Retrying in 10 seconds (${retryNumber}/3)...`
+                );
+
+                setTimeout(() => {
+                  if (
+                    !cancelledRef.current
+                  ) {
+                    initNavTalkSession();
+                  }
+                }, 10000);
+              } else {
+                setDisconnectedReason(
+                  "NavTalk is currently at capacity. Please try again later."
+                );
+              }
+
+              break;
+            }
+
+            case NavTalkMessageType.SESSION_CREATED: {
+              console.log(
+                "NavTalk realtime session created."
+              );
+
+              const remoteSessionId =
+                extractNavTalkSessionId(message);
+
+              if (!remoteSessionId) {
+                console.error(
+                  "NavTalk SESSION_CREATED did not contain a session ID:",
+                  message
+                );
+                setDisconnectedReason(
+                  "NavTalk did not return a realtime session ID."
+                );
+                break;
+              }
+
+              setStatusMessage(
+                "Starting NavTalk realtime AI..."
+              );
+
+              // Do not send provider frames here. NavTalk can emit
+              // realtime.session.created before its provider input is ready.
+              // The opening bootstrap is sent only after READY + a confirmed
+              // post-ready session.update below.
+
+              await registerNavTalkSession(
+                remoteSessionId
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.SESSION_UPDATED: {
+              console.log(
+                "NavTalk realtime session ready."
+              );
+
+              sessionReadyRef.current = true;
+
+              setStatusMessage(
+                "NavTalk session ready. Connecting avatar..."
+              );
+
+              startAudioStreaming();
+
+              // NavTalk Console First Message owns the opening turn.
+              // Do not inject conversation.item.create or response.create here.
+
+
+              break;
+            }
+
+            case NavTalkMessageType.REALTIME_STATUS: {
+              console.log("NavTalk realtime status:", navData);
+
+              const realtimeStatus =
+                navData?.data || navData || {};
+
+              const realtimePhase =
+                String(realtimeStatus?.phase || "").toLowerCase();
+              const realtimeState =
+                String(realtimeStatus?.status || "").toLowerCase();
+              const realtimeMessage =
+                String(
+                  realtimeStatus?.message ||
+                  navData?.message ||
+                  ""
+                ).toLowerCase();
+
+              const realtimeInputReady =
+                (realtimePhase === "ready" &&
+                  realtimeState === "success") ||
+                realtimeMessage.includes("realtime input is ready");
+
+              if (realtimeInputReady) {
+                console.log(
+                  "NavTalk realtime input is READY; applying Gemini roadmap prompt."
+                );
+
+                const configured = sendNavTalkConfig(navtalkAiPrompt);
+                if (configured) {
+                  openingSentRef.current = true;
+                  realtimePromptReadyRef.current = true;
+                  currentQuestionRef.current = openingQuestion;
+                  setCurrentQuestion(openingQuestion);
+
+                  console.log(
+                    "Gemini roadmap prompt applied. Waiting for Console greeting to finish before Q01."
+                  );
+                  const geminiRoadmap =
+                    parseGeminiRoadmap(navtalkAiPrompt);
+
+                  console.group("[GEMINI ROADMAP] Generated interview questions");
+                  geminiRoadmap.forEach((item) => {
+                    console.log(
+                      `${item.id}:`,
+                      item.question,
+                      "| intent:",
+                      item.intent
+                    );
+                  });
+                  console.groupEnd();
+
+                  // If the greeting already finished before READY arrived,
+                  // immediately ask Q01 now.
+                  if (
+                    consoleGreetingFinishedRef.current &&
+                    !q01TriggeredRef.current
+                  ) {
+                    q01TriggeredRef.current = true;
+                    console.log(
+                      "Console greeting already finished; triggering exact Gemini Q01."
+                    );
+                    triggerAvatarResponse();
+                  }
+                }
+
+                setStatusMessage(
+                  "ALVIN is starting the interview..."
+                );
+              }
+
+              break;
+            }
+
+            case NavTalkMessageType.SPEECH_STARTED: {
+              if (interviewEndedRef.current) break;
+
+              // Ignore speech during the Console greeting, while ALVIN is speaking,
+              // and after the closing turn. The candidate should answer questions only.
+              if (!candidateAnswerEnabledRef.current || avatarSpeakingGateRef.current) {
+                console.log(
+                  "Ignoring candidate speech because no interview answer window is open."
+                );
+                break;
+              }
+
+              candidateVadSpeakingRef.current = true;
+              candidateSpeakingRef.current = true;
+              candidateLocalSpeakingRef.current = true;
+              candidateLastAudioAtRef.current = performance.now();
+              // Keep the current answer when speech resumes after a pause.
+              if (!candidateAnswerBufferRef.current) {
+                answerQuestionRef.current = currentQuestionRef.current;
+              }
+
+              if (candidateSpeechStopTimerRef.current) {
+                clearTimeout(candidateSpeechStopTimerRef.current);
+                candidateSpeechStopTimerRef.current = null;
+              }
+
+              if (candidateAnswerFinalizeTimerRef.current) {
+                clearTimeout(candidateAnswerFinalizeTimerRef.current);
+                candidateAnswerFinalizeTimerRef.current = null;
+              }
+
+              clearSilenceTimer();
+              setShowSilenceWarning(false);
+              syncCandidateSpeaking(true);
+
+              console.log(
+                "Candidate speech detected. Backend silence timer paused."
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.SPEECH_STOPPED: {
+              candidateVadSpeakingRef.current = false;
+              candidateLocalSpeakingRef.current = false;
+
+              console.log(
+                "NavTalk speech stopped; waiting for transcript stability before finalizing the answer."
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.INPUT_AUDIO_TRANSCRIPTION_COMPLETED: {
+              // The Console greeting is not a question and requires no response.
+              // Also reject late/background transcripts once ALVIN starts another turn
+              // or the interview is closing/finished.
+              if (
+                !candidateAnswerEnabledRef.current ||
+                interviewEndedRef.current ||
+                closingPendingRef.current
+              ) {
+                console.log(
+                  "Ignoring candidate transcript because no interview answer window is open."
+                );
+                break;
+              }
+
+              const candidateText =
+                extractCandidateText(message)?.trim();
+
+              if (!candidateText || candidateText.length < 2) {
+                console.warn(
+                  "NavTalk transcription event had no usable text:",
+                  message
+                );
+                break;
+              }
+
+              const existing = candidateAnswerBufferRef.current.trim();
+
+              if (!existing) {
+                candidateAnswerBufferRef.current = candidateText;
+              } else if (candidateText.startsWith(existing)) {
+                candidateAnswerBufferRef.current = candidateText;
+              } else if (!existing.endsWith(candidateText)) {
+                candidateAnswerBufferRef.current = `${existing} ${candidateText}`.trim();
+              }
+
+              candidatePendingTranscriptRef.current =
+                candidateAnswerBufferRef.current;
+              candidateLastTranscriptAtRef.current = performance.now();
+              clearSilenceTimer();
+
+              console.log(
+                "Candidate transcript chunk received; waiting for answer to settle:",
+                candidateText
+              );
+
+              if (candidateAnswerFinalizeTimerRef.current) {
+                clearTimeout(candidateAnswerFinalizeTimerRef.current);
+                candidateAnswerFinalizeTimerRef.current = null;
+              }
+
+              const finalizeCandidateAnswer = async () => {
+                candidateAnswerFinalizeTimerRef.current = null;
+
+                if (cancelledRef.current) return;
+
+                // A new NavTalk VAD speech_started event always cancels this
+                // timer. This guard handles a race where speech starts at the
+                // same moment the timer callback is queued.
+                if (candidateVadSpeakingRef.current) {
+                  return;
+                }
+
+                const elapsedSinceTranscript =
+                  performance.now() - candidateLastTranscriptAtRef.current;
+
+                if (elapsedSinceTranscript < CANDIDATE_TRANSCRIPT_SETTLE_MS) {
+                  candidateAnswerFinalizeTimerRef.current = setTimeout(
+                    finalizeCandidateAnswer,
+                    CANDIDATE_TRANSCRIPT_SETTLE_MS - elapsedSinceTranscript
+                  );
+                  return;
+                }
+
+                const finalCandidateText = candidateAnswerBufferRef.current.trim();
+                if (!finalCandidateText) return;
+
+                setStatusMessage("ALVIN is listening and responding...");
+                console.log("Candidate answer settled:", finalCandidateText);
+                flushCandidateAnswer();
+              };
+
+              // This timer is independent of speech_stopped handling. If no
+              // new speech_started or transcript event arrives, it submits the
+              // accumulated answer automatically after the settle window.
+              candidateAnswerFinalizeTimerRef.current = setTimeout(
+                finalizeCandidateAnswer,
+                CANDIDATE_TRANSCRIPT_SETTLE_MS
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.RESPONSE_AUDIO_DELTA: {
+              // ALVIN has begun a turn; close the candidate answer window immediately
+              // so avatar audio / late speech cannot leak into the candidate transcript.
+              candidateAnswerEnabledRef.current = false;
+              if (!avatarTurnStartedAtRef.current) {
+                avatarTurnStartedAtRef.current = performance.now();
+              }
+              avatarSpeakingGateRef.current = true;
+              clearSilenceTimer();
+
+              break;
+            }
+
+            case NavTalkMessageType.RESPONSE_AUDIO_TRANSCRIPT_DELTA: {
+              avatarSpeakingGateRef.current = true;
+              clearSilenceTimer();
+
+              const deltaText =
+                (typeof navData?.delta ===
+                  "string" &&
+                  navData.delta) ||
+                extractCandidateText({
+                  data: navData,
+                }) ||
+                "";
+
+              if (deltaText) {
+                responseTranscriptLengthRef.current +=
+                  deltaText.length;
+
+                responseTranscriptTextRef.current =
+                  appendTranscriptDelta(
+                    responseTranscriptTextRef.current,
+                    deltaText
+                  );
+              }
+
+              break;
+            }
+
+            case NavTalkMessageType.RESPONSE_AUDIO_DONE: {
+              // ALVIN has already responded, so the candidate's answer is final. Send it
+              // BEFORE ALVIN's line so the backend pairs question and answer correctly.
+              flushCandidateAnswer();
+
+              // Diagnostic: log exactly what the avatar generated for
+              // this turn, so we can see whether it's the expected
+              // opening line, empty/degenerate output, or something
+              // else entirely — instead of inferring from event shape.
+              console.log(
+                "NavTalk response transcript:",
+                JSON.stringify(
+                  responseTranscriptTextRef.current
+                )
+              );
+
+              const completedAlvinText =
+                responseTranscriptTextRef.current.trim();
+
+              if (completedAlvinText) {
+                conversationHistoryRef.current.push({
+                  speaker: "ALVIN",
+                  text: completedAlvinText,
+                });
+
+                if (q01TriggeredRef.current && !interviewEndedRef.current) {
+                  if (isClosingStatement(completedAlvinText)) {
+                    // The final answer was flushed above. From this point forward,
+                    // no additional microphone transcript belongs to the interview.
+                    candidateAnswerEnabledRef.current = false;
+                    closingPendingRef.current = true;
+                  } else {
+                    closingPendingRef.current = false;
+
+                    const spokenQuestion = extractDisplayedQuestion(
+                      completedAlvinText
+                    );
+
+                    if (spokenQuestion) {
+                      currentQuestionRef.current = spokenQuestion;
+                      setCurrentQuestion(spokenQuestion);
+                      console.log("[UI QUESTION UPDATED]", spokenQuestion);
+                    } else {
+                      console.warn(
+                        "No question found in ALVIN turn:",
+                        completedAlvinText
+                      );
+                    }
+                  }
+                }
+
+                enqueueTranscript("ALVIN", completedAlvinText);
+              }
+
+              // audio.done means NavTalk finished generating/sending audio.
+              // It does NOT mean the buffered WebRTC audio has finished
+              // playing in the browser. Keep the candidate microphone gated
+              // until the actual remote audio becomes quiet.
+              const transcriptChars = responseTranscriptLengthRef.current;
+              const estimatedTurnMs = Math.max(
+                AVATAR_MIN_TURN_MS,
+                (transcriptChars / AVATAR_ESTIMATED_CHARS_PER_SECOND) * 1000
+              );
+              const turnStartedAt =
+                avatarTurnStartedAtRef.current || performance.now();
+              avatarMinimumPlaybackEndAtRef.current =
+                turnStartedAt + estimatedTurnMs;
+
+              console.log(
+                "NavTalk audio generation finished; waiting for WebRTC playback and minimum transcript duration.",
+                { estimatedTurnMs: Math.round(estimatedTurnMs) }
+              );
+
+              responseTranscriptLengthRef.current = 0;
+              responseTranscriptTextRef.current = "";
+
+              avatarSpeakingGateRef.current = true;
+              waitForActualAvatarPlaybackEnd();
+
+              break;
+            }
+
+            case "realtime_synthesis.tts.error": {
+              console.warn(
+                "NavTalk TTS synthesis error:",
+                message
+              );
+              avatarSpeakingGateRef.current = false;
+              break;
+            }
+
+            case "realtime_synthesis.stt.error": {
+              console.warn(
+                "NavTalk STT synthesis error; keeping candidate answer open:",
+                message
+              );
+              break;
+            }
+
+            case NavTalkMessageType.WEB_RTC_OFFER: {
+              await handleOffer(
+                navData
+              );
+
+              break;
+            }
+
+            case NavTalkMessageType.WEB_RTC_ICE_CANDIDATE: {
+              await handleIceCandidate(
+                navData
+              );
+
+              break;
+            }
+
+            default: {
+              break;
+            }
+          }
+        };
+
+      ws.onerror = (error) => {
+        console.error(
+          "NavTalk WebSocket error:",
+          error
+        );
+      };
+
+      ws.onclose = (event) => {
+        console.warn(
+          `NavTalk WebSocket closed: ${event.code} ${event.reason || ""}`
+        );
+
+        if (
+          !cancelledRef.current &&
+          !disconnectedReason
+        ) {
+          setDisconnectedReason(
+            `NavTalk session disconnected (Code ${event.code}).`
+          );
+        }
+      };
+    },
+    [
+      navtalkSessionId,
+      stopAudioStreaming,
+      startAudioStreaming,
+      stopMicAfterInterview,
+      cancelClosing,
+      beginClosingGrace,
+      sendOpeningMessage,
+      triggerAvatarResponse,
+      registerNavTalkSession,
+      disarmAvatarSpeakingGate,
+      speakQuestion,
+      requestAdaptiveQuestion,
+      notifyAvatarDone,
+      waitForActualAvatarPlaybackEnd,
+      handleOffer,
+      handleIceCandidate,
+      clearSilenceTimer,
+      startSilenceTimer,
+      syncCandidateSpeaking,
+      enqueueTranscript,
+      flushCandidateAnswer,
+      disconnectedReason,
+    ]);
+
+  useEffect(() => {
+    if (!connectionInitiated || !sessionStarted) {
+      return;
+    }
+
+    let active = true;
+
+    const syncBackendSession = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/interview/session/${navtalkSessionId}`,
+          {
+            headers: {
+              "X-API-Key": APP_API_KEY,
+            },
+          }
+        );
+
+        if (!response.ok || !active) return;
+
+        const data = await response.json();
+
+        // In native OpenAIRealtime mode, the backend's current_question can
+        // remain on the original Gemini Q01 because NavTalk owns the live
+        // ANSWERED/PARTIAL/KNOWLEDGE_GAP/OFF_TOPIC progression.
+        //
+        // Once Q01 has started, NEVER let session polling overwrite the
+        // question we synchronized from ALVIN's actual spoken transcript.
+        if (
+          data.current_question &&
+          !q01TriggeredRef.current
+        ) {
+          currentQuestionRef.current = data.current_question;
+          setCurrentQuestion(data.current_question);
+        }
+
+        if (Array.isArray(data.history)) {
+          conversationHistoryRef.current = data.history;
+        }
+
+        const backendCandidateSpeaking =
+          Boolean(data.candidate_speaking);
+
+        if (
+          backendCandidateSpeaking ||
+          candidateSpeakingRef.current
+        ) {
+          setShowSilenceWarning(false);
+        } else {
+          setShowSilenceWarning(
+            Boolean(data.silence_warning)
+          );
+        }
+
+        if (
+          data.silence_warning &&
+          !backendCandidateSpeaking &&
+          !candidateSpeakingRef.current
+        ) {
+          setStatusMessage(
+            "ALVIN is simplifying the question..."
+          );
+        } else if (data.current_question) {
+          setStatusMessage(
+            "ALVIN is listening..."
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "Backend interview sync failed:",
+          error
+        );
+      }
+    };
+
+    syncBackendSession();
+    backendSyncTimerRef.current = setInterval(
+      syncBackendSession,
+      1000
+    );
+
+    return () => {
+      active = false;
+
+      if (backendSyncTimerRef.current) {
+        clearInterval(
+          backendSyncTimerRef.current
+        );
+        backendSyncTimerRef.current = null;
+      }
+    };
+  }, [
+    connectionInitiated,
+    sessionStarted,
+    navtalkSessionId,
+  ]);
+
+  useEffect(() => {
+    if (!connectionInitiated) {
+      return;
+    }
+
+    initNavTalkSession();
+
+    return () => {
+      cancelledRef.current =
+        true;
+
+      if (candidateSpeechStopTimerRef.current) {
+        clearTimeout(candidateSpeechStopTimerRef.current);
+        candidateSpeechStopTimerRef.current = null;
+      }
+
+      if (candidateAnswerFinalizeTimerRef.current) {
+        clearTimeout(candidateAnswerFinalizeTimerRef.current);
+        candidateAnswerFinalizeTimerRef.current = null;
+      }
+
+      clearSilenceTimer();
+
+      if (navtalkSessionId) {
+        postBackend(
+          "/api/interview/candidate-speaking",
+          {
+            session_id: navtalkSessionId,
+            speaking: false,
+          }
+        ).catch(() => {});
+      }
+
+      stopAudioStreaming();
+      stopRemoteAudioMonitor();
+
+      sessionReadyRef.current =
+        false;
+      mqttModeRegisteredRef.current = false;
+      navtalkSessionIdRef.current = "";
+
+      if (backendSyncTimerRef.current) {
+        clearInterval(backendSyncTimerRef.current);
+        backendSyncTimerRef.current = null;
+      }
+
+      openingSentRef.current =
+        false;
+
+      if (
+        wsRef.current
+      ) {
+        try {
+          wsRef.current.close(
+            1000,
+            "Component unmounted"
+          );
+        } catch {}
+
+        wsRef.current = null;
+      }
+
+      if (
+        pcRef.current
+      ) {
+        try {
+          pcRef.current.close();
+        } catch {}
+
+        pcRef.current = null;
+      }
+
+      remoteStreamRef.current =
+        null;
+    };
+  }, [
+    connectionInitiated,
+    initNavTalkSession,
+    clearSilenceTimer,
+    stopAudioStreaming,
+  ]);
+
+  const handleConfirmEnd = async () => {
+    if (isFinishing) return;
+
+    // IMPORTANT: shut down the paid/live NavTalk path BEFORE asking Gemini
+    // to build results. A Gemini/network failure must never leave NavTalk
+    // connected or allow this component to create a replacement connection.
+    setIsEndModalOpen(false);
+    setFinalizationError(null);
+    setDisconnectedReason(null);
+    setIsFinishing(true);
+    candidateAnswerEnabledRef.current = false;
+    flushCandidateAnswer(); // Don't lose an answer that is still settling.
+
+    cancelledRef.current = true;
+    setConnectionInitiated(false);
+    setAvatarConnected(false);
+
+    clearSilenceTimer();
+    stopAudioStreaming();
+    stopRemoteAudioMonitor();
+
+    if (candidateSpeechStopTimerRef.current) {
+      clearTimeout(candidateSpeechStopTimerRef.current);
+      candidateSpeechStopTimerRef.current = null;
+    }
+
+    if (candidateAnswerFinalizeTimerRef.current) {
+      clearTimeout(candidateAnswerFinalizeTimerRef.current);
+      candidateAnswerFinalizeTimerRef.current = null;
+    }
+
+    if (closingGraceTimerRef.current) {
+      clearTimeout(closingGraceTimerRef.current);
+      closingGraceTimerRef.current = null;
+    }
+    closingPendingRef.current = false;
+
+    if (backendSyncTimerRef.current) {
+      clearInterval(backendSyncTimerRef.current);
+      backendSyncTimerRef.current = null;
+    }
+
+    // Best-effort only. Never keep the live connection open waiting for this.
+    if (navtalkSessionId) {
+      postBackend(
+        "/api/interview/candidate-speaking",
+        { session_id: navtalkSessionId, speaking: false }
+      ).catch(() => {});
+    }
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+
+    if (wsRef.current) {
+      try {
+        wsRef.current.close(1000, "Interview completed");
+      } catch {}
+      wsRef.current = null;
+    }
+
+    if (pcRef.current) {
+      try {
+        pcRef.current.close();
+      } catch {}
+      pcRef.current = null;
+    }
+
+    remoteStreamRef.current = null;
+    sessionReadyRef.current = false;
+    mqttModeRegisteredRef.current = false;
+    navtalkSessionIdRef.current = "";
+    openingSentRef.current = false;
+
+    try {
+      await flushCandidateAnswer();
+      await Promise.allSettled([
+        ...pendingTranscriptRequestsRef.current,
+      ]);
+
+      // This endpoint is idempotent. It marks the backend session ended and
+      // returns either the scored result or a transcript-only fallback when
+      // Gemini assessment was unavailable.
+      await postBackend(
+        "/api/interview/end-session",
+        { session_id: navtalkSessionId }
+      );
+
+      navigate(
+        `/user/interview-results/${encodeURIComponent(navtalkSessionId)}`,
+        { replace: true }
+      );
+    } catch (error) {
+      console.error("Failed to finalize interview:", error);
+
+      // Do NOT reactivate NavTalk here. The paid/live session remains closed.
+      // A retry only retries backend result generation.
+      setIsFinishing(false);
+      setFinalizationError(
+        error?.message ||
+          "The interview ended, but the results could not be generated. Please retry the results."
+      );
+    }
   };
+
+  // The avatar-closing callback uses this ref to invoke the same idempotent
+  // finalization path automatically after the closing audio has really ended.
+  autoEndInterviewRef.current = handleConfirmEnd;
+
+  if (isFinishing) {
+    return (
+      <Loading message="Finalizing interview evaluation with Gemini AI..." />
+    );
+  }
 
   return (
     <>
-      <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f3f3f3; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #862334; border-radius: 10px; }
-        html, body, #root { height: 100%; overflow: hidden; margin: 0; width: 100%; }
-      `}</style>
-
       <div className="h-screen w-screen bg-white text-black font-[Manrope,sans-serif] overflow-hidden">
         <div className="mx-auto flex flex-col w-full h-full overflow-hidden">
-
-          {/* ── Top Header (Tallened to 70px) ── */}
           <header className="flex-shrink-0 h-[70px] bg-white flex justify-between items-center px-8 border-b border-[#e5e5e5] z-40">
-            <div className="hidden md:flex items-center gap-3 text-sm font-[Inter,sans-serif] opacity-100">
-              <img src={Logo} alt="Alvin logo" className="w-[55px] mb-[-10px]" />
-              <span className="text-[#862334] font-bold pt-2 ">Live Session</span>
+            <div className="hidden md:flex items-center gap-3 text-sm font-[Inter,sans-serif]">
+              <img
+                src={Logo}
+                alt="Alvin logo"
+                className="w-[55px] mb-[-10px]"
+              />
+
+              <span className="text-[#862334] font-bold pt-2">
+                {" "}{targetRole} Interview
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 ${
+                  avatarConnected
+                    ? "bg-green-100 text-green-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    avatarConnected
+                      ? "bg-green-500 animate-pulse"
+                      : "bg-amber-500"
+                  }`}
+                />
+
+                {avatarConnected
+                  ? "ALVIN Connected"
+                  : "Connecting ALVIN..."}
+              </span>
             </div>
           </header>
 
           <div className="flex flex-1 overflow-hidden min-h-0 relative">
-            {/* Start Overlay / Countdown Overlay */}
+            {finalizationError && (
+              <div className="absolute inset-0 z-[130] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 text-center">
+                <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-200">
+                  <AlertCircle className="w-16 h-16 text-[#862334] mx-auto mb-4" />
+
+                  <h3 className="text-xl font-black text-black uppercase mb-2">
+                    Interview Results Error
+                  </h3>
+
+                  <p className="text-sm text-gray-600 mb-2">
+                    Your live interview has already been stopped.
+                  </p>
+                  <p className="text-sm text-gray-600 mb-6">
+                    {finalizationError}
+                  </p>
+
+                  <button
+                    onClick={handleConfirmEnd}
+                    className="w-full py-3 bg-[#862334] text-white font-bold uppercase rounded-xl hover:bg-black transition-all"
+                  >
+                    Retry Results
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {disconnectedReason && !finalizationError && (
+              <div className="absolute inset-0 z-[120] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 text-center">
+                <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-200">
+                  <AlertCircle className="w-16 h-16 text-[#862334] mx-auto mb-4" />
+
+                  <h3 className="text-xl font-black text-black uppercase mb-2">
+                    NavTalk Connection Failed
+                  </h3>
+
+                  <p className="text-sm text-gray-600 mb-6">
+                    {disconnectedReason}
+                  </p>
+
+                  <button
+                    onClick={
+                      handleConfirmEnd
+                    }
+                    className="w-full py-3 bg-[#862334] text-white font-bold uppercase rounded-xl hover:bg-black transition-all"
+                  >
+                    End Interview
+                  </button>
+                </div>
+              </div>
+            )}
+
             {!sessionStarted && (
               <div className="absolute inset-0 z-[100] bg-white flex flex-col items-center justify-center p-6 text-center">
                 <div className="max-w-4xl w-full px-4">
-                  {countdown === null ? (
+                  {countdown ===
+                  null ? (
                     <>
-                      <h2 className="text-4xl sm:text-5xl md:text-6xl font-black font-Geist text-maroon mb-6 uppercase tracking-tighter text-center">
+                      <h2 className="text-4xl sm:text-5xl font-black text-[#862334] mb-6 uppercase">
                         Ready to Begin?
                       </h2>
-                      <p className="text-gray-500 font-Inter text-base mb-12 leading-relaxed max-w-xl mx-auto text-center">
-                        The AI interviewer is ready. Please ensure you are in a quiet environment and your camera is properly positioned.
+
+                      <p className="text-gray-500 mb-8">
+                        ALVIN will conduct your{" "}
+                        {targetRole} interview.
                       </p>
-                      <div className="max-w-xs mx-auto">
-                        <button
-                          onClick={handleStartInterview}
-                          className="w-full py-4 bg-[#862334] text-white font-black font-Geist uppercase tracking-[0.2em] rounded-xl hover:bg-black transition-all"
-                        >
-                          Start Interview
-                        </button>
-                      </div>
+
+                      <button
+                        onClick={
+                          handleStartInterview
+                        }
+                        className="px-8 py-4 bg-[#862334] text-white font-black uppercase rounded-xl hover:bg-black transition-all"
+                      >
+                        Start Video Interview
+                      </button>
                     </>
                   ) : (
                     <div className="space-y-6">
-                      <h2 className="text-xl font-black font-Geist text-gray-400 uppercase tracking-widest">
+                      <h2 className="text-xl font-black text-gray-400 uppercase">
                         Interview starts in
                       </h2>
-                      <div className="text-9xl font-black font-Geist text-[#862334] leading-none animate-pulse">
+
+                      <div className="text-9xl font-black text-[#862334] animate-pulse">
                         {countdown}
                       </div>
-                      <p className="text-gray-400 font-Inter text-xs uppercase tracking-widest font-bold">
-                        Prepare yourself...
+
+                      <p className="text-xs text-gray-400 uppercase font-semibold">
+                        {statusMessage}
                       </p>
                     </div>
                   )}
@@ -189,172 +3285,208 @@ export default function LiveSession() {
               </div>
             )}
 
-            {/* Left: Video + Metrics */}
-            <div className="flex-1 flex flex-col gap-5 p-6 min-w-0 overflow-hidden">
+            <div className="flex-1 flex flex-col gap-5 p-6 max-w-5xl mx-auto w-full min-w-0 overflow-hidden">
+              <div className="flex-[3] relative rounded-2xl overflow-hidden bg-slate-950 shadow-2xl border border-slate-800">
+                {sessionStarted &&
+                  showSilenceWarning &&
+                  !disconnectedReason && (
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-black px-6 py-2.5 rounded-full shadow-2xl flex items-center gap-3 animate-bounce">
+                      <AlertTriangle
+                        size={20}
+                        className="flex-shrink-0"
+                      />
 
-              {/* Video Feed */}
-              <div className="flex-[3] relative rounded-2xl overflow-hidden bg-slate-900 shadow-2xl min-h-0">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent z-10" />
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-white/10 text-center">
-                    <Smartphone className="w-[100px] h-[100px] mx-auto" />
-                    <p className="font-[Space_Grotesk,sans-serif] text-xs uppercase tracking-[0.2em] mt-4">ALVIN AI Interface</p>
-                  </div>
-                </div>
-
-                {/* Listening badge (Enlarged) */}
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
-                  <div className="flex items-center gap-3 px-6 py-2.5 bg-white/95 backdrop-blur-xl rounded-full shadow-2xl">
-                    <span className={`w-2.5 h-2.5 rounded-full ${sessionStarted ? 'bg-[#862334] animate-pulse' : 'bg-gray-300'}`} />
-                    <span className="text-[#862334] text-xs font-black tracking-widest uppercase font-[Inter,sans-serif]">
-                      {sessionStarted ? "ALVIN is listening..." : "Session Paused"}
-                    </span>
-                  </div>
-                </div>
-
-              {/* Candidate PiP (Top Left - Larger) */}
-                <div className="absolute top-8 left-8 w-64 aspect-video rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl z-20 bg-slate-800 backdrop-blur-md">
-                  {camActive ? (
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover scale-x-[-1]"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-900/50">
-                      <VideoOff className="text-white/20 text-4xl" />
+                      <span className="text-xs font-bold uppercase tracking-wide">
+                        No response detected —
+                        simplifying the question...
+                      </span>
                     </div>
                   )}
 
-                  {/*Status Indicators overlay*/}
-                  <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/60 to-transparent flex items-center justify-between">
-                    <div className="px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[10px] text-white font-bold font-[Inter,sans-serif] flex items-center gap-2 border border-white/10">
-                      <div className={`w-1.5 h-1.5 rounded-full ${camActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`} />
-                      YOU
+                <div
+                  className={`relative w-full h-full ${
+                    !sessionStarted
+                      ? "hidden"
+                      : "block"
+                  }`}
+                >
+                  <video
+                    ref={navtalkVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover rounded-2xl"
+                  />
+
+                  {!avatarConnected && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white">
+                      <Sparkles className="w-12 h-12 animate-spin text-[#862334] mb-3" />
+
+                      <p className="text-xs uppercase text-slate-300 font-bold text-center px-4">
+                        {statusMessage}
+                      </p>
                     </div>
-                    {!micActive && (
-                      <div className="bg-maroon text-white p-1 rounded-lg backdrop-blur-sm shadow-lg">
-                        <MicOff size={12} />
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
-
-                {/* REC Timer */}
-                <div className="absolute top-6 right-6 z-20">
-                  <div className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-xl text-xs font-black text-white font-[Inter,sans-serif] tracking-widest flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-                    LIVE
-                  </div>
-                </div>
-
-                {/* ── Buttons ── */}
-                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-[#202124]/90 backdrop-blur-xl px-5 py-3 rounded-full border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
-                  {/* Network Indicator */}
-                  <div className="flex items-center gap-2 pr-4 mr-2 border-r border-white/10">
-                    <div className="flex gap-0.5 items-end h-3">
-                      <div className="w-1 h-[20%] bg-green-500 rounded-full"></div>
-                      <div className="w-1 h-[40%] bg-green-500 rounded-full"></div>
-                      <div className="w-1 h-[70%] bg-green-500 rounded-full"></div>
-                      <div className="w-1 h-[100%] bg-green-500 rounded-full"></div>
-                    </div>
-                    <span className="text-[9px] font-black text-white/40 uppercase tracking-widest hidden md:block">Stable</span>
-                  </div>
-
-                  <button
-                    onClick={() => setMicActive(m => !m)}
-                    className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-200 border
-                      ${micActive
-                        ? "bg-transparent border-white/20 text-white hover:bg-white/10"
-                        : "bg-[#862334] border-[#862334] text-white hover:bg-black"}`}
-                  >
-                    {micActive ? <Mic size={20} /> : <MicOff size={20} />}
-                  </button>
-
-                  <button
-                    onClick={() => setCamActive(c => !c)}
-                    className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-200 border
-                      ${camActive
-                        ? "bg-transparent border-white/20 text-white hover:bg-white/10"
-                        : "bg-[#862334] border-[#862334] text-white hover:bg-black"}`}
-                  >
-                    {camActive ? <Video size={20} /> : <VideoOff size={20} />}
-                  </button>
-
-                  <button
-                    onClick={() => setIsEndModalOpen(true)}
-                    className="ml-2 px-6 h-12 bg-[#862334] text-white font-bold rounded-full hover:bg-black transition-all flex items-center gap-2 shadow-lg"
-                  >
-                    <LogOut size={18} className="rotate-180" />
-                    <span className="text-xs uppercase tracking-widest hidden sm:inline">End Session</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Transcript Panel (Widened to 400px) */}
-            <div className="w-[400px] flex-shrink-0 bg-[#f9f9f9] flex flex-col border-l border-[#e5e5e5] overflow-hidden">
-              <div className="flex-shrink-0 px-8 pt-8 pb-4">
-                <h2 className="text-xl font-[Space_Grotesk,sans-serif] font-black text-black tracking-tight">
-                  Live Transcript
-                </h2>
-                <p className="text-[#888888] text-[11px] font-bold uppercase tracking-[0.15em] font-[Inter,sans-serif] mt-1">
-                  {sessionStarted ? "Active" : "Waiting for start"}
-                </p>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-8 py-4 custom-scrollbar space-y-8 min-h-0">
-                {sessionStarted && transcript.map((msg, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="flex justify-between items-center px-1">
-                      <span className={`text-[10px] font-black tracking-widest uppercase font-[Inter,sans-serif] ${msg.isAlvin ? "text-[#862334]" : "text-[#888888]"}`}>
-                        {msg.speaker}
-                      </span>
-                      <span className="text-[10px] text-[#aaa] font-bold">{msg.time}</span>
-                    </div>
-                    <p className={`text-sm leading-relaxed font-semibold p-4 shadow-sm font-[Manrope,sans-serif]
-                      ${msg.isAlvin
-                        ? "bg-white rounded-2xl rounded-tl-none border-l-4 border-[#862334]"
-                        : "bg-[#eee]/50 rounded-2xl rounded-tr-none border-r-4 border-[#ddd]"}`}
-                    >
-                      {msg.text}
-                    </p>
-                  </div>
-                ))}
 
                 {sessionStarted && (
-                  <div className="flex items-center gap-2 px-1">
-                    {[0, 0.1, 0.2].map((delay, i) => (
-                      <span key={i} className="w-1.5 h-1.5 bg-[#862334] rounded-full animate-bounce" style={{ animationDelay: `${delay}s` }} />
-                    ))}
-                    <span className="text-[10px] font-black text-[#888888] tracking-widest uppercase ml-2 font-[Inter,sans-serif]">
-                      Processing response...
+                  <div className="absolute top-6 left-6 w-56 aspect-video rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl z-30 bg-slate-900">
+                    {camActive ? (
+                      <video
+                        ref={(node) => {
+                          localVideoRef.current = node;
+
+                          if (
+                            node &&
+                            localStreamRef.current &&
+                            node.srcObject !==
+                              localStreamRef.current
+                          ) {
+                            node.srcObject =
+                              localStreamRef.current;
+
+                            node
+                              .play()
+                              .catch(() => {});
+                          }
+                        }}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover scale-x-[-1]"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-900/80">
+                        <VideoOff className="text-white/20 text-3xl" />
+                      </div>
+                    )}
+
+                    <span className="absolute bottom-1.5 left-2 text-[10px] bg-black/60 px-2 py-0.5 rounded text-white">
+                      {candidateName}{" "}
+                      (You)
                     </span>
                   </div>
                 )}
 
-                {!sessionStarted && (
-                  <div className="h-full flex flex-col items-center justify-center opacity-30">
-                    <MessageSquare size={48} className="mb-4 text-gray-400" />
-                    <p className="text-xs font-bold uppercase tracking-widest text-center">Transcript will appear here once the session begins</p>
+              {sessionStarted && interviewComplete && (
+                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[90%]">
+                  <div className="bg-black/60 backdrop-blur-md text-white rounded-xl px-5 py-3 text-center">
+                    <p className="text-sm font-medium">
+                      Interview complete. Click End Session to see your results.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {sessionStarted &&
+                currentQuestion &&
+                !interviewComplete && (
+                  <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[90%]">
+                    <div className="bg-black/60 backdrop-blur-md text-white rounded-xl px-5 py-3 text-center">
+                      <p className="text-[10px] uppercase text-white/60 font-bold mb-1">
+                        Current Question
+                      </p>
+
+                      <p className="text-sm font-medium">
+                        {currentQuestion}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {sessionStarted && (
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-[#111827]/90 px-5 py-3 rounded-full border border-white/10 shadow-2xl">
+                    <button
+                      disabled={interviewComplete}
+                      onClick={() =>
+                        setMicActive(
+                          (value) =>
+                            !value
+                        )
+                      }
+                      className={`w-12 h-12 rounded-full border flex items-center justify-center ${
+                        interviewComplete
+                          ? "border-white/10 text-white/30 cursor-not-allowed"
+                          :
+                        micActive
+                          ? "border-white/20 text-white"
+                          : "bg-[#862334] border-[#862334] text-white"
+                      }`}
+                    >
+                      {micActive ? (
+                        <Mic
+                          size={20}
+                        />
+                      ) : (
+                        <MicOff
+                          size={20}
+                        />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setCamActive(
+                          (value) =>
+                            !value
+                        )
+                      }
+                      className={`w-12 h-12 rounded-full border flex items-center justify-center ${
+                        camActive
+                          ? "border-white/20 text-white"
+                          : "bg-[#862334] border-[#862334] text-white"
+                      }`}
+                    >
+                      {camActive ? (
+                        <Video
+                          size={20}
+                        />
+                      ) : (
+                        <VideoOff
+                          size={20}
+                        />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setIsEndModalOpen(
+                          true
+                        )
+                      }
+                      className="ml-2 px-6 h-12 bg-[#862334] text-white font-bold rounded-full hover:bg-black flex items-center gap-2 shadow-lg"
+                    >
+                      <LogOut
+                        size={18}
+                        className="rotate-180"
+                      />
+
+                      <span className="text-xs uppercase hidden sm:inline">
+                        End Session
+                      </span>
+                    </button>
                   </div>
                 )}
               </div>
 
-      <EndSessionModal
-        isOpen={isEndModalOpen}
-        onClose={() => setIsEndModalOpen(false)}
-        onConfirm={handleConfirmEnd}
-      />
-
-      {isFinishing && <Loading />}
             </div>
           </div>
-
         </div>
       </div>
+
+      {isEndModalOpen && (
+        <EndSessionModal
+          isOpen={
+            isEndModalOpen
+          }
+          onClose={() =>
+            setIsEndModalOpen(
+              false
+            )
+          }
+          onConfirm={
+            handleConfirmEnd
+          }
+        />
+      )}
     </>
   );
 }

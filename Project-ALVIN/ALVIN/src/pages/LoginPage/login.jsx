@@ -77,13 +77,11 @@ const Login = () => {
                 className="w-full max-w-[440px] bg-[#FDFBF7]/70 backdrop-blur-2xl rounded-3xl shadow-[0_15px_35px_rgba(134,35,52,0.05)] overflow-hidden border border-[#EAE5D9] relative z-10"
                 ref={ref}
             >
-                {/* Header Section */}
-                <div className={`pt-10 pb-4 flex flex-col items-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
-                    <div className="w-20 h-20 flex items-center justify-center mb-1">
-                        <img src="../images/Alvin-logo.png" alt="Logo" className="w-16 h-16 object-contain" />
+                {/* Header Section with Prominent Logo */}
+                <div className={`pt-10 pb-4 flex flex-col items-center justify-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
+                    <div className="w-40 h-40 flex items-center justify-center">
+                        <img src="../images/Alvin-logo.png" alt="ALVIN Logo" className="w-36 h-36 object-contain" />
                     </div>
-                    <h1 className="font-Geist text-2xl font-black text-[#111827] tracking-tight">Log in</h1>
-                    <p className="text-gray-500 mt-1 text-sm font-Inter">Access your account</p>
                 </div>
 
                 {/* Login Action */}

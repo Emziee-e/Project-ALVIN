@@ -18,7 +18,7 @@ const Loading = ({ isExiting }) => {
     }, []);
 
     return (
-        <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-white select-none ${isExiting ? 'animate-slide-up' : ''}`}>
+        <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-[#FDFBF7] select-none ${isExiting ? 'animate-slide-up' : ''}`}>
             {/* ── HERO GRID BACKGROUND SVG ── */}
             <div className="absolute inset-0 pointer-events-none opacity-60">
                 <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
