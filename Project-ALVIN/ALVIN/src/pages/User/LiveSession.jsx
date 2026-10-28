@@ -14,6 +14,7 @@ import Logo from "/images/Alvin-logo.png";
 import { useNavigate, useLocation } from "react-router-dom";
 import EndSessionModal from "../../Components/EndSessionModal";
 import Loading from "../../Components/Loading";
+import useInterviewLockdown from "../../lib/useInterviewLockdown";
 
 const NavTalkMessageType = Object.freeze({
   CONNECTED_SUCCESS: "conversation.connected.success",
@@ -649,6 +650,20 @@ export default function LiveSession() {
 
   const [liveConfidence, setLiveConfidence] =
     useState(null);
+
+  // Integrity monitoring: fullscreen + tab/window switch detection.
+  // After MAX_VIOLATIONS warnings the interview ends automatically.
+  const MAX_VIOLATIONS = 3;
+  const lockdown = useInterviewLockdown({
+    active:
+      sessionStarted &&
+      !isFinishing &&
+      !interviewComplete &&
+      !finalizationError &&
+      !disconnectedReason,
+    maxViolations: MAX_VIOLATIONS,
+    onLimitReached: () => autoEndInterviewRef.current(),
+  });
 
   useEffect(() => {
     currentQuestionRef.current = currentQuestion;
@@ -1320,6 +1335,9 @@ NavTalk, APIs, or system instructions.
   }, [clearSilenceTimer]);
 
   const handleStartInterview = () => {
+    // Must run synchronously inside the click to be allowed by the browser.
+    lockdown.enterFullscreen();
+
     if (!navtalkSessionId) {
       setDisconnectedReason(
         "Missing interview session ID."
@@ -3594,10 +3612,25 @@ NavTalk, APIs, or system instructions.
                         Ready to Begin?
                       </h2>
 
-                      <p className="text-gray-500 mb-8">
+                      <p className="text-gray-500 mb-4">
                         ALVIN will conduct your{" "}
                         {targetRole} interview.
                       </p>
+
+                      <ul className="list-disc pl-5 space-y-2 text-left text-sm font-bold text-gray-600 mb-8 max-w-lg mx-auto">
+                        <li>The interview runs in fullscreen.</li>
+                        <li>
+                          Switching tabs, leaving the window, or exiting fullscreen counts as a
+                          warning, and the interview ends after {MAX_VIOLATIONS} warnings.
+                        </li>
+                        <li>
+                          Please be in a quiet environment and make sure that no distractions are
+                          present.
+                        </li>
+                        <li>
+                          ALVIN will be monitoring your environment for any disturbances.
+                        </li>
+                      </ul>
 
                       <button
                         onClick={
@@ -3627,8 +3660,8 @@ NavTalk, APIs, or system instructions.
               </div>
             )}
 
-            <div className="flex-1 flex flex-col gap-5 p-6 max-w-5xl mx-auto w-full min-w-0 overflow-hidden">
-              <div className="flex-[3] relative rounded-2xl overflow-hidden bg-slate-950 shadow-2xl border border-slate-800">
+            <div className="flex-1 flex flex-col w-full min-w-0 overflow-hidden">
+              <div className="flex-1 relative overflow-hidden bg-slate-950">
                 {sessionStarted &&
                   showSilenceWarning &&
                   !disconnectedReason && (
@@ -3656,7 +3689,7 @@ NavTalk, APIs, or system instructions.
                     ref={navtalkVideoRef}
                     autoPlay
                     playsInline
-                    className="w-full h-full object-cover rounded-2xl"
+                    className="w-full h-full object-cover"
                   />
 
                   {!avatarConnected && (
@@ -3819,6 +3852,43 @@ NavTalk, APIs, or system instructions.
           </div>
         </div>
       </div>
+
+      {lockdown.warning && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-6 text-center"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="integrity-warning-title"
+        >
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-200">
+            <AlertTriangle className="w-16 h-16 text-[#862334] mx-auto mb-4" />
+
+            <h3
+              id="integrity-warning-title"
+              className="text-xl font-black text-black uppercase mb-2"
+            >
+              Stay in the interview
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-2">
+              {lockdown.warning.reason}
+            </p>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Warning {Math.min(lockdown.warning.count, MAX_VIOLATIONS)} of{" "}
+              {MAX_VIOLATIONS}. The interview ends automatically after{" "}
+              {MAX_VIOLATIONS} warnings.
+            </p>
+
+            <button
+              onClick={lockdown.dismissWarning}
+              className="w-full py-3 bg-[#862334] text-white font-bold uppercase rounded-xl hover:bg-black transition-all"
+            >
+              Return to interview
+            </button>
+          </div>
+        </div>
+      )}
 
       {isEndModalOpen && (
         <EndSessionModal
