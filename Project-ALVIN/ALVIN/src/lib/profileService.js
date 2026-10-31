@@ -1,24 +1,28 @@
 import { supabase } from './supabaseClient'
 
 /*
+ * PROFILE DATABASE STRUCTURE
+ *
+ * student_profile.student_id
+ *      -> auth.users.id
+ *
+ * career_advisor_profile.car_ad_id
+ *      -> auth.users.id
+ *
+ * admin_profile.admin_id
+ *      -> auth.users.id
+ *
  * IMPORTANT:
+ * These primary keys are UUIDs.
+ * Always query them using user.id from Supabase Auth.
  *
- * student_profile.student_id -> auth.users.id
- * staff_profile.staff_id     -> auth.users.id
- * admin_profile.admin_id     -> auth.users.id
+ * Do NOT use the UB number extracted from the email.
  *
- * All three columns are UUID foreign keys.
- * Therefore ALWAYS use user.id when querying them.
+ * Correct:
+ *   .eq('student_id', user.id)
  *
- * Example:
- *
- * user.id:
- * 8e19e6d5-8fb4-4a0b-be28-93fb5f00ff06
- *
- * user.email:
- * 2204421@ub.edu.ph
- *
- * Never use "2204421" as student_id/staff_id/admin_id.
+ * Incorrect:
+ *   .eq('student_id', '2204421')
  */
 
 const profileTables = [
@@ -28,9 +32,9 @@ const profileTables = [
     key: 'admin_id',
   },
   {
-    table: 'staff_profile',
-    role: 'staff',
-    key: 'staff_id',
+    table: 'career_advisor_profile',
+    role: 'career_advisor',
+    key: 'car_ad_id',
   },
   {
     table: 'student_profile',
@@ -40,15 +44,14 @@ const profileTables = [
 ]
 
 /**
- * Find which profile belongs to the currently
- * authenticated Supabase user.
+ * Find the profile/role belonging to the
+ * currently authenticated Supabase user.
  */
 export async function getProfileForUser(user) {
   if (!user?.id) {
     return null
   }
 
-  // user.id is the UUID from auth.users.id
   const authUserId = user.id
 
   for (const { table, role, key } of profileTables) {
@@ -80,9 +83,13 @@ export async function getProfileForUser(user) {
 }
 
 /**
- * Create or update student profile.
+ * Create or update the student profile.
+ *
+ * program_course and year_level have been removed
+ * because those columns no longer exist in
+ * student_profile.
  */
-export async function saveStudentProfile(user, values) {
+export async function saveStudentProfile(user, values = {}) {
   if (!user?.id) {
     throw new Error(
       'A signed-in user is required to save a student profile.'
@@ -94,16 +101,15 @@ export async function saveStudentProfile(user, values) {
   const profileValues = {
     ub_mail: user.email,
     display_name:
+      values.display_name ||
       user.user_metadata?.display_name ||
       user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
       user.email?.split('@')[0] ||
       '',
-    program_course: values.program_course,
-    year_level: values.year_level,
   }
 
-  // Check whether this auth user already has
-  // a student_profile row.
+  // Check whether the student profile already exists.
   const {
     data: existingProfile,
     error: readError,
@@ -117,7 +123,7 @@ export async function saveStudentProfile(user, values) {
     throw readError
   }
 
-  // Existing student -> update profile.
+  // Existing profile -> update it.
   if (existingProfile) {
     const { error: updateError } = await supabase
       .from('student_profile')
@@ -131,7 +137,7 @@ export async function saveStudentProfile(user, values) {
     return
   }
 
-  // No student profile yet -> create one.
+  // No student profile -> create one.
   const { error: insertError } = await supabase
     .from('student_profile')
     .insert({
@@ -145,31 +151,38 @@ export async function saveStudentProfile(user, values) {
 }
 
 /**
- * Create admin/staff profile if it does not exist.
+ * Create an admin or career-advisor profile.
+ *
+ * Supported roles:
+ * - admin
+ * - career_advisor
+ *
+ * Admin does NOT require account_status.
  */
 export async function saveRoleProfile(user, role) {
   if (
     !user?.id ||
-    !['admin', 'staff'].includes(role)
+    !['admin', 'career_advisor'].includes(role)
   ) {
     throw new Error(
-      'A signed-in admin or staff user is required.'
+      'A signed-in admin or career advisor is required.'
     )
   }
 
   const authUserId = user.id
 
-  const table =
-    role === 'admin'
-      ? 'admin_profile'
-      : 'staff_profile'
+  let table
+  let key
 
-  const key =
-    role === 'admin'
-      ? 'admin_id'
-      : 'staff_id'
+  if (role === 'admin') {
+    table = 'admin_profile'
+    key = 'admin_id'
+  } else {
+    table = 'career_advisor_profile'
+    key = 'car_ad_id'
+  }
 
-  // Check existing profile.
+  // Check whether the profile already exists.
   const {
     data: existingProfile,
     error: readError,
@@ -187,18 +200,32 @@ export async function saveRoleProfile(user, role) {
     return
   }
 
-  // Create profile linked directly to auth.users.id.
+  const profileValues = {
+    [key]: authUserId,
+
+    ub_mail: user.email,
+
+    display_name:
+      user.user_metadata?.display_name ||
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      user.email?.split('@')[0] ||
+      '',
+  }
+
+  /*
+   * account_status only applies to the student
+   * and career-advisor profiles.
+   *
+   * Admin profile does not need it.
+   */
+  if (role === 'career_advisor') {
+    profileValues.account_status = 'active'
+  }
+
   const { error: insertError } = await supabase
     .from(table)
-    .insert({
-      [key]: authUserId,
-      ub_mail: user.email,
-      display_name:
-        user.user_metadata?.display_name ||
-        user.user_metadata?.full_name ||
-        user.email?.split('@')[0] ||
-        '',
-    })
+    .insert(profileValues)
 
   if (insertError) {
     throw insertError

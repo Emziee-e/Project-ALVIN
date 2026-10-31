@@ -12,13 +12,17 @@ import {
   Download,
   CheckCircle2,
   Send,
+  Mic,
+  FileBarChart,
+  Users,
+  TrendingUp,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
 
 // Imports from the main content target
-import OverallStats from "./OverallStats";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import StudentLineChart from "./StudentLineChart";
 import RadarChartComponent from "./RadarChart";
 
@@ -127,8 +131,12 @@ export default function StaffStatistics() {
 
   // Search & Student Management States
   const [searchQuery, setSearchQuery] = useState("");
-  const [students, setStudents] = useState(MOCK_STUDENTS);
-  const [selectedStudent, setSelectedStudent] = useState(MOCK_STUDENTS[0]);
+  const [students, setStudents] = useState([]);
+  const [overview, setOverview] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState("");
+
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [commentInput, setCommentInput] = useState("");
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -199,6 +207,55 @@ export default function StaffStatistics() {
     navigate("/");
   };
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
+  const [commentError, setCommentError] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingText, setEditingText] = useState("");
+
+  const staffRequest = async (path, options = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error("Please sign in again.");
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: { "X-API-Key": APP_API_KEY, Authorization: `Bearer ${session.access_token}`,
+        ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${response.status})`);
+    }
+    return response.json();
+  };
+
+  useEffect(() => {
+    let alive = true;
+    staffRequest("/api/staff/students").then((rows) => {
+      if (!alive) return;
+      const mapped = rows.map((r) => ({ ...r, initials: (r.name || "S").split(/\s+/).map(x => x[0]).slice(0,2).join("").toUpperCase() }));
+      setStudents(mapped);
+      setSelectedStudent(mapped[0] || null);
+    }).catch((err) => { if (alive) setCommentError(err.message); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setOverviewLoading(true);
+      try {
+        const data = await staffRequest("/api/staff/statistics/overview");
+        if (active) { setOverview(data); setOverviewError(""); }
+      } catch (error) {
+        if (active) setOverviewError(error.message);
+      } finally {
+        if (active) setOverviewLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, []);
+
   // Filter students based on search query
   const filteredStudents = students.filter((student) =>
     student.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -209,32 +266,53 @@ export default function StaffStatistics() {
     setSelectedStudent(student);
     setSearchQuery("");
     setIsSearchFocused(false);
+    setEditingCommentId(null);
   };
 
   // Add observation comment to selected student
-  const handleAddComment = (e) => {
+  const handleAddComment = async (e) => {
     e.preventDefault();
     if (!commentInput.trim() || !selectedStudent) return;
+    setCommentError("");
+    setCommentSuccess(false);
+    try {
+      const comment = await staffRequest("/api/staff/feedback", { method: "POST", body: JSON.stringify({
+        student_id: selectedStudent.id, message: commentInput.trim() }) });
+      setStudents((prev) => prev.map((s) => s.id === selectedStudent.id ?
+        { ...s, comments: [...(s.comments || []), comment] } : s));
+      setSelectedStudent((prev) => ({ ...prev, comments: [...(prev.comments || []), comment] }));
+      setCommentInput("");
+      setCommentSuccess(true);
+    } catch (err) { setCommentError(err.message); }
+  };
 
-    const updatedStudents = students.map((s) => {
-      if (s.id === selectedStudent.id) {
-        return {
-          ...s,
-          comments: [...(s.comments || []), commentInput.trim()],
-        };
-      }
-      return s;
-    });
+  const updateStudentComment = (studentId, callback) => {
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, comments: callback(s.comments || []) } : s));
+    setSelectedStudent(prev => prev?.id === studentId ? { ...prev, comments: callback(prev.comments || []) } : prev);
+  };
 
-    setStudents(updatedStudents);
-    setSelectedStudent((prev) => ({
-      ...prev,
-      comments: [...(prev?.comments || []), commentInput.trim()],
-    }));
+  const handleEditComment = async (comment) => {
+    if (!editingText.trim() || !selectedStudent) return;
+    const studentId = selectedStudent.id;
+    setCommentError("");
+    try {
+      const updated = await staffRequest(`/api/staff/feedback/${comment.message_id}`, {
+        method: "PATCH", body: JSON.stringify({ message: editingText.trim() })
+      });
+      updateStudentComment(studentId, list => list.map(c => c.message_id === comment.message_id ? updated : c));
+      setEditingCommentId(null);
+      setEditingText("");
+    } catch (err) { setCommentError(err.message); }
+  };
 
-    setCommentInput("");
-    setCommentSuccess(true);
-    setTimeout(() => setCommentSuccess(false), 3000);
+  const handleDeleteComment = async (comment) => {
+    if (!selectedStudent || !window.confirm("Delete this comment permanently?")) return;
+    const studentId = selectedStudent.id;
+    setCommentError("");
+    try {
+      await staffRequest(`/api/staff/feedback/${comment.message_id}`, { method: "DELETE" });
+      updateStudentComment(studentId, list => list.filter(c => c.message_id !== comment.message_id));
+    } catch (err) { setCommentError(err.message); }
   };
 
   // Download PDF function trigger
@@ -455,11 +533,124 @@ export default function StaffStatistics() {
 
       {/* Main Container */}
       <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
-        <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10">
+        <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8">
+
+          {/* ========================================================= */}
+          {/* 4-COLUMN KPI METRIC CARDS                                  */}
+          {/* ========================================================= */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
+
+            {/* CARD 1: Total Mock Interviews */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Total Mock Interviews
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    {overviewLoading ? "…" : overview ? overview.total_interviews.toLocaleString() : "—"}
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
+                  <Mic className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] font-medium mt-3">
+                <span className="text-emerald-600 font-bold">+12%</span>
+                <span className="text-gray-400">this week</span>
+              </div>
+            </div>
+
+            {/* CARD 2: Job Readiness Rate */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Job Readiness Rate
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    {overviewLoading ? "…" : overview?.job_readiness_rate == null ? "—" : `${overview.job_readiness_rate}%`}
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
+                  <FileBarChart className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium mt-3">
+                <span>Scored 80%+ on last attempt</span>
+              </div>
+            </div>
+
+            {/* CARD 3: Avg. Skill Improvement */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Avg. Improvement
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    {overviewLoading ? "…" : overview?.average_improvement == null ? "—" : `${overview.average_improvement > 0 ? "+" : ""}${overview.average_improvement} pp`}
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium mt-3">
+                <span>Between 1st & latest attempt</span>
+              </div>
+            </div>
+
+            {/* CARD 4: Requires Coaching */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
+                    Requires Coaching
+                  </span>
+                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
+                    {overviewLoading ? "…" : overview ? overview.requires_coaching.toLocaleString() : "—"}
+                  </h3>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-[#862334]">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-500 text-[11px] font-semibold mt-3">
+                <span>Students scoring below 60%</span>
+              </div>
+            </div>
+
+          </div>
+
           {/* Overall Performance Section */}
-          <div className="mb-12 no-print">
+          <div className="no-print">
             <div className="bg-white rounded-lg border border-[#e5e5e5] p-8">
-              <OverallStats />
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#862334]">Cohort Analytics</p>
+                    <h2 className="text-xl font-bold text-black mt-1">Overall Class Performance Trend</h2>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500"><span className="h-3 w-3 rounded-full bg-[#862334]" />Average Performance (%)</div>
+                </div>
+                {overviewError && <p role="alert" className="text-sm text-red-700 mb-4">{overviewError}</p>}
+                <div className="h-[350px] w-full">
+                  {overviewLoading ? (
+                    <div className="h-full flex items-center justify-center text-gray-500">Loading interview statistics…</div>
+                  ) : overview?.trend?.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={overview.trend} margin={{ top: 15, right: 10, left: 0, bottom: 12 }}>
+                        <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#e5e7eb" />
+                        <XAxis dataKey="date" tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })} tick={{ fontSize: 11 }} />
+                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(value) => [`${value}%`, "Average score"]} labelFormatter={(date) => `Date: ${date}`} />
+                        <Bar dataKey="average" fill="#862334" radius={[10, 10, 0, 0]} maxBarSize={50} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-500 text-sm">No completed evaluations available yet.</div>
+                  )}
+                </div>
             </div>
           </div>
 
@@ -522,7 +713,7 @@ export default function StaffStatistics() {
                                 <div>
                                   <p className="text-xs font-bold text-black">{student.name}</p>
                                   <p className="text-[10px] text-gray-500">
-                                    {student.program} • {student.yearLevel}
+                                    {(student.enrollments || []).map(e => e.course_code || e.course_title).join(", ") || "No enrollment"}
                                   </p>
                                 </div>
                               </div>
@@ -555,19 +746,14 @@ export default function StaffStatistics() {
                             {selectedStudent.name}
                           </h3>
 
-                          <div className="flex flex-wrap items-center gap-y-2 gap-x-6">
-                            <div className="flex items-center gap-2">
-                              <GraduationCap className="text-[#4a4a4a] w-4 h-4" />
-                              <p className="font-inter text-sm text-[#4a4a4a]">
-                                <span className="font-bold">Program:</span> {selectedStudent.program}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Calendar className="text-[#4a4a4a] w-4 h-4" />
-                              <p className="font-inter text-sm text-[#4a4a4a]">
-                                <span className="font-bold">Year Level:</span> {selectedStudent.yearLevel}
-                              </p>
-                            </div>
+                          <div className="space-y-2">
+                            {(selectedStudent.enrollments || []).length ? selectedStudent.enrollments.map((enrollment, i) => (
+                              <div key={`${enrollment.course_id}-${i}`} className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#4a4a4a]">
+                                <span><strong>Course:</strong> {enrollment.course_title || enrollment.course_code || "—"}</span>
+                                <span><strong>Section:</strong> {enrollment.section || "—"}</span>
+                                <span><strong>Term:</strong> {enrollment.academic_term || "—"}</span>
+                              </div>
+                            )) : <p className="text-sm text-gray-500">No course enrollment found.</p>}
                           </div>
                         </div>
                       </div>
@@ -640,12 +826,24 @@ export default function StaffStatistics() {
 
                   {selectedStudent.comments && selectedStudent.comments.length > 0 && (
                     <div className="mb-4 space-y-2">
-                      {selectedStudent.comments.map((comment, index) => (
-                        <div
-                          key={index}
-                          className="bg-gray-50 border border-gray-200 p-3 rounded-lg text-xs font-inter text-gray-800"
-                        >
-                          {comment}
+                      {selectedStudent.comments.map((comment) => (
+                        <div key={comment.message_id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg text-sm font-inter text-gray-800">
+                          {editingCommentId === comment.message_id ? (
+                            <div className="space-y-2 no-print">
+                              <textarea className="w-full border rounded p-2" value={editingText} onChange={e => setEditingText(e.target.value)} rows={3} />
+                              <button type="button" className="text-[#862334] font-bold mr-4" onClick={() => handleEditComment(comment)}>Save</button>
+                              <button type="button" onClick={() => setEditingCommentId(null)}>Cancel</button>
+                            </div>
+                          ) : <p className="whitespace-pre-wrap">{comment.message}</p>}
+                          <div className="flex items-center justify-between mt-2 gap-3">
+                            <span className="text-xs text-gray-500">{comment.created_at ? new Date(comment.created_at).toLocaleString() : ""}</span>
+                            {comment.car_ad_id === selectedStudent.current_advisor_id && editingCommentId !== comment.message_id && (
+                              <div className="flex gap-3 no-print">
+                                <button type="button" className="text-[#862334] font-semibold" onClick={() => { setEditingCommentId(comment.message_id); setEditingText(comment.message); }}>Edit</button>
+                                <button type="button" className="text-red-600 font-semibold" onClick={() => handleDeleteComment(comment)}>Delete</button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -669,6 +867,7 @@ export default function StaffStatistics() {
                         Submit Comment
                       </button>
 
+                      {commentError && <p className="text-red-600 text-xs">{commentError}</p>}
                       {commentSuccess && (
                         <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
                           <CheckCircle2 className="w-4 h-4" />

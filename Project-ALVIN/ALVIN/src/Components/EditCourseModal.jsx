@@ -12,8 +12,42 @@ export default function EditCourseModal({ isOpen, course, onClose, onSave }) {
     title: "",
     section: "",
     term: "",
+    color: "bg-[#862334]",
     imageUrl: "",
   });
+
+  const COLOR_OPTIONS = [
+  {
+    id: "maroon",
+    label: "Maroon",
+    value: "bg-[#862334]",
+  },
+  {
+    id: "navy",
+    label: "Navy Blue",
+    value: "bg-[#1E3A8A]",
+  },
+  {
+    id: "emerald",
+    label: "Emerald Green",
+    value: "bg-[#065F46]",
+  },
+  {
+    id: "purple",
+    label: "Royal Purple",
+    value: "bg-[#581C87]",
+  },
+  {
+    id: "amber",
+    label: "Amber Orange",
+    value: "bg-[#C2410C]",
+  },
+  {
+    id: "slate",
+    label: "Dark Slate",
+    value: "bg-[#1E293B]",
+  },
+];
 
   const [imagePreview, setImagePreview] = useState("");
   const [isTermDropdownOpen, setIsTermDropdownOpen] = useState(false);
@@ -28,7 +62,13 @@ export default function EditCourseModal({ isOpen, course, onClose, onSave }) {
         code: course.code || "",
         title: course.title || "",
         section: course.section || "",
-        term: course.term || course.academicYear || "First Semester 2026-2027",
+        term:
+          course.term ||
+          course.academicYear ||
+          "First Semester",
+        color:
+          course.color ||
+          "bg-[#862334]",
         imageUrl: initialImage,
       });
       setImagePreview(initialImage);
@@ -251,6 +291,38 @@ export default function EditCourseModal({ isOpen, course, onClose, onSave }) {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Course Card Color */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+              Course Card Color
+            </label>
+
+            <div className="grid grid-cols-6 gap-2">
+              {COLOR_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  title={option.label}
+                  onClick={() =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      color: option.value,
+                    }))
+                  }
+                  className={`h-9 rounded-xl ${option.value} flex items-center justify-center cursor-pointer ${
+                    formData.color === option.value
+                      ? "ring-2 ring-offset-2 ring-[#862334]"
+                      : ""
+                  }`}
+                >
+                  {formData.color === option.value && (
+                    <Check className="w-4 h-4 text-white" />
+                  )}
+                </button>
+              ))}
             </div>
           </div>
 

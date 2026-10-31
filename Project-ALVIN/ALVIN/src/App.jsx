@@ -34,8 +34,13 @@ import SystemReport from './pages/Admin/SystemReport.jsx'
 import UserManagement from './pages/Admin/UserManagement.jsx'
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx'
 
+<<<<<<< HEAD
 import FloatingButton from './Components/FloatingButton.jsx'
 import WaitingRoom from "./Pages/User/WaitingRoom";
+=======
+import WaitingRoom from "./Pages/User/WaitingRoom";
+import EnrollmentGate from './Components/EnrollmentGate.jsx'
+>>>>>>> origin/poli
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -321,16 +326,29 @@ function App() {
         {/* PROTECTED STUDENT ROUTES */}
         {/* ============================================= */}
 
+<<<<<<< HEAD
         <Route
           path="/user/dashboard"
+=======
+        {/*
+         * All student pages sit behind EnrollmentGate.
+         * Students without an active course enrollment see an
+         * "enrollment required" page instead of the system.
+         */}
+        <Route
+>>>>>>> origin/poli
           element={
             session &&
             (role === 'user' ||
               role === 'student') ? (
+<<<<<<< HEAD
               <div className="relative min-h-screen w-full">
                 <UserDashboard />
                 <FloatingButton />
               </div>
+=======
+              <EnrollmentGate />
+>>>>>>> origin/poli
             ) : (
               <Navigate
                 to="/login"
@@ -338,6 +356,7 @@ function App() {
               />
             )
           }
+<<<<<<< HEAD
         />
 
         <Route
@@ -470,6 +489,68 @@ function App() {
          * career_advisor.
          */}
 
+=======
+        >
+          <Route
+            path="/user/dashboard"
+            element={<UserDashboard />}
+          />
+
+          <Route
+            path="/user/interviews"
+            element={<InterviewHistory />}
+          />
+
+          <Route
+            path="/user/interview-results/:sessionId"
+            element={<InterviewResults />}
+          />
+
+          <Route
+            path="/user/interview-results"
+            element={<InterviewResults />}
+          />
+
+          <Route
+            path="/user/waiting-room"
+            element={<WaitingRoom />}
+          />
+
+          <Route
+            path="/user/settings"
+            element={<UserSettings />}
+          />
+
+          <Route
+            path="/user/resume-upload"
+            element={<ResumeUpload />}
+          />
+
+          <Route
+            path="/user/hardware-check"
+            element={<HardwareCheck />}
+          />
+
+          <Route
+            path="/user/live-session"
+            element={<LiveSession />}
+          />
+        </Route>
+
+        {/* ============================================= */}
+        {/* PROTECTED CAREER ADVISOR ROUTES */}
+        {/* ============================================= */}
+
+        {/*
+         * We keep /staff/... URLs so your existing
+         * StaffDashboard, StaffStatistics and
+         * StaffSettings navigation continues working.
+         *
+         * The authorization role, however, is now
+         * career_advisor.
+         */}
+
+>>>>>>> origin/poli
         <Route
           path="/staff/dashboard"
           element={
