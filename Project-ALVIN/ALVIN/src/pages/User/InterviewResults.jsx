@@ -8,6 +8,8 @@ import {
   Mail,
   Calendar,
   GraduationCap,
+  BookOpen,
+  Users,
 } from "lucide-react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
@@ -17,7 +19,7 @@ import { supabase } from "../../lib/supabaseClient";
 const navItems = [
   { id: "account", label: "Account", path: null, icon: User },
   { id: "dashboard", label: "Dashboard", path: "/user/dashboard", icon: LayoutDashboard },
-  { id: "interviews", label: "Interviews", path: "/user/interviews", icon: Mic },
+  { id: "interviews", label: "History", path: "/user/interviews", icon: Mic },
 ];
 
 const API_BASE_URL =
@@ -42,8 +44,7 @@ export default function InterviewResults() {
   const [userProfile, setUserProfile] = useState({
     name: "Vin",
     email: "",
-    academicYear: "A.Y. 2026 - 2027",
-    degreeProgram: "BS in Computer Science",
+    enrollments: [],
     avatarUrl: null,
     initials: "V",
   });
@@ -67,13 +68,6 @@ export default function InterviewResults() {
           "Vin";
 
         const emailAddress = user.email || metadata.email || "N/A";
-        const academicYear =
-          metadata.academic_year || metadata.academicYear || "A.Y. 2026 - 2027";
-        const degreeProgram =
-          metadata.degree_program ||
-          metadata.course ||
-          metadata.department ||
-          "BS in Computer Science";
         const avatar =
           metadata.avatar_url ||
           metadata.picture ||
@@ -88,14 +82,13 @@ export default function InterviewResults() {
             ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
             : fullName.slice(0, 2).toUpperCase();
 
-        setUserProfile({
+        setUserProfile((prev) => ({
+          ...prev,
           name: fullName,
           email: emailAddress,
-          academicYear: academicYear,
-          degreeProgram: degreeProgram,
           avatarUrl: avatar,
           initials: initials,
-        });
+        }));
       }
     };
 
@@ -104,6 +97,29 @@ export default function InterviewResults() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadEnrollments = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const response = await fetch(`${API_BASE_URL}/api/student/enrollments`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "X-API-Key": APP_API_KEY,
+          },
+        });
+        if (!response.ok) throw new Error(`Enrollment request failed (${response.status})`);
+        const rows = await response.json();
+        if (active) setUserProfile((prev) => ({ ...prev, enrollments: Array.isArray(rows) ? rows : [] }));
+      } catch (error) {
+        console.error("Unable to load student enrollments:", error);
+      }
+    };
+    loadEnrollments();
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -128,17 +144,47 @@ export default function InterviewResults() {
         setResultsLoading(true);
         setResultsError("");
 
-        const response = await fetch(
-          `${API_BASE_URL}/api/interview/results/${encodeURIComponent(sessionId)}`,
-          { headers: { "X-API-Key": APP_API_KEY } }
-        );
+        // Obtain the signed-in student's token for this request, not a cached
+        // token belonging to another student or a previous interview.
+        const getAccessToken = async (forceRefresh = false) => {
+          const { data, error } = forceRefresh
+            ? await supabase.auth.refreshSession()
+            : await supabase.auth.getSession();
+          if (error) throw new Error(`Authentication failed: ${error.message}`);
+          if (!data.session?.access_token) {
+            throw new Error("Your Google sign-in session is unavailable. Please sign in again and reopen Interview History.");
+          }
+          return data.session.access_token;
+        };
+
+        const requestResults = (token) =>
+          fetch(`${API_BASE_URL}/api/interview/results/${encodeURIComponent(sessionId)}`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              ...(APP_API_KEY ? { "X-API-Key": APP_API_KEY } : {}),
+            },
+          });
+
+        let token = await getAccessToken();
+        let response = await requestResults(token);
+
+        // A token can expire while the interview is in progress. Refresh it
+        // once on an auth failure and retry the same results request.
+        if (response.status === 401) {
+          token = await getAccessToken(true);
+          response = await requestResults(token);
+        }
 
         if (!response.ok) {
-          let detail = `Request failed (${response.status})`;
+          let detail = `Results request failed (${response.status})`;
           try {
-            const data = await response.json();
-            detail = data.detail || detail;
+            const payload = await response.json();
+            detail = typeof payload.detail === "string" ? payload.detail : detail;
           } catch {}
+          if (response.status === 401) {
+            throw new Error(`${detail}. Authentication was rejected even after refreshing the Supabase session. Check the results endpoint's token validation.`);
+          }
           throw new Error(detail);
         }
 
@@ -293,33 +339,32 @@ export default function InterviewResults() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
-                <Calendar className="w-4 h-4" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  Academic Year Level
-                </span>
-                <span className="text-sm font-medium text-[#2D3B45]">
-                  {userProfile.academicYear}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
-                <GraduationCap className="w-4 h-4" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  Course / Degree Program
-                </span>
-                <span className="text-sm font-medium text-[#2D3B45]">
-                  {userProfile.degreeProgram}
-                </span>
-              </div>
-            </div>
+              {userProfile.enrollments.length ? userProfile.enrollments.map((enrollment, index) => (
+                <div key={`${enrollment.course_id}-${index}`} className="space-y-4 border-t border-gray-100 pt-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><BookOpen className="w-4 h-4" /></div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Enrolled Course</span>
+                      <span className="text-sm font-medium text-[#2D3B45] break-words">{enrollment.course_title || "Not available"}</span>
+                      {enrollment.course_code && <span className="text-xs text-gray-500">{enrollment.course_code}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Users className="w-4 h-4" /></div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Section</span>
+                      <span className="text-sm font-medium text-[#2D3B45]">{enrollment.section || "Not available"}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Calendar className="w-4 h-4" /></div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Academic Term</span>
+                      <span className="text-sm font-medium text-[#2D3B45]">{enrollment.academic_term || "Not available"}</span>
+                    </div>
+                  </div>
+                </div>
+              )) : <p className="text-sm text-gray-500">No course enrollment found.</p>}
           </div>
         </aside>
 
