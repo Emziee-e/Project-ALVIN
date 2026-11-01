@@ -34,13 +34,8 @@ import SystemReport from './pages/Admin/SystemReport.jsx'
 import UserManagement from './pages/Admin/UserManagement.jsx'
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx'
 
-<<<<<<< HEAD
-import FloatingButton from './Components/FloatingButton.jsx'
-import WaitingRoom from "./Pages/User/WaitingRoom";
-=======
 import WaitingRoom from "./Pages/User/WaitingRoom";
 import EnrollmentGate from './Components/EnrollmentGate.jsx'
->>>>>>> origin/poli
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -326,29 +321,17 @@ function App() {
         {/* PROTECTED STUDENT ROUTES */}
         {/* ============================================= */}
 
-<<<<<<< HEAD
-        <Route
-          path="/user/dashboard"
-=======
         {/*
          * All student pages sit behind EnrollmentGate.
          * Students without an active course enrollment see an
          * "enrollment required" page instead of the system.
          */}
         <Route
->>>>>>> origin/poli
           element={
             session &&
             (role === 'user' ||
               role === 'student') ? (
-<<<<<<< HEAD
-              <div className="relative min-h-screen w-full">
-                <UserDashboard />
-                <FloatingButton />
-              </div>
-=======
               <EnrollmentGate />
->>>>>>> origin/poli
             ) : (
               <Navigate
                 to="/login"
@@ -356,140 +339,6 @@ function App() {
               />
             )
           }
-<<<<<<< HEAD
-        />
-
-        <Route
-          path="/user/interviews"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <InterviewHistory />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
-
-        <Route
-          path="/user/interview-results/:sessionId"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <InterviewResults />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
-
-        <Route
-          path="/user/waiting-room"
-          element={<WaitingRoom />}
-        />
-
-        <Route
-          path="/user/interview-results"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <InterviewResults />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
-
-        <Route
-          path="/user/settings"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <UserSettings />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
-
-        <Route
-          path="/user/resume-upload"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <ResumeUpload />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
-
-        <Route
-          path="/user/hardware-check"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <HardwareCheck />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
-
-        <Route
-          path="/user/live-session"
-          element={
-            session &&
-            (role === 'user' ||
-              role === 'student') ? (
-              <LiveSession />
-            ) : (
-              <Navigate
-                to="/login"
-                replace
-              />
-            )
-          }
-        />
-
-        {/* ============================================= */}
-        {/* PROTECTED CAREER ADVISOR ROUTES */}
-        {/* ============================================= */}
-
-        {/*
-         * We keep /staff/... URLs so your existing
-         * StaffDashboard, StaffStatistics and
-         * StaffSettings navigation continues working.
-         *
-         * The authorization role, however, is now
-         * career_advisor.
-         */}
-
-=======
         >
           <Route
             path="/user/dashboard"
@@ -550,7 +399,6 @@ function App() {
          * career_advisor.
          */}
 
->>>>>>> origin/poli
         <Route
           path="/staff/dashboard"
           element={

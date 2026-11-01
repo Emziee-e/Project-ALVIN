@@ -122,15 +122,11 @@ export default function InterviewResults() {
         });
         if (!response.ok) throw new Error(`Enrollment request failed (${response.status})`);
         const rows = await response.json();
-<<<<<<< HEAD
-        if (active) setUserProfile((prev) => ({ ...prev, enrollments: Array.isArray(rows) ? rows : [] }));
-=======
         if (active) {
           setUserProfile((prev) => ({ ...prev, enrollments: Array.isArray(rows) ? rows : [] }));
           // Only enable "New Session" after a successful availability check.
           setEnrollmentsLoaded(true);
         }
->>>>>>> origin/poli
       } catch (error) {
         console.error("Unable to load student enrollments:", error);
       }

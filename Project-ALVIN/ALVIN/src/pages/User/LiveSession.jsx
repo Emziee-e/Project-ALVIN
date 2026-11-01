@@ -651,8 +651,6 @@ export default function LiveSession() {
   const [liveConfidence, setLiveConfidence] =
     useState(null);
 
-<<<<<<< HEAD
-=======
   // Integrity monitoring: fullscreen + tab/window switch detection.
   // After MAX_VIOLATIONS warnings the interview ends automatically.
   const MAX_VIOLATIONS = 3;
@@ -667,7 +665,6 @@ export default function LiveSession() {
     onLimitReached: () => autoEndInterviewRef.current(),
   });
 
->>>>>>> origin/poli
   useEffect(() => {
     currentQuestionRef.current = currentQuestion;
   }, [currentQuestion]);

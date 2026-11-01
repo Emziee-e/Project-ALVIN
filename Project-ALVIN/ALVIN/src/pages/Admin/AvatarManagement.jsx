@@ -1,20 +1,21 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Users,
   FileBarChart,
   UserCircle,
-  Play,
   Mic,
   CheckCircle,
+  Plus,
+  Trash2,
   User,
   X,
   Mail,
+  HelpCircle,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
 import SignOutModal from "../../Components/SignOutModal";
 import VoiceConfigModal from "../../Components/VoiceConfigModal";
-import AvatarPreviewModal from "../../Components/AvatarPreviewModal";
 import { supabase } from "../../lib/supabaseClient";
 
 const navItems = [
@@ -24,45 +25,25 @@ const navItems = [
   { id: "avatars", label: "Avatars", path: "/admin/avatars", icon: UserCircle },
 ];
 
-const avatarModels = [
-  {
-    id: 1,
-    name: "Tristan",
-    image: "/images/Alvin.png",
-    video: "/videos/tristan-preview.mp4",
-    selected: true,
-  },
-  {
-    id: 2,
-    name: "Marcus",
-    image: "/images/Alvin.png",
-    video: "/videos/marcus-preview.mp4",
-    selected: false,
-  },
-  {
-    id: 3,
-    name: "Elena",
-    image: "/images/Alvin.png",
-    video: "/videos/elena-preview.mp4",
-    selected: false,
-  },
-  {
-    id: 4,
-    name: "Nova",
-    image: "/images/Alvin.png",
-    video: "/videos/nova-preview.mp4",
-    selected: false,
-  },
-];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
+const DEFAULT_AVATAR_IMAGE = "/images/Alvin.png";
 
 export default function AvatarManagement() {
   const [activeNav, setActiveNav] = useState("avatars");
   const [isAccountOpen, setIsAccountOpen] = useState(false);
-  const [models, setModels] = useState(avatarModels);
+  const [models, setModels] = useState([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [avatarError, setAvatarError] = useState("");
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
-  const [activeVoiceModel, setActiveVoiceModel] = useState(null);
-  const [previewModel, setPreviewModel] = useState(null);
+  const [isAvatarFormOpen, setIsAvatarFormOpen] = useState(false);
+  const [avatarForm, setAvatarForm] = useState({
+    avatar_name: "",
+    avatar_id: "",
+    avatar_image: "",
+  });
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -136,17 +117,140 @@ export default function AvatarManagement() {
     navigate("/");
   };
 
-  const selectModel = (id) =>
-    setModels((prev) => prev.map((m) => ({ ...m, selected: m.id === id })));
+  const apiRequest = useCallback(async (path, options = {}) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        Authorization: session?.access_token
+          ? `Bearer ${session.access_token}`
+          : "",
+        "X-API-Key": APP_API_KEY,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
 
-  const openVoiceModal = (model) => {
-    setActiveVoiceModel(model);
-    setIsVoiceModalOpen(true);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${response.status})`);
+    }
+
+    return response.json();
+  }, []);
+
+  const mapAvatar = (avatar) => ({
+    id: avatar.avatar_id,
+    avatar_id: avatar.avatar_id,
+    name: avatar.avatar_name,
+    image: avatar.avatar_image || DEFAULT_AVATAR_IMAGE,
+    selected: avatar.is_active === true,
+    updated_at: avatar.updated_at,
+  });
+
+  const loadAvatars = useCallback(async () => {
+    setIsLoadingModels(true);
+    setAvatarError("");
+    try {
+      const avatars = await apiRequest("/api/admin/avatars");
+      setModels(Array.isArray(avatars) ? avatars.map(mapAvatar) : []);
+    } catch (error) {
+      console.error("Unable to load avatars:", error);
+      setAvatarError(error.message || "Unable to load avatars.");
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, [apiRequest]);
+
+  useEffect(() => {
+    queueMicrotask(loadAvatars);
+  }, [loadAvatars]);
+
+  const selectModel = async (id) => {
+    setAvatarError("");
+    try {
+      await apiRequest(`/api/admin/avatars/${encodeURIComponent(id)}/select`, {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      });
+      setModels((prev) =>
+        prev.map((model) => ({ ...model, selected: model.id === id }))
+      );
+    } catch (error) {
+      console.error("Unable to select avatar:", error);
+      setAvatarError(error.message || "Unable to select avatar.");
+    }
+  };
+
+  const addAvatar = async (event) => {
+    event.preventDefault();
+    setIsSavingAvatar(true);
+    setAvatarError("");
+    try {
+      await apiRequest("/api/admin/avatars", {
+        method: "POST",
+        body: JSON.stringify(avatarForm),
+      });
+      setAvatarForm({ avatar_name: "", avatar_id: "", avatar_image: "" });
+      setIsAvatarFormOpen(false);
+      await loadAvatars();
+    } catch (error) {
+      console.error("Unable to add avatar:", error);
+      setAvatarError(error.message || "Unable to add avatar.");
+    } finally {
+      setIsSavingAvatar(false);
+    }
+  };
+
+  const deleteModel = async (model) => {
+    if (model.selected || !window.confirm(`Delete "${model.name}"?`)) return;
+
+    setAvatarError("");
+    try {
+      await apiRequest(`/api/admin/avatars/${encodeURIComponent(model.id)}`, {
+        method: "DELETE",
+      });
+      setModels((prev) => prev.filter((item) => item.id !== model.id));
+    } catch (error) {
+      console.error("Unable to delete avatar:", error);
+      setAvatarError(error.message || "Unable to delete avatar.");
+    }
   };
 
   const closeVoiceModal = () => {
     setIsVoiceModalOpen(false);
-    setActiveVoiceModel(null);
+  };
+
+  const handleAvatarImageChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select an image file.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Avatar images must be 5 MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAvatarForm((current) => ({
+        ...current,
+        avatar_image: typeof reader.result === "string" ? reader.result : "",
+      }));
+    };
+    reader.onerror = () => {
+      setAvatarError("Unable to read the avatar image.");
+      event.target.value = "";
+    };
+    reader.readAsDataURL(file);
   };
 
   const selected = models.find((m) => m.selected);
@@ -167,16 +271,125 @@ export default function AvatarManagement() {
 
         <VoiceConfigModal
           isOpen={isVoiceModalOpen}
-          modelName={activeVoiceModel?.name}
           onClose={closeVoiceModal}
-          onUpdate={closeVoiceModal}
         />
 
-        <AvatarPreviewModal
-          isOpen={Boolean(previewModel)}
-          model={previewModel}
-          onClose={() => setPreviewModel(null)}
-        />
+        {isAvatarFormOpen && (
+          <div
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-avatar-title"
+            onClick={() => setIsAvatarFormOpen(false)}
+          >
+            <form
+              className="relative w-full max-w-md space-y-5 rounded-[28px] bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.24)]"
+              onSubmit={addAvatar}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setIsAvatarFormOpen(false)}
+                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close add avatar dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div>
+                <h2 id="add-avatar-title" className="text-xl font-bold text-slate-900">
+                  Add Avatar
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Enter the avatar details from NavTalk.
+                </p>
+              </div>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Avatar Name</span>
+                <input
+                  required
+                  value={avatarForm.avatar_name}
+                  onChange={(event) =>
+                    setAvatarForm((current) => ({
+                      ...current,
+                      avatar_name: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
+                  placeholder="e.g. Tristan"
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Avatar Thumbnail</span>
+                <input
+                  required
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarImageChange}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#862334]/10 file:px-3 file:py-2 file:font-semibold file:text-[#862334] hover:file:bg-[#862334]/15"
+                />
+                {avatarForm.avatar_image && (
+                  <img
+                    src={avatarForm.avatar_image}
+                    alt="Avatar thumbnail preview"
+                    className="h-24 w-full rounded-xl object-cover"
+                  />
+                )}
+              </label>
+
+              <label className="block space-y-2">
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                  Avatar ID
+                  <span
+                    className="group relative inline-flex"
+                    title="The Avatar ID is only available in the NavTalk Avatar Dashboard."
+                  >
+                    <HelpCircle
+                      className="h-4 w-4 cursor-help text-slate-400 transition-colors group-hover:text-[#862334]"
+                      aria-label="Avatar ID reminder"
+                    />
+                    <span
+                      role="tooltip"
+                      className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-64 -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+                    >
+                      The Avatar ID is only available in the NavTalk Avatars Dashboard.
+                    </span>
+                  </span>
+                </span>
+                <input
+                  required
+                  value={avatarForm.avatar_id}
+                  onChange={(event) =>
+                    setAvatarForm((current) => ({
+                      ...current,
+                      avatar_id: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
+                  placeholder="NavTalk avatar ID"
+                />
+              </label>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAvatarFormOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingAvatar}
+                  className="rounded-xl bg-maroon px-4 py-3 text-sm font-semibold text-white hover:bg-[#862334] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingAvatar ? "Adding..." : "Add Avatar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* Slide-out Account Drawer Wrapper with Transitions */}
         <div
@@ -328,13 +541,25 @@ export default function AvatarManagement() {
             {/* Same generous padding as User Management and System Report */}
             <div className="px-12 sm:px-16 md:px-20 lg:px-28 py-8 space-y-8 w-full">
               <div className="space-y-2">
-                <h3 className="font-[Geist,Inter] text-2xl md:text-3xl font-bold tracking-tight mb-3 text-maroon">
-                  Choose Avatar Model
-                </h3>
-                <p className="text-sm md:text-base text-gray-600 font-[Inter,sans-serif] leading-6 mb-3">
-                  Select the persona for next AI-driven interview session. Each
-                  model has a distinct visual identity and conversational style.
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-[Geist,Inter] text-2xl md:text-3xl font-bold tracking-tight mb-3 text-maroon">
+                      Choose Avatar Model
+                    </h3>
+                    <p className="text-sm md:text-base text-gray-600 font-[Inter,sans-serif] leading-6 mb-3">
+                      Select the persona for next AI-driven interview session. Each
+                      model has a distinct visual identity and conversational style.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAvatarFormOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-maroon px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#862334]"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Avatar
+                  </button>
+                </div>
                 {selected && (
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#862334]/15 bg-[#862334]/5 px-4 py-1.5 text-sm font-semibold text-[#862334]">
                     <CheckCircle className="h-5 w-5" />
@@ -343,6 +568,19 @@ export default function AvatarManagement() {
                 )}
               </div>
 
+              {avatarError && (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {avatarError}
+                </p>
+              )}
+
+              {isLoadingModels ? (
+                <p className="py-12 text-center text-sm text-slate-500">Loading avatars...</p>
+              ) : models.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">
+                  No avatars configured yet. Add a NavTalk avatar to get started.
+                </p>
+              ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                 {models.map((model) => (
                   <article
@@ -372,14 +610,6 @@ export default function AvatarManagement() {
                           <p className="truncate text-lg font-bold text-white md:text-xl">
                             {model.name}
                           </p>
-                          <button
-                            type="button"
-                            onClick={() => setPreviewModel(model)}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/20 px-3 py-2 text-xs font-semibold text-white backdrop-blur-md opacity-90 transition-all duration-300 hover:bg-white/30 hover:opacity-100 cursor-pointer"
-                          >
-                            <Play className="h-4 w-4 fill-current" />
-                            Preview
-                          </button>
                         </div>
                       </div>
                     </div>
@@ -387,7 +617,7 @@ export default function AvatarManagement() {
                     <div className="space-y-3 p-4 md:p-5">
                       <button
                         type="button"
-                        onClick={() => openVoiceModal(model)}
+                        onClick={() => setIsVoiceModalOpen(true)}
                         className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#862334]/15 bg-[#f7fbfc] px-4 py-3 text-sm font-Geist text-maroon transition-all duration-300 hover:border-[#862334]/25 hover:bg-[#eef7f8] cursor-pointer"
                       >
                         <Mic className="h-4 w-4 text-maroon" />
@@ -401,10 +631,21 @@ export default function AvatarManagement() {
                       >
                         Select for Session
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteModel(model)}
+                        disabled={model.selected}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={model.selected ? "Select another avatar before deleting this avatar" : "Delete avatar"}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete Avatar
+                      </button>
                     </div>
                   </article>
                 ))}
               </div>
+              )}
             </div>
           </div>
         </main>

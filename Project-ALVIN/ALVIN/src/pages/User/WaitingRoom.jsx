@@ -57,8 +57,4 @@ export default function WaitingRoom() {
       </section>
     </main>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/poli

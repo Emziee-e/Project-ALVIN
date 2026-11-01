@@ -17,16 +17,11 @@ import {
   Calendar,
 
   GraduationCap,
-<<<<<<< HEAD
-  BookOpen,
-  Users,
-=======
 
   BookOpen,
 
   Users,
 
->>>>>>> origin/poli
 } from "lucide-react";
 
 import { useNavigate, useLocation } from "react-router-dom";
@@ -49,25 +44,6 @@ const navItems = [
 
 ];
 
-<<<<<<< HEAD
-
-
-// Emphasize evaluation category names and numeric scores without inserting HTML.
-const SUMMARY_HIGHLIGHTS = /(Appearance\s+and\s+Poise|Skill\s+Presentation|Delivery\s+and\s+Language|Resume(?:\s+Alignment)?|\b\d+(?:\.\d+)?\s*%?)/gi;
-const SUMMARY_CATEGORIES = /^(Appearance\s+and\s+Poise|Skill\s+Presentation|Delivery\s+and\s+Language|Resume(?:\s+Alignment)?)$/i;
-const SUMMARY_SCORES = /^\d+(?:\.\d+)?\s*%?$/;
-
-function renderPerformanceSummary(summary) {
-  return String(summary).split(SUMMARY_HIGHLIGHTS).map((part, index) => {
-    if (SUMMARY_CATEGORIES.test(part)) {
-      return <strong key={index} className="font-bold text-black">{part}</strong>;
-    }
-    if (SUMMARY_SCORES.test(part)) {
-      return <strong key={index} className="font-bold text-[#862334]">{part}</strong>;
-    }
-    return part;
-  });
-=======
 const SUMMARY_HIGHLIGHTS = /(Appearance\s+and\s+Poise|Skill\s+Presentation|Delivery\s+and\s+Language|Resume(?:\s+Alignment)?|\b\d+(?:\.\d+)?\s*%?)/gi;
 
 const SUMMARY_CATEGORIES = /^(Appearance\s+and\s+Poise|Skill\s+Presentation|Delivery\s+and\s+Language|Resume(?:\s+Alignment)?)$/i;
@@ -94,7 +70,6 @@ function renderPerformanceSummary(summary) {
 
   });
 
->>>>>>> origin/poli
 }
 
 export default function UserDashboard() {
@@ -116,11 +91,6 @@ export default function UserDashboard() {
   const location = useLocation();
 
   const [userProfile, setUserProfile] = useState({
-<<<<<<< HEAD
-    name: "Student",
-    email: "",
-    enrollments: [],
-=======
 
     name: "Student",
 
@@ -128,7 +98,6 @@ export default function UserDashboard() {
 
     enrollments: [],
 
->>>>>>> origin/poli
     avatarUrl: null,
 
     initials: "V",
@@ -136,57 +105,6 @@ export default function UserDashboard() {
   });
 
   const [imageError, setImageError] = useState(false);
-  const [dashboard, setDashboard] = useState(null);
-  const [dashboardError, setDashboardError] = useState("");
-  const interviews = (dashboard?.history || []).slice(0, 3).map((r) => ({
-    id: r.session_id, role: r.target_role || "Interview",
-    date: r.started_at ? new Date(r.started_at).toLocaleDateString() : "—",
-    score: r.overall_score == null ? "—" : `${Math.round(Number(r.overall_score))}%`,
-    high: Number(r.overall_score) >= 80,
-    canView: r.report_status === "completed",
-  }));
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) throw new Error("Please sign in again.");
-        const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-        const response = await fetch(`${base}/api/interview/dashboard`, { headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
-        }});
-        if (!response.ok) throw new Error(`Dashboard request failed (${response.status})`);
-        const result = await response.json();
-        if (active) setDashboard(result);
-      } catch (err) { if (active) setDashboardError(err.message); }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const loadEnrollments = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) return;
-        const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-        const response = await fetch(`${base}/api/student/enrollments`, {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
-          },
-        });
-        if (!response.ok) throw new Error(`Enrollment request failed (${response.status})`);
-        const rows = await response.json();
-        if (active) setUserProfile(prev => ({ ...prev, enrollments: rows }));
-      } catch (error) {
-        console.error("Unable to load student enrollments:", error);
-      }
-    };
-    loadEnrollments();
-    return () => { active = false; };
-  }, []);
 
   const [dashboard, setDashboard] = useState(null);
 
@@ -397,10 +315,7 @@ export default function UserDashboard() {
           "Vin";
 
         const emailAddress = user.email || metadata.email || "N/A";
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/poli
         const avatar =
 
           metadata.avatar_url ||
@@ -432,11 +347,7 @@ export default function UserDashboard() {
           name: fullName,
 
           email: emailAddress,
-<<<<<<< HEAD
-          enrollments: [],
-=======
 
->>>>>>> origin/poli
           avatarUrl: avatar,
 
           initials: initials,
@@ -643,34 +554,6 @@ export default function UserDashboard() {
 
                 </div>
 
-<<<<<<< HEAD
-                {userProfile.enrollments.length ? userProfile.enrollments.map((enrollment, index) => (
-                  <div key={`${enrollment.course_id}-${index}`} className="space-y-4 border-t border-gray-100 pt-4">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><BookOpen className="w-4 h-4" /></div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Enrolled Course</span>
-                        <span className="text-sm font-medium text-[#2D3B45] break-words">{enrollment.course_title || "Not available"}</span>
-                        {enrollment.course_code && <span className="text-xs text-gray-500">{enrollment.course_code}</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Users className="w-4 h-4" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Section</span>
-                        <span className="text-sm font-medium text-[#2D3B45]">{enrollment.section || "Not available"}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Calendar className="w-4 h-4" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Academic Term</span>
-                        <span className="text-sm font-medium text-[#2D3B45]">{enrollment.academic_term || "Not available"}</span>
-                      </div>
-                    </div>
-                  </div>
-                )) : <p className="text-sm text-gray-500">No course enrollment found.</p>}
-=======
                 {userProfile.enrollments.length ? (
 
                   userProfile.enrollments.map((enrollment, index) => (
@@ -731,7 +614,6 @@ export default function UserDashboard() {
 
                 )}
 
->>>>>>> origin/poli
               </div>
 
             </aside>
@@ -849,12 +731,6 @@ export default function UserDashboard() {
                   Welcome, <span className="text-maroon">{userProfile.name.split(" ")[0]}!</span>
 
                 </h2>
-<<<<<<< HEAD
-                <p className="text-[#4a4a4a] font-[Inter] text-sm sm:text-base lg:text-lg leading-[1.85] tracking-normal w-full max-w-none">
-                  {renderPerformanceSummary(dashboardError
-                    ? "Your performance summary is temporarily unavailable. Please refresh the page."
-                    : dashboard?.overall_summary || "Loading your interview performance summary...")}
-=======
 
                 <p className="text-[#4a4a4a] font-[Inter] text-sm sm:text-base lg:text-lg leading-[1.85] tracking-normal w-full max-w-none">
 
@@ -868,7 +744,6 @@ export default function UserDashboard() {
 
                   )}
 
->>>>>>> origin/poli
                 </p>
 
               </div>
@@ -888,13 +763,9 @@ export default function UserDashboard() {
                   </span>
 
                   <div className="flex items-baseline gap-2">
-<<<<<<< HEAD
-                    <span className="font-[Geist] text-[30px] font-bold text-black">{dashboard?.session_volume ?? "—"}</span>
-=======
 
                     <span className="font-[Geist] text-[30px] font-bold text-black">{dashboard?.session_volume ?? "—"}</span>
 
->>>>>>> origin/poli
                   </div>
 
                   <div className="mt-4 text-xs font-[Inter] text-[#4a4a4a] uppercase tracking-tight">
@@ -912,11 +783,6 @@ export default function UserDashboard() {
                     Average Performance Accuracy
 
                   </span>
-<<<<<<< HEAD
-                  <span className="font-[Geist] text-[30px] font-bold text-black">{dashboard?.average_performance == null ? "—" : `${Math.round(dashboard.average_performance)}%`}</span>
-                  <div className="mt-4 w-full bg-[#f0f0f0] h-1 rounded-[2px]">
-                    <div className="bg-[#862334] h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, dashboard?.average_performance ?? 0))}%` }} />
-=======
 
                   <span className="font-[Geist] text-[30px] font-bold text-black">
 
@@ -928,7 +794,6 @@ export default function UserDashboard() {
 
                     <div className="bg-[#862334] h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, dashboard?.average_performance ?? 0))}%` }} />
 
->>>>>>> origin/poli
                   </div>
 
                 </div>
@@ -942,23 +807,15 @@ export default function UserDashboard() {
                   </span>
 
                   <div className="font-[Geist] text-xl font-bold text-black mt-2 leading-tight uppercase text-center">
-<<<<<<< HEAD
-                    {dashboard?.peak_competency || "Not yet available"}
-=======
 
                     {dashboard?.peak_competency || "Not yet available"}
 
->>>>>>> origin/poli
                   </div>
 
                   <div className="inline-flex items-center px-2 py-1 bg-[#862334]/10 text-[#862334] text-[10px] font-bold rounded-full mt-4">
-<<<<<<< HEAD
-                    STRONGEST CATEGORY
-=======
 
                     STRONGEST CATEGORY
 
->>>>>>> origin/poli
                   </div>
 
                 </div>
@@ -972,13 +829,9 @@ export default function UserDashboard() {
                   </span>
 
                   <div className="font-[Geist] text-xl font-bold text-[#862334] mt-2 uppercase">
-<<<<<<< HEAD
-                    {dashboard?.priority_focus || "Not yet available"}
-=======
 
                     {dashboard?.priority_focus || "Not yet available"}
 
->>>>>>> origin/poli
                   </div>
 
                   <div className="flex gap-1 mt-4">
@@ -1023,16 +876,10 @@ export default function UserDashboard() {
 
                 </div>
 
-<<<<<<< HEAD
-                {/* Rows */}
-                {dashboardError && <p className="text-red-600 text-sm">{dashboardError}</p>}
-                {interviews.length === 0 && <p className="px-6 py-5 text-sm text-gray-500">No interviews yet.</p>}
-=======
                 {dashboardError && <p className="text-red-600 text-sm">{dashboardError}</p>}
 
                 {interviews.length === 0 && <p className="px-6 py-5 text-sm text-gray-500">No interviews yet.</p>}
 
->>>>>>> origin/poli
                 {interviews.map((row, i) => (
 
                   <div
@@ -1060,9 +907,6 @@ export default function UserDashboard() {
                     </div>
 
                     <div className="text-right">
-<<<<<<< HEAD
-                      <button disabled={!row.canView} onClick={() => navigate(`/user/interview-results/${encodeURIComponent(row.id)}`)} className="disabled:opacity-40 bg-transparent border-0 border-b border-[#d1d1d1] cursor-pointer text-[10px] font-[Inter,sans-serif] uppercase text-[#4a4a4a] pb-[1px] transition-all hover:text-[#862334] hover:border-[#862334]">
-=======
 
                       <button
 
@@ -1074,7 +918,6 @@ export default function UserDashboard() {
 
                       >
 
->>>>>>> origin/poli
                         VIEW FEEDBACK
 
                       </button>
@@ -1087,19 +930,12 @@ export default function UserDashboard() {
 
               </div>
 
-<<<<<<< HEAD
-              {/* Career Advisor Comment Section */}
-              <div className="w-80 flex-shrink-0">
-                <h3 className="font-[Geist] text-xl font-bold uppercase tracking-[-0.02em] text-black mb-8">
-                  Career Advisor Comment
-=======
               <div className="w-80 flex-shrink-0">
 
                 <h3 className="font-[Geist] text-xl font-bold uppercase tracking-[-0.02em] text-black mb-8">
 
                   Career Advisor Comment
 
->>>>>>> origin/poli
                 </h3>
 
                 <div className="p-6 bg-[#f9f9f9] border border-[#e5e5e5] rounded-[2px] hover:border-[#862334] transition-colors h-fit">
@@ -1117,13 +953,9 @@ export default function UserDashboard() {
                   </div>
 
                   <p className="font-[Inter] text-xs text-[#4a4a4a] leading-relaxed">
-<<<<<<< HEAD
-                    {dashboard?.staff_feedback?.message || "No career advisor feedback has been submitted yet."}
-=======
 
                     {dashboard?.staff_feedback?.message || "No career advisor feedback has been submitted yet."}
 
->>>>>>> origin/poli
                   </p>
 
                 </div>
