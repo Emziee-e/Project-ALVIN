@@ -119,6 +119,14 @@ export default function EnrollmentGate() {
         },
       });
 
+      if (response.status === 403) {
+        const detail = await response.json().catch(() => ({}));
+        if (String(detail.detail || "").toLowerCase().includes("deactivated")) {
+          setStatus("deactivated");
+          return;
+        }
+      }
+
       if (!response.ok) {
         throw new Error(`Enrollment request failed (${response.status})`);
       }
@@ -167,6 +175,22 @@ export default function EnrollmentGate() {
       >
         ALVIN is open to students who are enrolled in a course. Ask your Career
         Advisor to enroll you, then select Check again.
+      </GatePage>
+    );
+  }
+
+  if (status === "deactivated") {
+    return (
+      <GatePage
+        icon={AlertTriangle}
+        title="Your account is currently deactivated"
+        email={email}
+        primaryLabel="Check again"
+        onPrimary={() => checkEnrollment({ showLoader: true })}
+        onSignOut={handleSignOut}
+        busy={signingOut}
+      >
+        Please contact an administrator to activate your account.
       </GatePage>
     );
   }

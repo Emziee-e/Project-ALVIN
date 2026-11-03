@@ -23,18 +23,32 @@ export default function HardwareCheck() {
   const [devices, setDevices] = useState({ video: [], audio: [] });
   const [selectedDevices, setSelectedDevices] = useState({ video: "", audio: "" });
   
-  // FIXED: State for avatarUrl added here
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [userName, setUserName] = useState("");
 
-  // FIXED: Fetch avatar from Supabase user metadata on mount
+  // Fetch avatar and user name from Supabase user metadata on mount
   useEffect(() => {
+    let isMounted = true;
+
     const fetchUserProfile = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          // Checks user metadata first (Google OAuth/Supabase Auth), or defaults to null
-          const url = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
-          setAvatarUrl(url);
+          const metadata = user.user_metadata ?? {};
+
+          const name =
+            metadata.full_name ||
+            metadata.name ||
+            metadata.display_name ||
+            user?.email?.split('@')[0] ||
+            "";
+
+          const url = metadata.avatar_url || metadata.picture || metadata.avatar || metadata.image || null;
+
+          if (isMounted) {
+            setUserName(name);
+            setAvatarUrl(url);
+          }
         }
       } catch (err) {
         console.error("Error fetching user profile:", err);
@@ -42,6 +56,10 @@ export default function HardwareCheck() {
     };
 
     fetchUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Preserved session check validation
@@ -274,6 +292,9 @@ export default function HardwareCheck() {
             </div>
 
             <div className="flex items-center gap-6">
+              <p className="text-sm text-[#4a4a4a] font-[Inter,sans-serif] font-bold text-black">
+                Hi, <span className="text-black">{userName}</span>!
+              </p>
               {avatarUrl ? (
                 <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
                   <img

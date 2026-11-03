@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Users,
   FileBarChart,
@@ -26,47 +26,14 @@ const navItems = [
   { id: "avatars", label: "Avatars", path: "/admin/avatars", icon: UserCircle },
 ];
 
-const initialAccounts = [
-  {
-    name: "John Manuel Policarpio III",
-    email: "1111111@ub.edu.ph",
-    role: "Staff",
-    active: true,
-    date: "Oct 12, 2023",
-    primary: true,
-  },
-  {
-    name: "John Ashley Alday",
-    email: "2222222@ub.edu.ph",
-    role: "User",
-    active: false,
-    date: "Jan 05, 2024",
-    primary: false,
-  },
-  {
-    name: "Vin Vernon Perez",
-    email: "3333333@ub.edu.ph",
-    role: "User",
-    active: true,
-    date: "Nov 22, 2023",
-    primary: false,
-  },
-  {
-    name: "Tristan Jay Mirano",
-    email: "4444444@ub.edu.ph",
-    role: "User",
-    active: true,
-    date: "Feb 14, 2024",
-    primary: false,
-  },
-];
-
 const PER_PAGE = 5;
 
 export default function UserManagement() {
   const [activeNav, setActiveNav] = useState("users");
   const [isAccountOpen, setIsAccountOpen] = useState(false);
-  const [accounts, setAccounts] = useState(initialAccounts);
+  const [accounts, setAccounts] = useState([]);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
+  const [accountError, setAccountError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [roleFilter, setRoleFilter] = useState("All Roles");
@@ -133,18 +100,59 @@ export default function UserManagement() {
   }, []);
 
   useEffect(() => {
-    if (location.pathname.includes("/reports")) {
-      setActiveNav("reports");
-    } else if (location.pathname.includes("/avatars")) {
-      setActiveNav("avatars");
-    } else {
-      setActiveNav("users");
-    }
+    queueMicrotask(() => {
+      if (location.pathname.includes("/reports")) {
+        setActiveNav("reports");
+      } else if (location.pathname.includes("/avatars")) {
+        setActiveNav("avatars");
+      } else {
+        setActiveNav("users");
+      }
+    });
   }, [location.pathname]);
+
+  const apiRequest = useCallback(async (path, options = {}) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+    const response = await fetch(`${base}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${session?.access_token || ""}`,
+        "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${response.status})`);
+    }
+    return response.json();
+  }, []);
+
+  const loadAccounts = useCallback(async () => {
+    setIsLoadingAccounts(true);
+    setAccountError("");
+    try {
+      const users = await apiRequest("/api/admin/users");
+      setAccounts(Array.isArray(users) ? users : []);
+    } catch (error) {
+      console.error("Unable to load users:", error);
+      setAccountError(error.message || "Unable to load users.");
+    } finally {
+      setIsLoadingAccounts(false);
+    }
+  }, [apiRequest]);
+
+  useEffect(() => {
+    queueMicrotask(loadAccounts);
+  }, [loadAccounts]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate("/");
+    navigate("/"); // Redirects to the login route instead of landing page ("/")
   };
 
   const filtered = accounts.filter((a) => {
@@ -165,31 +173,48 @@ export default function UserManagement() {
   const openAccountAction = (action, account) => setAccountAction({ action, account });
   const closeAccountAction = () => setAccountAction(null);
 
-  const confirmAccountAction = () => {
+  const confirmAccountAction = async () => {
     if (!accountAction) return;
 
     const { action, account } = accountAction;
-    if (action === "delete") {
-      setAccounts((previous) => previous.filter((item) => item.email !== account.email));
-      setToast({
-        id: Date.now(),
-        title: "Account Deleted",
-        message: `${account.name} has been permanently removed.`,
-      });
-    } else {
-      const isActive = action === "activate";
-      setAccounts((previous) =>
-        previous.map((item) =>
-          item.email === account.email ? { ...item, active: isActive } : item
-        )
-      );
-      setToast({
-        id: Date.now(),
-        title: isActive ? "Account Activated" : "Account Deactivated",
-        message: isActive
-          ? `${account.name} can now access the ALVIN AI Mock Interview platform.`
-          : `${account.name} has been deactivated successfully.`,
-      });
+    try {
+      if (action === "delete") {
+        await apiRequest(`/api/admin/users/${account.role}/${account.id}`, {
+          method: "DELETE",
+        });
+        setAccounts((previous) =>
+          previous.filter((item) => item.id !== account.id)
+        );
+        setToast({
+          id: Date.now(),
+          title: "Account Deleted",
+          message: `${account.name} has been permanently removed.`,
+        });
+      } else {
+        const accountStatus = action === "activate" ? "active" : "inactive";
+        await apiRequest(`/api/admin/users/student/${account.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ account_status: accountStatus }),
+        });
+        setAccounts((previous) =>
+          previous.map((item) =>
+            item.id === account.id
+              ? { ...item, account_status: accountStatus }
+              : item
+          )
+        );
+        setToast({
+          id: Date.now(),
+          title: action === "activate" ? "Account Activated" : "Account Deactivated",
+          message:
+            action === "activate"
+              ? `${account.name} can now access the ALVIN AI Mock Interview platform.`
+              : `${account.name} has been deactivated successfully.`,
+        });
+      }
+    } catch (error) {
+      console.error(`Unable to ${action} account:`, error);
+      setAccountError(error.message || `Unable to ${action} account.`);
     }
 
     closeAccountAction();
@@ -392,8 +417,8 @@ export default function UserManagement() {
                           className="w-full bg-white border border-gray-200 text-xs font-bold uppercase tracking-wider py-2.5 pl-9 pr-8 outline-none focus:ring-1 focus:ring-[#862334] appearance-none rounded cursor-pointer text-gray-600 transition-all font-Inter"
                         >
                           <option value="All Roles">All Roles</option>
-                          <option value="Staff">Staff</option>
-                          <option value="User">User</option>
+                          <option value="student">Student</option>
+                          <option value="career_advisor">Career Advisor</option>
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 pointer-events-none group-hover:text-[#862334] transition-colors" />
                       </div>
@@ -432,7 +457,19 @@ export default function UserManagement() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
-                        {paginatedAccounts.length === 0 ? (
+                        {isLoadingAccounts ? (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-10 text-center text-gray-400 text-sm">
+                              Loading accounts...
+                            </td>
+                          </tr>
+                        ) : accountError ? (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-10 text-center text-red-600 text-sm">
+                              {accountError}
+                            </td>
+                          </tr>
+                        ) : paginatedAccounts.length === 0 ? (
                           <tr>
                             <td
                               colSpan={5}
@@ -466,57 +503,59 @@ export default function UserManagement() {
                               <td className="px-6 md:px-8 py-4 md:py-5">
                                 <span
                                   className={`px-2.5 md:px-3.5 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full font-Inter ${
-                                    acc.role === "Staff"
+                                    acc.role === "career_advisor"
                                       ? "bg-[#862334]/10 text-[#862334]"
                                       : "bg-gray-100 text-gray-500"
                                   }`}
                                 >
-                                  {acc.role}
+                                  {acc.role === "career_advisor" ? "Career Advisor" : "Student"}
                                 </span>
                               </td>
 
                               <td className="px-6 md:px-8 py-4 md:py-5">
                                 <div
                                   className={`flex items-center text-[11px] font-semibold font-[Inter,sans-serif] ${
-                                    acc.active ? "text-green-700" : "text-gray-400"
+                                    acc.account_status === "active" ? "text-green-700" : "text-gray-400"
                                   }`}
                                 >
                                   <span
                                     className={`w-1.5 h-1.5 rounded-full mr-2 flex-shrink-0 ${
-                                      acc.active
+                                      acc.account_status === "active"
                                         ? "bg-green-700 animate-pulse"
                                         : "bg-gray-300"
                                     }`}
                                   />
-                                  {acc.active ? "ACTIVE" : "INACTIVE"}
+                                  {acc.account_status === "active" ? "ACTIVE" : "INACTIVE"}
                                 </div>
                               </td>
 
                               <td className="px-6 md:px-8 py-4 md:py-5 text-sm text-gray-400 font-[Inter,sans-serif] whitespace-nowrap">
-                                {acc.date}
+                                {acc.created_at
+                                  ? new Date(acc.created_at).toLocaleDateString()
+                                  : "—"}
                               </td>
 
                               <td className="px-6 md:px-8 py-4 md:py-5 text-right">
                                 <div className="flex items-center justify-end gap-2 md:gap-3 flex-wrap">
-                                  <button
+                                  {acc.role === "student" && <button
                                     type="button"
                                     onClick={() =>
                                       openAccountAction(
-                                        acc.active ? "deactivate" : "activate",
+                                        acc.account_status === "active" ? "deactivate" : "activate",
                                         acc
                                       )
                                     }
                                     aria-label={`${
-                                      acc.active ? "Deactivate" : "Activate"
+                                      acc.account_status === "active" ? "Deactivate" : "Activate"
                                     } ${acc.name}`}
                                     className={`inline-flex w-28 items-center justify-center rounded-[2px] border px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap font-Geist focus:outline-none ${
-                                      acc.active
+                                      acc.account_status === "active"
                                         ? "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 focus:ring-amber-400"
                                         : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 focus:ring-emerald-400"
                                     }`}
                                   >
-                                    {acc.active ? "Deactivate" : "Activate"}
-                                  </button>
+                                    {acc.account_status === "active" ? "Deactivate" : "Activate"}
+                                  </button>}
                                   <button
                                     type="button"
                                     onClick={() => openAccountAction("delete", acc)}

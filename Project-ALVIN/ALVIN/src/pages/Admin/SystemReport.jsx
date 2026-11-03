@@ -15,9 +15,20 @@ import {
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
-import BarCharts from "./barChart";
 import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const navItems = [
   { id: "account", label: "Account" },
@@ -26,9 +37,91 @@ const navItems = [
   { id: "avatars", label: "Avatars", path: "/admin/avatars", icon: UserCircle },
 ];
 
+const EMPTY_REPORT = {
+  summary: {
+    total_interviews: 0,
+    average_performance: null,
+    active_users: 0,
+    daily_users: 0,
+    weekly_users: 0,
+    monthly_users: 0,
+  },
+  interview_volume: { daily: [], weekly: [], monthly: [] },
+  monthly_active_users: [],
+};
+
+const DONUT_COLORS = ["#862334", "#FFB003", "#2D0C13", "#991B1B"];
+
+function InterviewVolumeChart({ data }) {
+  return (
+    <div className="w-full h-[400px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+          <defs>
+            <linearGradient id="interviewVolumeGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#862334" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="#862334" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e5e5" />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#6b7280", fontSize: 10 }} />
+          <YAxis axisLine={false} tickLine={false} tick={{ fill: "#6b7280", fontSize: 12 }} allowDecimals={false} />
+          <Tooltip formatter={(value) => [`${value} interviews`, "Volume"]} />
+          <Area
+            type="monotone"
+            dataKey="volume"
+            stroke="#862334"
+            strokeWidth={2.5}
+            fill="url(#interviewVolumeGradient)"
+            dot={{ r: 3, fill: "#862334", stroke: "#fff", strokeWidth: 2 }}
+            activeDot={{ r: 6, fill: "#FFB003", stroke: "#862334", strokeWidth: 2 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function MonthlyUsersDonut({ data, total }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-4 min-h-[400px]">
+      <div className="h-[280px] relative">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="value" innerRadius={75} outerRadius={105} paddingAngle={4}>
+              {data.map((entry, index) => (
+                <Cell key={entry.name} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip formatter={(value) => [`${value} users`, "Active"]} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-2xl font-bold text-black">{Number(total || 0).toLocaleString()}</span>
+          <span className="text-xs uppercase tracking-wider text-gray-400">Monthly users</span>
+        </div>
+      </div>
+      <div className="space-y-3 px-4">
+        {data.map((item, index) => (
+          <div key={item.name} className="flex items-center justify-between border-b border-gray-100 pb-2">
+            <span className="flex items-center gap-2 text-sm text-gray-600">
+              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DONUT_COLORS[index % DONUT_COLORS.length] }} />
+              {item.name}
+            </span>
+            <strong className="text-sm text-[#862334]">{Number(item.value || 0).toLocaleString()}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SystemReport() {
   const [activeNav, setActiveNav] = useState("reports");
   const [reportType, setReportType] = useState("Weekly");
+  const [report, setReport] = useState(EMPTY_REPORT);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState("");
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
@@ -90,6 +183,63 @@ export default function SystemReport() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const loadReport = async () => {
+      setReportLoading(true);
+      setReportError("");
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError || !session?.access_token) {
+          throw new Error("Please sign in again to view system reports.");
+        }
+
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+        const response = await fetch(`${baseUrl}/api/admin/reports`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
+          },
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || `Failed to load system reports (${response.status}).`);
+        }
+
+        const data = await response.json();
+        if (isMounted) {
+          setReport({
+            ...EMPTY_REPORT,
+            ...data,
+            summary: { ...EMPTY_REPORT.summary, ...(data.summary || {}) },
+            interview_volume: { ...EMPTY_REPORT.interview_volume, ...(data.interview_volume || {}) },
+            monthly_active_users: Array.isArray(data.monthly_active_users)
+              ? data.monthly_active_users
+              : [],
+          });
+        }
+      } catch (error) {
+        if (isMounted && error.name !== "AbortError") {
+          setReportError(error.message || "Unable to load system reports.");
+        }
+      } finally {
+        if (isMounted) setReportLoading(false);
+      }
+    };
+
+    loadReport();
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     if (location.pathname.includes("/users")) {
       setActiveNav("users");
     } else if (location.pathname.includes("/avatars")) {
@@ -103,6 +253,11 @@ export default function SystemReport() {
     await supabase.auth.signOut();
     navigate("/");
   };
+
+  const summary = report.summary;
+  const volumeData = report.interview_volume[reportType.toLowerCase()] || [];
+  const formatMetric = (value, suffix = "") =>
+    value == null ? "—" : `${Number(value).toLocaleString()}${suffix}`;
 
   return (
     <>
@@ -279,7 +434,7 @@ export default function SystemReport() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
-                    12,842
+                    {reportLoading ? "…" : formatMetric(summary.total_interviews)}
                   </h3>
                 </div>
 
@@ -294,7 +449,7 @@ export default function SystemReport() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
-                    94.8%
+                    {reportLoading ? "…" : formatMetric(summary.average_performance, "%")}
                   </h3>
                 </div>
 
@@ -309,7 +464,7 @@ export default function SystemReport() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
-                    3,205
+                    {reportLoading ? "…" : formatMetric(summary.active_users)}
                   </h3>
                 </div>
 
@@ -325,7 +480,7 @@ export default function SystemReport() {
                   </div>
                   <div className="flex flex-col gap-1">
                     <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
-                      10
+                      {reportLoading ? "…" : formatMetric(summary.daily_users)}
                     </h3>
                     <div className="flex items-center gap-1.5 text-gray-400 text-xs">
                       <Clock className="w-4 h-4" />
@@ -346,7 +501,7 @@ export default function SystemReport() {
                   </div>
                   <div className="flex flex-col gap-1">
                     <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
-                      20
+                      {reportLoading ? "…" : formatMetric(summary.weekly_users)}
                     </h3>
                     <div className="flex items-center gap-1.5 text-gray-400 text-xs">
                       <LayoutGrid className="w-4 h-4" />
@@ -367,7 +522,7 @@ export default function SystemReport() {
                   </div>
                   <div className="flex flex-col gap-1">
                     <h3 className="text-2xl font-bold text-black font-[Geist,Inter]">
-                      40
+                      {reportLoading ? "…" : formatMetric(summary.monthly_users)}
                     </h3>
                     <div className="flex items-center gap-1.5 text-gray-400 text-xs">
                       <Calendar className="w-4 h-4" />
@@ -405,7 +560,50 @@ export default function SystemReport() {
                   </div>
                 </div>
                 <div className="p-6">
-                  <BarCharts reportType={reportType} />
+                  {reportLoading ? (
+                    <div className="h-[400px] flex items-center justify-center text-sm text-gray-400">
+                      Loading interview volume…
+                    </div>
+                  ) : reportError ? (
+                    <div className="h-[400px] flex items-center justify-center text-sm text-red-600">
+                      {reportError}
+                    </div>
+                  ) : volumeData.length === 0 ? (
+                    <div className="h-[400px] flex items-center justify-center text-sm text-gray-400">
+                      No interview data available for this period.
+                    </div>
+                  ) : (
+                    <InterviewVolumeChart data={volumeData} />
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden mb-10">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#862334]" />
+                  <h3 className="text-lg font-bold font-[Geist,Inter] text-black">
+                    Monthly Active Users
+                  </h3>
+                </div>
+                <div className="p-6">
+                  {reportLoading ? (
+                    <div className="min-h-[400px] flex items-center justify-center text-sm text-gray-400">
+                      Loading user activity…
+                    </div>
+                  ) : reportError ? (
+                    <div className="min-h-[400px] flex items-center justify-center text-sm text-red-600">
+                      {reportError}
+                    </div>
+                  ) : report.monthly_active_users.length === 0 ? (
+                    <div className="min-h-[400px] flex items-center justify-center text-sm text-gray-400">
+                      No user activity available for this period.
+                    </div>
+                  ) : (
+                    <MonthlyUsersDonut
+                      data={report.monthly_active_users}
+                      total={summary.monthly_users}
+                    />
+                  )}
                 </div>
               </div>
             </div>
