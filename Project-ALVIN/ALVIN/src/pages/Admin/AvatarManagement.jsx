@@ -38,6 +38,7 @@ export default function AvatarManagement() {
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [isAvatarFormOpen, setIsAvatarFormOpen] = useState(false);
+  const [avatarPendingDeletion, setAvatarPendingDeletion] = useState(null);
   const [avatarForm, setAvatarForm] = useState({
     avatar_name: "",
     avatar_id: "",
@@ -204,15 +205,27 @@ export default function AvatarManagement() {
     }
   };
 
-  const deleteModel = async (model) => {
-    if (model.selected || !window.confirm(`Delete "${model.name}"?`)) return;
+  const requestDeleteModel = (model) => {
+    if (!model.selected) {
+      setAvatarPendingDeletion(model);
+    }
+  };
+
+  const deleteModel = async () => {
+    if (!avatarPendingDeletion) return;
 
     setAvatarError("");
     try {
-      await apiRequest(`/api/admin/avatars/${encodeURIComponent(model.id)}`, {
-        method: "DELETE",
-      });
-      setModels((prev) => prev.filter((item) => item.id !== model.id));
+      await apiRequest(
+        `/api/admin/avatars/${encodeURIComponent(avatarPendingDeletion.id)}`,
+        {
+          method: "DELETE",
+        }
+      );
+      setModels((prev) =>
+        prev.filter((item) => item.id !== avatarPendingDeletion.id)
+      );
+      setAvatarPendingDeletion(null);
     } catch (error) {
       console.error("Unable to delete avatar:", error);
       setAvatarError(error.message || "Unable to delete avatar.");
@@ -273,6 +286,61 @@ export default function AvatarManagement() {
           isOpen={isVoiceModalOpen}
           onClose={closeVoiceModal}
         />
+
+        {avatarPendingDeletion && (
+          <div
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-avatar-title"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setAvatarPendingDeletion(null);
+              }
+            }}
+          >
+            <section
+              className="relative w-full max-w-md rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setAvatarPendingDeletion(null)}
+                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close delete avatar dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600">
+                <Trash2 className="h-6 w-6" aria-hidden="true" />
+              </div>
+              <h2 id="delete-avatar-title" className="pr-10 text-2xl font-bold text-slate-900">
+                Delete Avatar
+              </h2>
+              <p className="mt-4 rounded-xl border border-red-100 bg-red-50 p-4 text-sm leading-6 text-red-800">
+                Are you sure you want to delete "{avatarPendingDeletion.name}"? This action cannot be undone.
+              </p>
+
+              <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setAvatarPendingDeletion(null)}
+                  className="rounded-xl border border-gray-300 bg-white px-5 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteModel}
+                  className="rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-red-700"
+                >
+                  Delete Avatar
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
         {isAvatarFormOpen && (
           <div
@@ -633,7 +701,7 @@ export default function AvatarManagement() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteModel(model)}
+                        onClick={() => requestDeleteModel(model)}
                         disabled={model.selected}
                         className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                         title={model.selected ? "Select another avatar before deleting this avatar" : "Delete avatar"}
