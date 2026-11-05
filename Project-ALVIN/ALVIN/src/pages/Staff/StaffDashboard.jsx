@@ -300,6 +300,7 @@ export default function StaffDashboard() {
         setSelectedCourse({
           ...course,
           students,
+          studentsCount: students.length,
         });
       } catch (error) {
         console.error("Error restoring course:", error);
@@ -356,7 +357,8 @@ export default function StaffDashboard() {
     color: course.course_color || "bg-[#862334]",
     imageUrl: course.course_image || null,
     image: course.course_image || null,
-    students: [],
+    studentsCount: course.students_count ?? (course.students?.length || 0),
+    students: course.students || [],
   });
 
   const handleCreateCourse = async (newCourse) => {
@@ -667,6 +669,7 @@ export default function StaffDashboard() {
       const updatedCourse = {
         ...selectedCourse,
         students,
+        studentsCount: students.length,
       };
 
       setSelectedCourse(updatedCourse);
@@ -733,7 +736,12 @@ export default function StaffDashboard() {
         students = enrollmentRows.map(mapEnrollmentFromDatabase);
       }
 
-      const updatedCourse = { ...selectedCourse, students };
+      const updatedCourse = { 
+        ...selectedCourse, 
+        students,
+        studentsCount: students.filter(s => s.status.toLowerCase() !== "dropped").length,
+      };
+
       setSelectedCourse(updatedCourse);
 
       setPublishedCourses((prev) =>
@@ -773,6 +781,7 @@ export default function StaffDashboard() {
       const courseWithStudents = {
         ...course,
         students,
+        studentsCount: students.length,
       };
 
       setSelectedCourse(courseWithStudents);
@@ -814,7 +823,7 @@ export default function StaffDashboard() {
   );
 
   const totalEnrolledStudents = [...publishedCourses, ...concludedCourses].reduce(
-    (acc, course) => acc + (course.students?.length || 0),
+    (acc, course) => acc + (course.studentsCount ?? course.students?.length ?? 0),
     0
   );
 
@@ -980,7 +989,7 @@ export default function StaffDashboard() {
             <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
               <span className="flex items-center gap-1.5 font-medium text-gray-600">
                 <Users className="w-4 h-4 text-[#862334]" />
-                {course.students?.length || course.studentsCount || 0} Students
+                {course.studentsCount ?? course.students?.length ?? 0} Students
               </span>
               {isConcluded ? (
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
@@ -1562,7 +1571,7 @@ export default function StaffDashboard() {
                             )}
                           </td>
                           <td className="py-4 px-6 text-right font-semibold text-gray-800">
-                            {c.students?.length || 0}
+                            {c.studentsCount ?? c.students?.length ?? 0}
                           </td>
                         </tr>
                       ))}

@@ -54,7 +54,7 @@ export async function createCourse(values) {
 }
 
 // ======================================================
-// GET CAREER ADVISOR'S COURSES
+// GET CAREER ADVISOR'S COURSES (WITH ENROLLED COUNT)
 // ======================================================
 
 export async function getMyCourses() {
@@ -62,7 +62,10 @@ export async function getMyCourses() {
 
   const { data, error } = await supabase
     .from('course_info')
-    .select('*')
+    .select(`
+      *,
+      course_enrollments (count)
+    `)
     .eq('car_ad_id', user.id)
     .order('created_at', {
       ascending: false,
@@ -72,7 +75,10 @@ export async function getMyCourses() {
     throw error
   }
 
-  return data || []
+  return (data || []).map((course) => ({
+    ...course,
+    students_count: course.course_enrollments?.[0]?.count || 0,
+  }))
 }
 
 // ======================================================
