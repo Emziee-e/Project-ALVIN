@@ -40,6 +40,7 @@ export async function createCourse(values) {
         course_status: 'active',
         course_color:
             values.course_color || 'bg-[#862334]',
+        course_image: values.course_image || null,
         is_interviews_paused: false,
     })
     .select()
@@ -123,6 +124,7 @@ export async function updateCourse(courseId, values) {
     academic_term: values.academic_term?.trim() || null,
     course_status: values.course_status || "active",
     course_color: values.course_color || "bg-[#862334]",
+    course_image: values.course_image || null,
   };
 
   // Include is_interviews_paused if passed in values
@@ -242,7 +244,6 @@ export async function enrollStudents(
     .select()
 
   if (error) {
-    // PostgreSQL unique violation
     if (error.code === '23505') {
       throw new Error(
         'One or more selected students are already enrolled in this course.'
