@@ -441,11 +441,11 @@ export default function SystemReport() {
           <div className="flex-1 overflow-y-auto w-full">
             <div className="px-8 sm:px-12 md:px-16 lg:px-20 py-8 space-y-8 w-full">
 
-              {/* Minimalist Top KPI Row (Static Subtle Maroon Border) */}
+{/* Minimalist Top KPI Row (Maroon Top Accent Border) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
 
                 {/* Total Interviews */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/25 shadow-[0_2px_8px_rgba(0,0,0,0.02),0_6px_16px_-4px_rgba(134,35,52,0.06)] relative overflow-hidden flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
                       Total Interviews
@@ -460,7 +460,7 @@ export default function SystemReport() {
                 </div>
 
                 {/* Avg. Performance */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/25 shadow-[0_2px_8px_rgba(0,0,0,0.02),0_6px_16px_-4px_rgba(134,35,52,0.06)] relative overflow-hidden flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
                       Avg. Performance
@@ -475,7 +475,7 @@ export default function SystemReport() {
                 </div>
 
                 {/* Active Users */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/25 shadow-[0_2px_8px_rgba(0,0,0,0.02),0_6px_16px_-4px_rgba(134,35,52,0.06)] relative overflow-hidden flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
                       Active Users
@@ -490,7 +490,7 @@ export default function SystemReport() {
                 </div>
 
                 {/* Daily Users */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/25 shadow-[0_2px_8px_rgba(0,0,0,0.02),0_6px_16px_-4px_rgba(134,35,52,0.06)] relative overflow-hidden flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
                       Daily Users

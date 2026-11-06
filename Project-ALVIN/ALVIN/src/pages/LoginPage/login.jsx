@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Mail } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useInView } from '../../lib/useInView';
 import TermsOfUse from '../../Components/TermsOfUse';
+import PrivacyPolicy from '../../Components/PrivacyPolicy';
 import { supabase } from '../../lib/supabaseClient';
 
 const Login = () => {
     const [ref, isInView] = useInView();
     const [isTermsOpen, setIsTermsOpen] = useState(false);
+    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
     const navigate = useNavigate();
 
     const handleGoogleLogin = async (e) => {
@@ -77,11 +79,12 @@ const Login = () => {
                 className="w-full max-w-[440px] bg-[#FDFBF7]/70 backdrop-blur-2xl rounded-3xl shadow-[0_15px_35px_rgba(134,35,52,0.05)] overflow-hidden border border-[#EAE5D9] relative z-10"
                 ref={ref}
             >
-                {/* Header Section with Prominent Logo */}
-                <div className={`pt-10 pb-4 flex flex-col items-center justify-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
-                    <div className="w-40 h-40 flex items-center justify-center">
-                        <img src="../images/Alvin-logo.png" alt="ALVIN Logo" className="w-36 h-36 object-contain" />
-                    </div>
+                {/* Header Section */}
+                <div className={`pt-8 pb-4 flex flex-col items-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
+                    <Link to="/" className="w-28 h-28 flex items-center justify-center cursor-pointer">
+                        <img src="../images/Alvin-logo.png" alt="Logo" className="w-28 h-28 object-contain" />
+                    </Link>
+                    <p className="text-gray-500 text-sm font-Inter">Access your account</p>
                 </div>
 
                 {/* Login Action */}
@@ -104,7 +107,7 @@ const Login = () => {
                             Terms of Use
                         </span>
                         {' '} and {' '}
-                        <span className="text-[#862334] font-bold hover:underline cursor-pointer">
+                        <span onClick={() => setIsPrivacyOpen(true)} className="text-[#862334] font-bold hover:underline cursor-pointer">
                             Privacy Policy
                         </span>
                     </p>
@@ -112,6 +115,7 @@ const Login = () => {
             </div>
 
             <TermsOfUse isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} />
+            <PrivacyPolicy isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
         </div>
     );
 };

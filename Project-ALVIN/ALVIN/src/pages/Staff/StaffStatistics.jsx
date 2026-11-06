@@ -535,13 +535,13 @@ export default function StaffStatistics() {
       <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen">
         <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8">
 
-          {/* ========================================================= */}
+{/* ========================================================= */}
           {/* 4-COLUMN KPI METRIC CARDS                                  */}
           {/* ========================================================= */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
 
             {/* CARD 1: Total Mock Interviews */}
-            <div className="bg-white border border-[#862334]/25 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-[14px] font-semibold text-gray-600">
@@ -562,7 +562,7 @@ export default function StaffStatistics() {
             </div>
 
             {/* CARD 2: Job Readiness Rate */}
-            <div className="bg-white border border-[#862334]/25 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-[14px] font-semibold text-gray-600">
@@ -582,7 +582,7 @@ export default function StaffStatistics() {
             </div>
 
             {/* CARD 3: Avg. Skill Improvement */}
-            <div className="bg-white border border-[#862334]/25 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-[14px] font-semibold text-gray-600">
@@ -602,7 +602,7 @@ export default function StaffStatistics() {
             </div>
 
             {/* CARD 4: Requires Coaching */}
-            <div className="bg-white border border-[#862334]/25 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-[14px] font-semibold text-gray-600">
@@ -616,7 +616,7 @@ export default function StaffStatistics() {
                   <Users className="w-4 h-4" />
                 </div>
               </div>
-              <div className="flex items-center gap-  1.5 text-gray-500 text-[11px] font-semibold mt-3">
+              <div className="flex items-center gap-1.5 text-gray-500 text-[11px] font-semibold mt-3">
                 <span>Students scoring below 60%</span>
               </div>
             </div>
