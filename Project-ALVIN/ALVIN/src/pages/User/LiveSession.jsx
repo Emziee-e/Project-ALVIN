@@ -504,7 +504,7 @@ export default function LiveSession() {
 
   const navtalkVoice =
     sessionData?.voice ||
-    "cedar";
+    "";
 
   const navtalkAiPrompt =
     sessionData?.navtalk_ai_prompt ||
