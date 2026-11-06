@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useInView } from '../../lib/useInView';
 import TermsOfUse from '../../Components/TermsOfUse';
 import { supabase } from '../../lib/supabaseClient';
@@ -79,10 +79,9 @@ const Login = () => {
             >
                 {/* Header Section */}
                 <div className={`pt-10 pb-4 flex flex-col items-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
-                    <div className="w-20 h-20 flex items-center justify-center mb-1">
+                    <Link to="/" className="w-20 h-20 flex items-center justify-center mb-1 hover:scale-105 transition-transform cursor-pointer">
                         <img src="../images/Alvin-logo.png" alt="Logo" className="w-16 h-16 object-contain" />
-                    </div>
-                    <h1 className="font-Geist text-2xl font-black text-[#111827] tracking-tight">Log in</h1>
+                    </Link>
                     <p className="text-gray-500 mt-1 text-sm font-Inter">Access your account</p>
                 </div>
 

@@ -18,14 +18,23 @@ export default function ResumeUpload() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [userName, setUserName] = useState("");
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadUserAvatar = async () => {
+    const loadUserData = async () => {
       const { data } = await supabase.auth.getUser();
       const user = data?.user;
       const metadata = user?.user_metadata ?? {};
+
+      const name =
+        metadata.full_name ||
+        metadata.name ||
+        metadata.display_name ||
+        user?.email?.split('@')[0] ||
+        "";
+
       const nextAvatarUrl =
         metadata.avatar_url ||
         metadata.picture ||
@@ -34,11 +43,12 @@ export default function ResumeUpload() {
         "";
 
       if (isMounted) {
+        setUserName(name);
         setAvatarUrl(nextAvatarUrl);
       }
     };
 
-    loadUserAvatar();
+    loadUserData();
 
     return () => {
       isMounted = false;
@@ -78,14 +88,11 @@ export default function ResumeUpload() {
     setError("");
 
     try {
-      // Retrieve the token for the student currently signed in with Google SSO.
-      // Never reuse a token from another account or a hardcoded token.
       let { data: { session }, error: authError } = await supabase.auth.getSession();
       if (authError) {
         throw new Error("Unable to read your login session. Please sign in again.");
       }
 
-      // Try refreshing an expired session before starting a new interview.
       if (session?.expires_at && session.expires_at * 1000 <= Date.now() + 30000) {
         const refreshed = await supabase.auth.refreshSession();
         if (refreshed.error) {
@@ -114,7 +121,6 @@ export default function ResumeUpload() {
       });
 
       if (!response.ok) {
-        // Surface FastAPI's actual error instead of hiding it behind a generic message.
         const payload = await response.json().catch(() => null);
         const detail = typeof payload?.detail === "string"
           ? payload.detail
@@ -152,7 +158,7 @@ export default function ResumeUpload() {
   return (
     <>
       {/* Google Fonts */}
-      <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
       <div className="flex min-h-screen bg-white text-black font-Geist">
         {/* Modal */}
@@ -165,7 +171,7 @@ export default function ResumeUpload() {
         {/* ── Main ── */}
         <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
 
-          {/* Top Header (Original No-Sidebar Layout) */}
+          {/* Top Header */}
           <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
             <div className="flex items-center">
               <Link to="/user/dashboard" className="inline-flex items-center gap-0">
@@ -174,6 +180,9 @@ export default function ResumeUpload() {
             </div>
 
             <div className="flex items-center gap-6">
+              <p className="text-sm text-[#4a4a4a] font-[Inter,sans-serif] font-bold text-black">
+                Hi, {userName && <span className="font-bold text-black">{userName}</span>}!
+              </p>
               {avatarUrl ? (
                 <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
                   <img

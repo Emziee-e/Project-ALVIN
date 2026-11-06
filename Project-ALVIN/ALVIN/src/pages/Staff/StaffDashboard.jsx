@@ -113,7 +113,6 @@ export default function StaffDashboard() {
     location.pathname.includes("/staff/dashboard/course/")
   );
 
-  // Toast Helper
   const showToastNotification = (message) => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
@@ -126,7 +125,6 @@ export default function StaffDashboard() {
     }, 4000);
   };
 
-  // Close dropdown menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -142,7 +140,6 @@ export default function StaffDashboard() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Keep the floating student menu aligned with its trigger while scrolling/resizing.
   useLayoutEffect(() => {
     if (activeStudentMenuId == null) return;
 
@@ -303,6 +300,7 @@ export default function StaffDashboard() {
         setSelectedCourse({
           ...course,
           students,
+          studentsCount: students.length,
         });
       } catch (error) {
         console.error("Error restoring course:", error);
@@ -339,8 +337,6 @@ export default function StaffDashboard() {
     };
   };
 
-  // Normalize Supabase values because boolean fields can arrive as booleans,
-  // 0/1, or strings such as "true" / "false".
   const toBoolean = (value) => {
     if (typeof value === "boolean") return value;
     if (typeof value === "number") return value === 1;
@@ -359,9 +355,10 @@ export default function StaffDashboard() {
     status: course.course_status,
     is_interviews_paused: toBoolean(course.is_interviews_paused),
     color: course.course_color || "bg-[#862334]",
-    imageUrl: null,
-    image: null,
-    students: [],
+    imageUrl: course.course_image || null,
+    image: course.course_image || null,
+    studentsCount: course.students_count ?? (course.students?.length || 0),
+    students: course.students || [],
   });
 
   const handleCreateCourse = async (newCourse) => {
@@ -372,6 +369,7 @@ export default function StaffDashboard() {
         section: newCourse.section,
         academic_term: newCourse.term,
         course_color: newCourse.color,
+        course_image: newCourse.imageUrl,
       });
 
       const mappedCourse = mapCourseFromDatabase(createdCourse);
@@ -415,6 +413,7 @@ export default function StaffDashboard() {
         academic_term: courseToTogglePause.term,
         course_status: courseToTogglePause.status || "active",
         course_color: courseToTogglePause.color || "bg-[#862334]",
+        course_image: courseToTogglePause.imageUrl || courseToTogglePause.image,
         is_interviews_paused: newPauseState,
       });
 
@@ -469,6 +468,7 @@ export default function StaffDashboard() {
         academic_term: courseToConclude.term,
         course_status: "concluded",
         course_color: courseToConclude.color || "bg-[#862334]",
+        course_image: courseToConclude.imageUrl || courseToConclude.image,
         is_interviews_paused: courseToConclude.is_interviews_paused,
       });
 
@@ -555,6 +555,7 @@ export default function StaffDashboard() {
         academic_term: updatedCourse.term,
         course_status: updatedCourse.status || "active",
         course_color: updatedCourse.color || "bg-[#862334]",
+        course_image: updatedCourse.imageUrl || updatedCourse.image,
         is_interviews_paused: toBoolean(updatedCourse.is_interviews_paused),
       });
 
@@ -668,6 +669,7 @@ export default function StaffDashboard() {
       const updatedCourse = {
         ...selectedCourse,
         students,
+        studentsCount: students.length,
       };
 
       setSelectedCourse(updatedCourse);
@@ -734,7 +736,12 @@ export default function StaffDashboard() {
         students = enrollmentRows.map(mapEnrollmentFromDatabase);
       }
 
-      const updatedCourse = { ...selectedCourse, students };
+      const updatedCourse = { 
+        ...selectedCourse, 
+        students,
+        studentsCount: students.filter(s => s.status.toLowerCase() !== "dropped").length,
+      };
+
       setSelectedCourse(updatedCourse);
 
       setPublishedCourses((prev) =>
@@ -774,6 +781,7 @@ export default function StaffDashboard() {
       const courseWithStudents = {
         ...course,
         students,
+        studentsCount: students.length,
       };
 
       setSelectedCourse(courseWithStudents);
@@ -815,11 +823,10 @@ export default function StaffDashboard() {
   );
 
   const totalEnrolledStudents = [...publishedCourses, ...concludedCourses].reduce(
-    (acc, course) => acc + (course.students?.length || 0),
+    (acc, course) => acc + (course.studentsCount ?? course.students?.length ?? 0),
     0
   );
 
-  // Reusable Course Card Renderer
   const renderCourseCard = (course, isConcluded = false) => {
     const courseImg = course.imageUrl || course.image;
     const isMenuOpen = activeMenuId === course.id;
@@ -856,7 +863,6 @@ export default function StaffDashboard() {
                   </span>
                 ) : null}
 
-                {/* Visual badge indicator when interviews are paused */}
                 {isPaused && (
                   <span className="bg-amber-500/90 text-white font-sans font-bold text-[10px] px-2 py-0.5 rounded-full backdrop-blur-xs shadow-xs flex items-center gap-1">
                     <Pause className="w-3 h-3 stroke-[2.5]" />
@@ -883,7 +889,6 @@ export default function StaffDashboard() {
                     className="absolute right-0 top-8 w-52 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {/* Toggle Pause / Resume Interviews */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -909,7 +914,6 @@ export default function StaffDashboard() {
                       )}
                     </button>
 
-                    {/* Edit Course */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -926,7 +930,6 @@ export default function StaffDashboard() {
                       Edit Course Details
                     </button>
 
-                    {/* Conclude Course */}
                     {!isConcluded && (
                       <button
                         type="button"
@@ -945,7 +948,6 @@ export default function StaffDashboard() {
                       </button>
                     )}
 
-                    {/* Delete */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -987,7 +989,7 @@ export default function StaffDashboard() {
             <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
               <span className="flex items-center gap-1.5 font-medium text-gray-600">
                 <Users className="w-4 h-4 text-[#862334]" />
-                {course.students?.length || course.studentsCount || 0} Students
+                {course.studentsCount ?? course.students?.length ?? 0} Students
               </span>
               {isConcluded ? (
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
@@ -1028,7 +1030,6 @@ export default function StaffDashboard() {
         }
       `}</style>
 
-      {/* Success Toast Banner */}
       {toast.show && (
         <div
           key={toast.key}
@@ -1074,7 +1075,6 @@ export default function StaffDashboard() {
         onEnroll={handleEnrollStudent}
       />
 
-      {/* Edit Course Modal */}
       {isEditModalOpen && editingCourse && (
         <EditCourseModal
           isOpen={isEditModalOpen}
@@ -1087,7 +1087,6 @@ export default function StaffDashboard() {
         />
       )}
 
-      {/* Pause/Resume Interviews Confirmation Modal */}
       {isPauseModalOpen && courseToTogglePause && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
@@ -1177,7 +1176,6 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Conclude Course Confirmation Modal */}
       {isConcludeModalOpen && courseToConclude && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
@@ -1226,7 +1224,6 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Unenroll Student Confirmation Modal */}
       {studentToUnenroll && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[110] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
@@ -1284,7 +1281,6 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Delete Course Confirmation Modal */}
       {isDeleteModalOpen && courseToDelete && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
@@ -1412,7 +1408,7 @@ export default function StaffDashboard() {
         </div>
       </aside>
 
-      {/* Account Drawer Overlay Backdrop */}
+      {/* Account Drawer Backdrop */}
       {isAccountOpen && (
         <div
           className="fixed inset-0 left-[100px] bg-black/20 z-30 transition-opacity duration-300"
@@ -1420,7 +1416,7 @@ export default function StaffDashboard() {
         />
       )}
 
-      {/* Slide-out Account Drawer */}
+      {/* Account Drawer */}
       <aside
         className={`fixed left-[100px] top-0 w-[340px] h-full bg-white border-r border-gray-200 z-40 flex flex-col overflow-y-auto select-none font-sans text-[#2D3B45] transform transition-transform duration-300 ease-in-out ${
           isAccountOpen ? "translate-x-0" : "-translate-x-full"
@@ -1489,7 +1485,6 @@ export default function StaffDashboard() {
       <main className="flex-1 bg-white h-screen overflow-y-auto p-6 md:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
           {activeNav === "statistics" ? (
-            /* STATISTICS VIEW */
             <div className="space-y-6">
               <div className="border-b border-gray-200 pb-5">
                 <h1 className="text-3xl font-black font-Geist text-gray-900">
@@ -1500,7 +1495,6 @@ export default function StaffDashboard() {
                 </p>
               </div>
 
-              {/* Stat Cards Overview */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 <div className="p-5 bg-stone-50 border border-gray-200 rounded-2xl flex items-center justify-between">
                   <div>
@@ -1543,7 +1537,6 @@ export default function StaffDashboard() {
                 </div>
               </div>
 
-              {/* Course Breakdown Table */}
               <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs mt-6">
                 <div className="px-6 py-4 border-b border-gray-100">
                   <h3 className="font-bold text-gray-900 text-base">Course Statistics Breakdown</h3>
@@ -1578,7 +1571,7 @@ export default function StaffDashboard() {
                             )}
                           </td>
                           <td className="py-4 px-6 text-right font-semibold text-gray-800">
-                            {c.students?.length || 0}
+                            {c.studentsCount ?? c.students?.length ?? 0}
                           </td>
                         </tr>
                       ))}
@@ -1588,7 +1581,6 @@ export default function StaffDashboard() {
               </div>
             </div>
           ) : (
-            /* DASHBOARD VIEW */
             <>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-5">
                 <div className="flex items-center gap-3">
@@ -1669,7 +1661,6 @@ export default function StaffDashboard() {
 
               {!selectedCourse ? (
                 <div className="space-y-10">
-                  {/* Active Courses Section */}
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
@@ -1697,7 +1688,6 @@ export default function StaffDashboard() {
                     )}
                   </div>
 
-                  {/* Concluded Courses Section */}
                   <div className="pt-6 border-t border-gray-200">
                     <div className="flex items-center gap-2 mb-4">
                       <h2 className="text-lg font-bold font-Geist text-gray-900">

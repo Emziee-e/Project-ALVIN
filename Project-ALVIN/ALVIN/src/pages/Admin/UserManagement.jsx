@@ -152,7 +152,7 @@ export default function UserManagement() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate("/");
+    navigate("/"); // Redirects to the login route instead of landing page ("/")
   };
 
   const filtered = accounts.filter((a) => {

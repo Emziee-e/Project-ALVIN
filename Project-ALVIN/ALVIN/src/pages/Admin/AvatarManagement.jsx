@@ -43,6 +43,7 @@ export default function AvatarManagement() {
     avatar_name: "",
     avatar_id: "",
     avatar_image: "",
+    voice: "",
   });
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const navigate = useNavigate();
@@ -147,6 +148,7 @@ export default function AvatarManagement() {
     avatar_id: avatar.avatar_id,
     name: avatar.avatar_name,
     image: avatar.avatar_image || DEFAULT_AVATAR_IMAGE,
+    voice: avatar.voice || "",
     selected: avatar.is_active === true,
     updated_at: avatar.updated_at,
   });
@@ -194,7 +196,7 @@ export default function AvatarManagement() {
         method: "POST",
         body: JSON.stringify(avatarForm),
       });
-      setAvatarForm({ avatar_name: "", avatar_id: "", avatar_image: "" });
+      setAvatarForm({ avatar_name: "", avatar_id: "", avatar_image: "", voice: "" });
       setIsAvatarFormOpen(false);
       await loadAvatars();
     } catch (error) {
@@ -287,6 +289,7 @@ export default function AvatarManagement() {
           onClose={closeVoiceModal}
         />
 
+        {/* Delete Confirmation Modal */}
         {avatarPendingDeletion && (
           <div
             className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
@@ -342,6 +345,7 @@ export default function AvatarManagement() {
           </div>
         )}
 
+        {/* Add Avatar Modal */}
         {isAvatarFormOpen && (
           <div
             className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-md"
@@ -439,6 +443,27 @@ export default function AvatarManagement() {
                 />
               </label>
 
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Voice
+                </span>
+                <input
+                  value={avatarForm.voice}
+                  onChange={(event) =>
+                    setAvatarForm((current) => ({
+                      ...current,
+                      voice: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
+                  placeholder="e.g. marin"
+                />
+                <span className="block text-xs text-slate-500">
+                  Enter the voice set for this avatar in the NavTalk Console so
+                  it stays the same throughout the interview.
+                </span>
+              </label>
+
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
@@ -533,7 +558,6 @@ export default function AvatarManagement() {
                   </span>
                 </div>
               </div>
-
             </div>
           </aside>
         </div>
@@ -649,70 +673,75 @@ export default function AvatarManagement() {
                   No avatars configured yet. Add a NavTalk avatar to get started.
                 </p>
               ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                {models.map((model) => (
-                  <article
-                    key={model.id}
-                    className={`group overflow-hidden rounded-2xl border bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition-all duration-300 ease-out ${
-                      model.selected
-                        ? "border-[#862334] ring-1 ring-[#862334]/20"
-                        : "border-[#e8e8e8]"
-                    } hover:-translate-y-1 hover:shadow-[0_24px_50px_rgba(15,23,42,0.16)] hover:border-[#862334]/40`}
-                  >
-                    <div className="relative aspect-[4/3] overflow-hidden bg-slate-200">
-                      <img
-                        src={model.image}
-                        alt={model.name}
-                        className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-transparent transition-opacity duration-300 group-hover:from-black/70 group-hover:via-black/10" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                  {models.map((model) => (
+                    <article
+                      key={model.id}
+                      className={`group overflow-hidden rounded-2xl border bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition-all duration-300 ease-out ${
+                        model.selected
+                          ? "border-[#862334] ring-1 ring-[#862334]/20"
+                          : "border-[#e8e8e8]"
+                      } hover:-translate-y-1 hover:shadow-[0_24px_50px_rgba(15,23,42,0.16)] hover:border-[#862334]/40`}
+                    >
+                      <div className="relative aspect-[4/3] overflow-hidden bg-slate-200">
+                        <img
+                          src={model.image}
+                          alt={model.name}
+                          className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-transparent transition-opacity duration-300 group-hover:from-black/70 group-hover:via-black/10" />
 
-                      {model.selected ? (
-                        <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#862334] text-white shadow-lg">
-                          <CheckCircle className="h-5 w-5" />
-                        </div>
-                      ) : null}
+                        {model.selected ? (
+                          <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#862334] text-white shadow-lg">
+                            <CheckCircle className="h-5 w-5" />
+                          </div>
+                        ) : null}
 
-                      <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3 transition-transform duration-300 group-hover:-translate-y-0.5">
-                        <div className="flex w-full min-w-0 items-center justify-between gap-2">
-                          <p className="truncate text-lg font-bold text-white md:text-xl">
-                            {model.name}
-                          </p>
+                        <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3 transition-transform duration-300 group-hover:-translate-y-0.5">
+                          <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                            <p className="truncate text-lg font-bold text-white md:text-xl">
+                              {model.name}
+                            </p>
+                            {model.voice ? (
+                              <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-xs font-semibold capitalize text-white backdrop-blur">
+                                {model.voice}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-3 p-4 md:p-5">
-                      <button
-                        type="button"
-                        onClick={() => setIsVoiceModalOpen(true)}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#862334]/15 bg-[#f7fbfc] px-4 py-3 text-sm font-Geist text-maroon transition-all duration-300 hover:border-[#862334]/25 hover:bg-[#eef7f8] cursor-pointer"
-                      >
-                        <Mic className="h-4 w-4 text-maroon" />
-                        Configure Voice
-                      </button>
+                      <div className="space-y-3 p-4 md:p-5">
+                        <button
+                          type="button"
+                          onClick={() => setIsVoiceModalOpen(true)}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#862334]/15 bg-[#f7fbfc] px-4 py-3 text-sm font-Geist text-maroon transition-all duration-300 hover:border-[#862334]/25 hover:bg-[#eef7f8] cursor-pointer"
+                        >
+                          <Mic className="h-4 w-4 text-maroon" />
+                          Configure Voice
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => selectModel(model.id)}
-                        className="flex w-full items-center justify-center rounded-xl bg-maroon px-4 py-3 text-sm font-Geist text-white shadow-[0_10px_20px_rgba(15,76,92,0.18)] transition-all duration-300 hover:bg-[#862334] hover:shadow-[0_14px_26px_rgba(134,35,52,0.25)] cursor-pointer"
-                      >
-                        Select for Session
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => requestDeleteModel(model)}
-                        disabled={model.selected}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                        title={model.selected ? "Select another avatar before deleting this avatar" : "Delete avatar"}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete Avatar
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
+                        <button
+                          type="button"
+                          onClick={() => selectModel(model.id)}
+                          className="flex w-full items-center justify-center rounded-xl bg-maroon px-4 py-3 text-sm font-Geist text-white shadow-[0_10px_20px_rgba(15,76,92,0.18)] transition-all duration-300 hover:bg-[#862334] hover:shadow-[0_14px_26px_rgba(134,35,52,0.25)] cursor-pointer"
+                        >
+                          Select for Session
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => requestDeleteModel(model)}
+                          disabled={model.selected}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={model.selected ? "Select another avatar before deleting this avatar" : "Delete avatar"}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete Avatar
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               )}
             </div>
           </div>
