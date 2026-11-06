@@ -6,7 +6,7 @@ import SignOutModal from '../../Components/SignOutModal';
 import { supabase } from '../../lib/supabaseClient';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "6d97711b9f2dc929bba9df972cca981c42f929c6a96861b205dac5b762d04ebd";
+const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 
 export default function ResumeUpload() {
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
@@ -78,18 +78,53 @@ export default function ResumeUpload() {
     setError("");
 
     try {
+      // Retrieve the token for the student currently signed in with Google SSO.
+      // Never reuse a token from another account or a hardcoded token.
+      let { data: { session }, error: authError } = await supabase.auth.getSession();
+      if (authError) {
+        throw new Error("Unable to read your login session. Please sign in again.");
+      }
+
+      // Try refreshing an expired session before starting a new interview.
+      if (session?.expires_at && session.expires_at * 1000 <= Date.now() + 30000) {
+        const refreshed = await supabase.auth.refreshSession();
+        if (refreshed.error) {
+          throw new Error("Your login session expired. Please sign in again.");
+        }
+        session = refreshed.data.session;
+      }
+
+      if (!session?.access_token) {
+        throw new Error("Missing Supabase login session. Please sign out and sign in with Google again.");
+      }
+
       const formData = new FormData();
       formData.append("resume", file);
       formData.append("job_description", role);
 
+      const headers = {
+        Authorization: `Bearer ${session.access_token}`,
+      };
+      if (APP_API_KEY) headers["X-API-Key"] = APP_API_KEY;
+
       const response = await fetch(`${API_BASE_URL}/api/interview/start-navtalk-session`, {
         method: "POST",
-        headers: { "X-API-Key": APP_API_KEY },
+        headers,
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error("Failed to initialize session. Please check backend logs.");
+        // Surface FastAPI's actual error instead of hiding it behind a generic message.
+        const payload = await response.json().catch(() => null);
+        const detail = typeof payload?.detail === "string"
+          ? payload.detail
+          : Array.isArray(payload?.detail)
+            ? "Invalid interview request. Please review your resume and target role."
+            : null;
+        if (response.status === 401) {
+          throw new Error(detail || "Authentication failed. Please sign out and sign in with Google again.");
+        }
+        throw new Error(detail || `Failed to initialize interview (HTTP ${response.status}).`);
       }
 
       const sessionData = await response.json();

@@ -22,7 +22,7 @@ export function Team() {
   const [ref, isInView] = useInView();
 
   return (
-    <section id="team" className="py-20 lg:py-28 bg-[#1A090D] text-white border-t border-[#862334]/30 relative overflow-hidden">
+    <section id="team" className="py-20 lg:py-28 bg-[#2D0C13] text-white border-t border-[#862334]/30 relative overflow-hidden">
 
       {/* Ambient Radial Glow - Warm Amber Accent */}
       <div
@@ -80,7 +80,7 @@ export function Team() {
                   {member.name}
                 </h3>
 
-                <p className="text-[11px] font-mono font-semibold text-[#FFB003] uppercase tracking-wider mt-1.5 leading-relaxed">
+                <p className="text-[11px] font-Inter font-semibold text-[#FFB003] uppercase tracking-wider mt-1.5 leading-relaxed">
                   {member.role}
                 </p>
               </div>
