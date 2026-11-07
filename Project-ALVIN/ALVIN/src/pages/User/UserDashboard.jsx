@@ -291,77 +291,70 @@ export default function UserDashboard() {
   };
 
   useEffect(() => {
-
     let isMounted = true;
 
     const loadUserData = async () => {
+      try {
+        // Read the cached Supabase session instead of making a separate auth request.
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (user && isMounted) {
+        const user = session?.user;
+        if (!user || !isMounted) return;
 
         const metadata = user.user_metadata || {};
+        const identityData = user.identities?.[0]?.identity_data || {};
 
         const fullName =
-
           metadata.full_name ||
-
           metadata.name ||
-
           `${metadata.first_name || ""} ${metadata.last_name || ""}`.trim() ||
-
           user.email?.split("@")[0] ||
-
-          "Vin";
+          "Student";
 
         const emailAddress = user.email || metadata.email || "N/A";
 
         const avatar =
-
           metadata.avatar_url ||
-
           metadata.picture ||
-
           metadata.avatar ||
-
-          user.identities?.[0]?.identity_data?.avatar_url ||
-
-          user.identities?.[0]?.identity_data?.picture ||
-
+          identityData.avatar_url ||
+          identityData.picture ||
           null;
 
         const nameParts = fullName.split(" ").filter(Boolean);
-
         const initials =
-
           nameParts.length >= 2
-
             ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
-
             : fullName.slice(0, 2).toUpperCase();
 
-        setUserProfile((prev) => ({
+        if (avatar) {
+          // Warm the browser cache before the account drawer is opened.
+          const preloadImage = new window.Image();
+          preloadImage.decoding = "async";
+          preloadImage.src = avatar;
+        }
 
-          ...prev,
-
-          name: fullName,
-
-          email: emailAddress,
-
-          avatarUrl: avatar,
-
-          initials: initials,
-
-        }));
-
+        if (isMounted) {
+          setImageError(false);
+          setUserProfile((prev) => ({
+            ...prev,
+            name: fullName,
+            email: emailAddress,
+            avatarUrl: avatar,
+            initials,
+          }));
+        }
+      } catch (error) {
+        console.error("Unable to load user profile:", error);
       }
-
     };
 
     loadUserData();
-
-    return () => { isMounted = false; };
-
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -479,7 +472,9 @@ export default function UserDashboard() {
                     alt={userProfile.name}
 
                     onError={() => setImageError(true)}
-
+                    loading="eager"
+                    decoding="async"
+                    fetchPriority="high"
                     className="w-20 h-20 rounded-full object-cover border-2 border-[#862334] shadow-sm mb-3"
 
                   />

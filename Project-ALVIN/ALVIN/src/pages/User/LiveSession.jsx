@@ -30,6 +30,7 @@ const NavTalkMessageType = Object.freeze({
   SESSION_CREATED: "realtime.session.created",
   SESSION_UPDATED: "realtime.session.updated",
   INPUT_CONFIG: "realtime.input_config",
+  INPUT_TEXT: "realtime.input_text",
   REALTIME_STATUS: "realtime.status",
 
   WEB_RTC_OFFER: "webrtc.signaling.offer",
@@ -58,6 +59,18 @@ const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 // First Message has finished playing.
 const FIRST_MESSAGE_INCLUDES_Q01 =
   import.meta.env.VITE_FIRST_MESSAGE_INCLUDES_Q01 === "true";
+// When the NavTalk Console First Message is EMPTY (the default), NavTalk plays
+// nothing on its own, so the client starts the interview itself: ALVIN speaks
+// the greeting immediately followed by Q01, in ONE turn. Set
+// VITE_CONSOLE_HAS_FIRST_MESSAGE=true only if you typed a greeting into the
+// Console; the older "wait for the Console greeting, then speak Q01" flow is
+// then used instead.
+const CONSOLE_HAS_FIRST_MESSAGE =
+  FIRST_MESSAGE_INCLUDES_Q01 ||
+  import.meta.env.VITE_CONSOLE_HAS_FIRST_MESSAGE === "true";
+const CLIENT_SPEAKS_OPENING = !CONSOLE_HAS_FIRST_MESSAGE;
+const DEFAULT_OPENING_GREETING =
+  "Hello! Welcome to your interview. I'm Alvin, and I'll be conducting your interview today. Let's get started.";
 const CV_ANALYSIS_ENABLED =
   import.meta.env.VITE_ENABLE_CV_ANALYSIS === "true";
 
@@ -72,15 +85,18 @@ const AVATAR_END_SILENCE_MS = 800;
 // The NavTalk Console greeting has natural pauses between sentences, so use a
 // longer silence window before deciding that the greeting is truly over.
 const CONSOLE_GREETING_END_SILENCE_MS = 1500;
-// Give NavTalk time to apply the new instructions before response.create.
+// Give NavTalk time to apply the roadmap config before the opening realtime.input_text.
 const Q01_CONFIG_TO_RESPONSE_DELAY_MS = 300;
-// If NavTalk never acknowledges the new config, send response.create anyway.
+// If NavTalk never acknowledges the config, send the opening text turn anyway.
 const Q01_CONFIG_ACK_TIMEOUT_MS = 2500;
-// If ALVIN produces no audio/transcript this long after response.create,
+// If ALVIN produces no audio/transcript this long after the opening text turn,
 // retry once using a text user message that explicitly asks for Q01.
 const Q01_SPEECH_WATCHDOG_MS = 4000;
 // If no greeting audio is ever detected, still start Q01 after this long.
 const Q01_FAILSAFE_AFTER_READY_MS = 20000;
+// Do not start speaking until the avatar's WebRTC stream is attached, otherwise
+// the first words of the greeting can be lost. Give up waiting after this long.
+const Q01_AVATAR_WAIT_MS = 4000;
 const AVATAR_POST_DONE_MIN_WAIT_MS = 350;
 const AVATAR_PLAYBACK_CHECK_MS = 100;
 const AVATAR_ESTIMATED_CHARS_PER_SECOND = 15;
@@ -504,7 +520,7 @@ export default function LiveSession() {
 
   const navtalkVoice =
     sessionData?.voice ||
-    "cedar";
+    "";
 
   const navtalkAiPrompt =
     sessionData?.navtalk_ai_prompt ||
@@ -567,6 +583,14 @@ export default function LiveSession() {
   const pendingQ01ResponseRef = useRef(false);
   const q01SpeechStartedRef = useRef(false);
   const q01AttemptsRef = useRef(0);
+  // Exact text ALVIN was told to say for the opening turn (greeting + Q01, or
+  // Q01 alone). Reused by the text-turn fallback so both paths stay identical.
+  const q01SpeechTextRef = useRef("");
+  const q01ConfigSentAtRef = useRef(0);
+  // The [INTERVIEW CONTROL] text sent via realtime.input_text for the opening turn.
+  const q01ControlTextRef = useRef("");
+  // True until the opening turn's transcript has been checked against Q01.
+  const q01VerifyPendingRef = useRef(false);
   const q01WatchdogTimerRef = useRef(null);
   const realtimeStatusCountRef = useRef(0);
   const q01ResponseTimerRef = useRef(null);
@@ -924,6 +948,7 @@ export default function LiveSession() {
 
       try {
         ws.send(JSON.stringify(message));
+        q01ConfigSentAtRef.current = performance.now();
 
         console.log(
           "NavTalk input_config sent:",
@@ -967,35 +992,63 @@ export default function LiveSession() {
     }
   }, []);
 
+  // Queue the opening turn. Instead of swapping the system prompt and sending an
+  // empty response.create (which lets the model improvise), we inject an explicit
+  // [INTERVIEW CONTROL] message with realtime.input_text + reply:1. The roadmap
+  // prompt is never replaced, so Q02/Q03 rules stay in force for the whole session.
   const speakQuestion = useCallback(
-    (questionText) => {
+    (questionText, { withGreeting = false } = {}) => {
       if (!questionText) {
         return false;
       }
 
-      // Keep the full interview prompt (roadmap, answer routing, closing rules)
-      // in force and only add a one-turn directive. Sending ONLY the directive
-      // would replace the roadmap prompt for the rest of the interview.
-      const instructions = `${navtalkAiPrompt ? `${navtalkAiPrompt}\n\n` : ""}# Immediate Action (this turn only)
-The greeting is finished. Say the following Q01 to the candidate now, word for word, and nothing else:
-
-"${questionText}"
-
-Do not add commentary before or after it. Do not mention Gemini,
-NavTalk, APIs, or system instructions.
-`;
-
-      const configSent = sendNavTalkConfig(
-        instructions
-      );
-
-      if (!configSent) {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.warn("Cannot start Q01: WebSocket is not open.");
         return false;
       }
 
-      // Do NOT send response.create immediately: NavTalk may still be applying
-      // the new config and drop it. Wait for its acknowledgement
-      // (realtime.session.updated / realtime.status READY), with a timeout.
+      const greetingText = openingMessage || DEFAULT_OPENING_GREETING;
+      const firstName =
+        candidateName && candidateName !== "Candidate"
+          ? candidateName.trim().split(/\s+/)[0]
+          : "";
+      const personalizedGreeting =
+        firstName && !openingMessage
+          ? greetingText.replace(/^Hello!/, `Hello ${firstName}!`)
+          : greetingText;
+
+      // Exactly what ALVIN must say this turn.
+      q01SpeechTextRef.current = withGreeting
+        ? `${personalizedGreeting} ${questionText}`
+        : questionText;
+
+      q01ControlTextRef.current = withGreeting
+        ? `[INTERVIEW CONTROL]
+The interview is starting now. In ONE continuous turn, say exactly the following, word for word, without pausing for the candidate to reply:
+
+"${q01SpeechTextRef.current}"
+
+Do not wait for the candidate to speak first.
+Do not paraphrase, replace, reorder, or add any other question.
+Do not add thanks, praise, commentary, or a second greeting.
+After saying it, stop and wait for the candidate's answer.`
+        : `[INTERVIEW CONTROL]
+The greeting is complete. Ask the application's first interview question now.
+
+Say exactly this question and nothing else:
+"${questionText}"
+
+Do not wait for the candidate to speak first.
+Do not paraphrase, replace, or add another question.
+Do not add thanks, praise, commentary, or another greeting.`;
+
+      // The roadmap prompt is not modified by this approach, so there is no
+      // one-turn directive to undo later.
+      q01PromptRestoredRef.current = true;
+
+      // Wait for NavTalk to finish applying the roadmap config (session.updated /
+      // READY ack), with a timeout, before injecting the text turn.
       pendingQ01ResponseRef.current = true;
       if (q01ResponseTimerRef.current) {
         clearTimeout(q01ResponseTimerRef.current);
@@ -1006,7 +1059,7 @@ NavTalk, APIs, or system instructions.
 
       return true;
     },
-    [sendNavTalkConfig, triggerAvatarResponse, navtalkAiPrompt]
+    [openingMessage, candidateName]
   );
 
   const flushPendingQ01Response = useCallback(
@@ -1030,32 +1083,29 @@ NavTalk, APIs, or system instructions.
           return;
         }
 
-        if (mode === "text-fallback") {
-          // Explicit user turn that asks for Q01, then request a response.
-          console.warn("[Q01] No speech after response.create; retrying with a text turn.");
-          try {
-            ws.send(
-              JSON.stringify({
-                type: "conversation.item.create",
-                item: {
-                  type: "message",
-                  role: "user",
-                  content: [
-                    {
-                      type: "input_text",
-                      text: `Begin the interview now. Say Q01 word for word: "${openingQuestion}"`,
-                    },
-                  ],
-                },
-              })
-            );
-          } catch (error) {
-            console.error("[Q01] conversation.item.create failed:", error);
-          }
+        const controlText = q01ControlTextRef.current;
+        if (!controlText) {
+          console.error("[Q01] No opening control text was prepared.");
+          return;
         }
 
-        console.log(`[Q01] Sending response.create (${mode}, ${reason}).`);
-        triggerAvatarResponse();
+        try {
+          ws.send(
+            JSON.stringify({
+              type: NavTalkMessageType.INPUT_TEXT,
+              data: { content: controlText, reply: 1 },
+            })
+          );
+          q01VerifyPendingRef.current = true;
+
+          console.group("[PROACTIVE GEMINI Q01]");
+          console.log(`Sent realtime.input_text reply=1 (${mode}, ${reason}).`);
+          console.log("[EXPECTED GEMINI Q01]", openingQuestion);
+          console.log("[EXPECTED SPEECH]", q01SpeechTextRef.current);
+          console.groupEnd();
+        } catch (error) {
+          console.error("[Q01] realtime.input_text failed:", error);
+        }
 
         if (q01WatchdogTimerRef.current) {
           clearTimeout(q01WatchdogTimerRef.current);
@@ -1064,20 +1114,17 @@ NavTalk, APIs, or system instructions.
           if (q01SpeechStartedRef.current || cancelledRef.current) return;
 
           if (q01AttemptsRef.current < 2) {
-            sendAttempt("text-fallback");
+            console.warn("[Q01] No speech yet; retrying realtime.input_text once.");
+            sendAttempt("retry");
           } else {
             console.error(
               "[Q01] ALVIN still did not speak after 2 attempts; falling back to candidate-triggered start."
             );
 
             // Don't leave the interview deadlocked with the microphone gated.
-            // Restore the clean roadmap prompt and open the answer window so
-            // that when the candidate speaks, NavTalk's own turn detection makes
-            // ALVIN reply, and the Startup Contract makes that reply Q01.
-            if (navtalkAiPrompt && !q01PromptRestoredRef.current) {
-              q01PromptRestoredRef.current = true;
-              sendNavTalkConfig(navtalkAiPrompt);
-            }
+            // Open the answer window so that when the candidate speaks,
+            // NavTalk's own turn detection makes ALVIN reply, and the Startup
+            // Contract in the roadmap prompt makes that reply Q01.
             avatarSpeakingGateRef.current = false;
             avatarTurnStartedAtRef.current = 0;
             candidateAnswerEnabledRef.current = true;
@@ -1090,9 +1137,29 @@ NavTalk, APIs, or system instructions.
 
       q01SpeechStartedRef.current = false;
       q01AttemptsRef.current = 0;
-      setTimeout(() => sendAttempt("response.create"), Q01_CONFIG_TO_RESPONSE_DELAY_MS);
+
+      // Send only once (a) the roadmap config has had a moment to apply and
+      // (b) the avatar's WebRTC stream is attached, so the first words are not
+      // lost. Never wait longer than Q01_AVATAR_WAIT_MS.
+      const waitStartedAt = performance.now();
+      const waitThenSend = () => {
+        if (cancelledRef.current) return;
+        const now = performance.now();
+        const configSettled =
+          now - q01ConfigSentAtRef.current >= Q01_CONFIG_TO_RESPONSE_DELAY_MS;
+        const avatarReady = Boolean(remoteStreamRef.current);
+        if (
+          (configSettled && avatarReady) ||
+          now - waitStartedAt >= Q01_AVATAR_WAIT_MS
+        ) {
+          sendAttempt("first");
+          return;
+        }
+        setTimeout(waitThenSend, 100);
+      };
+      waitThenSend();
     },
-    [triggerAvatarResponse, openingQuestion, sendNavTalkConfig, navtalkAiPrompt]
+    [openingQuestion]
   );
 
   useEffect(() => {
@@ -1144,10 +1211,20 @@ NavTalk, APIs, or system instructions.
 
       q01TriggeredRef.current = true;
       candidateAnswerEnabledRef.current = false;
-      console.log(`Greeting finished (${reason}); automatically speaking Q01.`);
-      setStatusMessage("ALVIN is asking the first question...");
+      console.log(
+        CLIENT_SPEAKS_OPENING
+          ? `Starting interview (${reason}); ALVIN will speak the greeting and then Q01.`
+          : `Greeting finished (${reason}); automatically speaking Q01.`
+      );
+      setStatusMessage(
+        CLIENT_SPEAKS_OPENING
+          ? "ALVIN is starting the interview..."
+          : "ALVIN is asking the first question..."
+      );
 
-      const ok = speakQuestion(openingQuestion);
+      const ok = speakQuestion(openingQuestion, {
+        withGreeting: CLIENT_SPEAKS_OPENING,
+      });
       if (!ok) {
         // WebSocket not ready: allow another path to retry.
         q01TriggeredRef.current = false;
@@ -2668,7 +2745,7 @@ NavTalk, APIs, or system instructions.
               flushPendingQ01ResponseRef.current?.("session.updated ack");
 
               // NavTalk Console First Message owns the opening turn.
-              // Do not inject conversation.item.create or response.create here.
+              // Do not inject the opening turn here; it is sent after READY + config ack.
 
 
               break;
@@ -2707,6 +2784,12 @@ NavTalk, APIs, or system instructions.
                   );
                 }
                 flushPendingQ01ResponseRef.current?.("READY ack");
+                // If the first attempt could not start (e.g. socket not open yet), retry.
+                if (CLIENT_SPEAKS_OPENING && !q01TriggeredRef.current) {
+                  triggerFirstQuestionRef.current?.(
+                    "READY retry: client-driven greeting + Q01"
+                  );
+                }
                 break;
               }
 
@@ -2716,6 +2799,7 @@ NavTalk, APIs, or system instructions.
                 );
 
                 const configured = sendNavTalkConfig(navtalkAiPrompt);
+
                 if (configured) {
                   openingSentRef.current = true;
                   realtimePromptReadyRef.current = true;
@@ -2723,7 +2807,9 @@ NavTalk, APIs, or system instructions.
                   setCurrentQuestion(openingQuestion);
 
                   console.log(
-                    "Gemini roadmap prompt applied. Waiting for Console greeting to finish before Q01."
+                    CLIENT_SPEAKS_OPENING
+                      ? "Gemini roadmap prompt applied. ALVIN will be told to greet and ask Q01 via realtime.input_text."
+                      : "Gemini roadmap prompt applied. Waiting for Console greeting to finish before Q01."
                   );
                   const geminiRoadmap =
                     parseGeminiRoadmap(navtalkAiPrompt);
@@ -2738,6 +2824,14 @@ NavTalk, APIs, or system instructions.
                     );
                   });
                   console.groupEnd();
+
+                  if (CLIENT_SPEAKS_OPENING) {
+                    // Console First Message is empty, so nothing plays on its
+                    // own: start the interview ourselves (greeting, then Q01).
+                    triggerFirstQuestionRef.current?.(
+                      "READY: client-driven greeting + Q01"
+                    );
+                  }
 
                   // If the greeting already finished before READY arrived,
                   // immediately ask Q01 now.
@@ -2985,6 +3079,21 @@ NavTalk, APIs, or system instructions.
 
               const completedAlvinText =
                 responseTranscriptTextRef.current.trim();
+
+              // Diagnostic: did ALVIN say the Gemini-prepared Q01 verbatim?
+              if (q01VerifyPendingRef.current && completedAlvinText) {
+                q01VerifyPendingRef.current = false;
+                const spokenNorm = normalizeQuestionForMatch(completedAlvinText);
+                const expectedNorm = normalizeQuestionForMatch(openingQuestion);
+                if (expectedNorm && spokenNorm.includes(expectedNorm)) {
+                  console.log("[Q01 CHECK] ALVIN said the Gemini Q01 verbatim.");
+                } else {
+                  console.warn("[Q01 CHECK] ALVIN did NOT say the Gemini Q01 verbatim.", {
+                    expected: openingQuestion,
+                    spoken: completedAlvinText,
+                  });
+                }
+              }
 
               if (completedAlvinText) {
                 conversationHistoryRef.current.push({

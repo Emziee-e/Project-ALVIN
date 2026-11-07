@@ -589,7 +589,7 @@ export default function StaffStatistics() {
                     Avg. Improvement
                   </span>
                   <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    {overviewLoading ? "…" : overview?.average_improvement == null ? "—" : `${overview.average_improvement > 0 ? "+" : ""}${overview.average_improvement} pp`}
+                    {overviewLoading ? "…" : overview?.average_improvement == null ? "—" : `${overview.average_improvement > 0 ? "+" : ""}${overview.average_improvement}%`}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
