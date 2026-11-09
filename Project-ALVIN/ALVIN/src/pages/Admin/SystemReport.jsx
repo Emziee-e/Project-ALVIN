@@ -447,7 +447,7 @@ export default function SystemReport() {
                 {/* Total Interviews */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
+                    <p className="text-[14px] font-semibold text-gray-600">
                       Total Interviews
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
@@ -462,7 +462,7 @@ export default function SystemReport() {
                 {/* Avg. Performance */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
+                    <p className="text-[14px] font-semibold text-gray-600">
                       Avg. Performance
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
@@ -477,7 +477,7 @@ export default function SystemReport() {
                 {/* Active Users */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
+                    <p className="text-[14px] font-semibold text-gray-600">
                       Active Users
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
@@ -492,7 +492,7 @@ export default function SystemReport() {
                 {/* Daily Users */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[#862334] text-xs font-bold font-Geist uppercase tracking-wider">
+                    <p className="text-[14px] font-semibold text-gray-600">
                       Daily Users
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">

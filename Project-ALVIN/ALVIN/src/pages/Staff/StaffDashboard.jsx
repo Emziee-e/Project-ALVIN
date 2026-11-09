@@ -858,7 +858,7 @@ export default function StaffDashboard() {
             <div className="flex items-center justify-between relative z-20">
               <div className="flex items-center gap-1.5 flex-wrap">
                 {course.section ? (
-                  <span className="bg-black/35 text-white font-Inter font-semibold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-xs shadow-xs">
+                  <span className="bg-black/35 text-white font-Inter tracking-widest font-semibold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-xs shadow-xs">
                     {course.section}
                   </span>
                 ) : null}
@@ -1501,7 +1501,7 @@ export default function StaffDashboard() {
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Published Courses
                     </p>
-                    <p className="text-3xl font-Inter font-black text-gray-900 mt-1">
+                    <p className="text-3xl font-black text-gray-900 mt-1">
                       {publishedCourses.length}
                     </p>
                   </div>
@@ -1556,7 +1556,7 @@ export default function StaffDashboard() {
                     <tbody className="divide-y divide-gray-100 text-sm">
                       {[...publishedCourses, ...concludedCourses].map((c) => (
                         <tr key={c.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-4 px-6 font-mono font-medium text-gray-700">{c.code}</td>
+                          <td className="py-4 px-6 font-Inter font-medium text-gray-700">{c.code}</td>
                           <td className="py-4 px-6 font-bold text-gray-900">{c.title}</td>
                           <td className="py-4 px-6 text-gray-600">{c.section || "N/A"}</td>
                           <td className="py-4 px-6 text-center">
@@ -1646,7 +1646,7 @@ export default function StaffDashboard() {
                         placeholder="Search Student Name or ID..."
                         value={studentSearch}
                         onChange={(e) => setStudentSearch(e.target.value)}
-                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-500 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-56 md:w-64 shadow-xs transition-all"
+                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-400 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-56 md:w-64 shadow-xs transition-all"
                       />
                     </div>
                     <button
@@ -1713,7 +1713,7 @@ export default function StaffDashboard() {
                 <div className="space-y-4">
                   <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                      <h3 className="font-bold text-gray-900 text-base">Student List</h3>
+                      <h3 className="font-semibold font-Inter text-gray-900 text-md">Student List</h3>
                       <span className="text-xs text-gray-500">
                         Showing {filteredStudents.length} of {selectedCourse.students?.length || 0} students
                       </span>
@@ -1722,7 +1722,7 @@ export default function StaffDashboard() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="bg-gray-50 text-gray-700 text-xs font-Inter tracking-wider font-semibold border-b border-gray-200">
+                          <tr className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase font-Inter border-b border-gray-200">
                             <th className="py-3.5 px-6">Student No.</th>
                             <th className="py-3.5 px-6">Student Name</th>
                             <th className="py-3.5 px-6">Email Address</th>
@@ -1733,10 +1733,10 @@ export default function StaffDashboard() {
                         <tbody className="divide-y divide-gray-100 text-sm">
                           {filteredStudents.map((student) => (
                             <tr key={student.id} className="hover:bg-rose-50/30 transition-colors">
-                              <td className="py-4 px-6 font-Inter font-medium text-gray-500">{student.studentNo}</td>
-                              <td className="py-4 px-6 font-Inter text-gray-500">{student.name}</td>
-                              <td className="py-4 px-6 font-Inter text-gray-500">{student.email}</td>
-                              <td className="py-4 px-6 font-Inter text-gray-500 text-xs">{student.dateJoined}</td>
+                              <td className="py-4 px-6 font-Inter font-medium text-gray-700">{student.studentNo}</td>
+                              <td className="py-4 px-6 font-Inter text-gray-700">{student.name}</td>
+                              <td className="py-4 px-6 font-Inter text-gray-700">{student.email}</td>
+                              <td className="py-4 px-6 font-Inter text-gray-700">{student.dateJoined}</td>
                               <td className="py-4 px-6 text-center">
                                 <div className="inline-flex">
                                   <button

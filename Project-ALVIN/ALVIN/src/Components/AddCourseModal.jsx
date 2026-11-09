@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Check, ChevronDown } from "lucide-react";
+import { X, Check, ChevronDown, Upload } from "lucide-react";
 
 // Preset solid color options
 const COLOR_OPTIONS = [
@@ -20,8 +20,10 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
   const [term, setTerm] = useState("First Semester");
   const [isTermOpen, setIsTermOpen] = useState(false);
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].value);
+  const [imagePreview, setImagePreview] = useState("");
 
   const dropdownRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -36,31 +38,60 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.match(/^image\/(png|jpeg|jpg)$/)) {
+        alert("Please upload a PNG or JPG/JPEG image file.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImagePreview("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!code || !title) return;
+
+    if (!code.trim() || !title.trim()) {
+      return;
+    }
 
     const newCourse = {
-      id: `course_${Date.now()}`,
-      code,
-      title,
-      section,
+      code: code.trim(),
+      title: title.trim(),
+      section: section.trim(),
       term,
       color: selectedColor,
-      imageUrl: null,
-      image: null,
-      students: [],
+      imageUrl: imagePreview || null,
+      image: imagePreview || null,
     };
 
-    onCreateCourse(newCourse);
+    const result = await onCreateCourse(newCourse);
 
-    // Reset form & close
+    if (result?.error) {
+      return;
+    }
+
     setCode("");
     setTitle("");
     setSection("");
     setTerm("First Semester");
     setSelectedColor(COLOR_OPTIONS[0].value);
+    setImagePreview("");
     setIsTermOpen(false);
+
     onClose();
   };
 
@@ -81,6 +112,59 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Cover Image Upload */}
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+              Cover Image <span className="text-gray-400 font-normal">(PNG or JPG)</span>
+            </label>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/png, image/jpeg, image/jpg"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+
+            {imagePreview ? (
+              <div className="relative h-28 w-full rounded-xl overflow-hidden border border-gray-200 group">
+                <img
+                  src={imagePreview}
+                  alt="Course Preview"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-white text-gray-800 text-xs font-semibold rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="px-3 py-1.5 bg-rose-600 text-white text-xs font-semibold rounded-lg hover:bg-rose-700 transition-colors cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full h-24 border-2 border-dashed border-gray-200 hover:border-[#862334] rounded-xl flex flex-col items-center justify-center bg-gray-50 hover:bg-rose-50/20 transition-all cursor-pointer group"
+              >
+                <Upload className="w-5 h-5 text-gray-400 group-hover:text-[#862334] transition-colors mb-1" />
+                <span className="text-xs font-semibold text-gray-600 group-hover:text-[#862334]">
+                  Upload Cover Image
+                </span>
+                <span className="text-[10px] text-gray-400">PNG, JPG up to 5MB</span>
+              </button>
+            )}
+          </div>
+
           {/* Course Code */}
           <div>
             <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
@@ -126,7 +210,7 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
               />
             </div>
 
-            {/* Custom Maroon Term Dropdown */}
+            {/* Term Dropdown */}
             <div className="relative" ref={dropdownRef}>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
                 Term
@@ -163,7 +247,7 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
             </div>
           </div>
 
-          {/* Solid Color Options Picker */}
+          {/* Course Color Options */}
           <div>
             <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
               Course Card Color
