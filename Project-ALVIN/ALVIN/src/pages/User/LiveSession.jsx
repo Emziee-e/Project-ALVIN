@@ -1,5 +1,5 @@
 import { supabase } from "../../lib/supabaseClient";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Mic,
   MicOff,
@@ -44,6 +44,7 @@ const NavTalkMessageType = Object.freeze({
 
   RESPONSE_AUDIO_DELTA: "realtime.response.audio.delta",
   RESPONSE_AUDIO_TRANSCRIPT_DELTA: "realtime.response.audio_transcript.delta",
+  RESPONSE_AUDIO_TRANSCRIPT_DONE: "realtime.response.audio_transcript.done",
   RESPONSE_AUDIO_DONE: "realtime.response.audio.done",
 
   INPUT_AUDIO_BUFFER_APPEND: "realtime.input_audio_buffer.append",
@@ -69,8 +70,9 @@ const CONSOLE_HAS_FIRST_MESSAGE =
   FIRST_MESSAGE_INCLUDES_Q01 ||
   import.meta.env.VITE_CONSOLE_HAS_FIRST_MESSAGE === "true";
 const CLIENT_SPEAKS_OPENING = !CONSOLE_HAS_FIRST_MESSAGE;
+// Used only if no active avatar name is available.
 const DEFAULT_OPENING_GREETING =
-  "Hello! Welcome to your interview. I'm Alvin, and I'll be conducting your interview today. Let's get started.";
+  "Hello! Welcome to your interview. I'll be conducting your interview today. Let's get started.";
 const CV_ANALYSIS_ENABLED =
   import.meta.env.VITE_ENABLE_CV_ANALYSIS === "true";
 
@@ -78,6 +80,64 @@ const CANDIDATE_FINALIZATION_GRACE_MS = 150;
 const CANDIDATE_LOCAL_SILENCE_MS = 900;
 const CANDIDATE_TRANSCRIPT_SETTLE_MS = 1800;
 const CANDIDATE_SPEECH_RMS_THRESHOLD = 0.012;
+
+// If the candidate says nothing for this long after a question finishes playing,
+// ALVIN restates the SAME question in simpler words.
+const NO_ANSWER_SIMPLIFY_MS = 15000;
+// How many times one question may be simplified before ALVIN stops prompting.
+const MAX_SIMPLIFICATIONS_PER_QUESTION = 2;
+// Thinking time vs. reply speed.
+// NavTalk's server ends the candidate's turn after a short pause, so ALVIN starts
+// talking and the rest of the answer is lost. To prevent that the client takes over
+// end-of-answer detection:
+//   1. While the candidate pauses for less than the HOLD below, dead-quiet audio is
+//      withheld, so "uhm..." and thinking pauses do not end the turn.
+//   2. When the pause reaches the HOLD, the client decides the answer is finished
+//      and IMMEDIATELY sends a burst of digital silence. NavTalk's turn detection
+//      therefore ends the turn right away instead of waiting its own silence timer
+//      in real time (which is what made ALVIN feel slow to react).
+// The hold adapts to how much has been said: a pause after only a few words is
+// probably thinking; a pause after a long answer is probably the end.
+// Reply delay after you stop talking ~= this hold + ALVIN's own response time.
+// Raise a value for more thinking time, lower it for a snappier reply.
+const THINKING_HOLD_SHORT_ANSWER_MS = 3000; // under ~4s of speech so far
+const THINKING_HOLD_NORMAL_MS = 2000; // 4s - 12s of speech so far
+const THINKING_HOLD_LONG_ANSWER_MS = 1200; // over ~12s of speech so far
+// Length of the synthetic silence sent when the client decides the answer is over.
+// Sent instantly (not in real time). Kept short: long stretches of pure silence make
+// speech-to-text models invent words.
+const ANSWER_END_SILENCE_INJECT_MS = 1200;
+// "Speech" for end-of-answer detection is judged RELATIVE to the microphone's own
+// noise floor (the quietest recent level), so soft and loud microphones both work.
+const MIC_LEVEL_HISTORY_CHUNKS = 40; // ~13 s of recent levels
+// Upper limit for the adaptive speech level, so a very noisy room (e.g. a fan) can
+// raise the bar above the old fixed level but never so far that speech is missed.
+const ENDPOINT_MAX_SPEECH_RMS = 0.05;
+// Microphone noise suppression (fan, air conditioner, hum). Set
+// VITE_MIC_NOISE_SUPPRESSION=false to turn it off.
+const MIC_NOISE_SUPPRESSION_ENABLED =
+  import.meta.env.VITE_MIC_NOISE_SUPPRESSION !== "false";
+const ENDPOINT_NOISE_FLOOR_FACTOR = 3; // speech = at least 3x the noise floor
+const ENDPOINT_MIN_SPEECH_RMS = 0.003; // never treat anything below this as speech
+
+function getThinkingHoldMs(speechMsSoFar) {
+  if (speechMsSoFar < 4000) return THINKING_HOLD_SHORT_ANSWER_MS;
+  if (speechMsSoFar < 12000) return THINKING_HOLD_NORMAL_MS;
+  return THINKING_HOLD_LONG_ANSWER_MS;
+}
+
+// Console diagnostics: how long after the candidate's last speech did each stage happen?
+function describeAnswerTiming(lastSpeechAt, endSignalAt) {
+  const now = performance.now();
+  const parts = [];
+  if (lastSpeechAt > 0) {
+    parts.push(`${Math.round(now - lastSpeechAt)} ms after your last speech`);
+  }
+  if (endSignalAt > 0) {
+    parts.push(`${Math.round(now - endSignalAt)} ms after the end-of-answer signal`);
+  }
+  return parts.join(", ");
+}
 
 // Detect when NavTalk WebRTC audio has actually stopped playing.
 const AVATAR_AUDIO_RMS_THRESHOLD = 0.0015;
@@ -103,6 +163,212 @@ const AVATAR_ESTIMATED_CHARS_PER_SECOND = 15;
 const AVATAR_MIN_TURN_MS = 1200;
 const CLOSING_GRACE_MS = 4000;
 
+// ---------------------------------------------------------------------------
+// Microphone noise suppression (streaming spectral subtraction)
+//
+// A steady background sound such as a fan has a stable spectrum. This learns that
+// spectrum continuously from the quietest recent frames in each frequency band
+// (minimum statistics, no voice-activity detector needed) and attenuates whatever
+// matches it, plus a gentle cut of low-frequency rumble. Speech is louder than the
+// learned noise in its own bands, so it passes through.
+//
+// Streaming: takes N samples in, returns N samples out (delayed by HOP samples).
+// ---------------------------------------------------------------------------
+class SpectralNoiseSuppressor {
+  constructor(sampleRate = 24000, options = {}) {
+    this.sampleRate = sampleRate;
+    this.N = 512; // frame size (~21 ms at 24 kHz)
+    this.H = this.N / 2; // hop (50% overlap)
+    this.bins = this.N / 2 + 1;
+    this.overSubtraction = options.overSubtraction ?? 1.5;
+    this.minGain = options.minGain ?? 0.12; // about -18 dB maximum attenuation
+    this.noiseBias = options.noiseBias ?? 5.0; // min-statistics underestimates the mean
+    this.bypassGain = options.bypassGain ?? false; // test hook: pass audio through unchanged
+
+    const N = this.N;
+    this.window = new Float64Array(N);
+    for (let n = 0; n < N; n += 1) {
+      this.window[n] = Math.sin((Math.PI * (n + 0.5)) / N); // sine window, 50% overlap
+    }
+    this.cosT = new Float64Array(N / 2);
+    this.sinT = new Float64Array(N / 2);
+    for (let i = 0; i < N / 2; i += 1) {
+      this.cosT[i] = Math.cos((2 * Math.PI * i) / N);
+      this.sinT[i] = Math.sin((2 * Math.PI * i) / N);
+    }
+    this.rev = new Uint16Array(N);
+    const bitsCount = Math.log2(N);
+    for (let i = 0; i < N; i += 1) {
+      let r = 0;
+      for (let b = 0; b < bitsCount; b += 1) r |= ((i >> b) & 1) << (bitsCount - 1 - b);
+      this.rev[i] = r;
+    }
+
+    this.re = new Float64Array(N);
+    this.im = new Float64Array(N);
+    this.smoothedPower = new Float64Array(this.bins);
+    this.noise = new Float64Array(this.bins);
+    this.gainPrev = new Float64Array(this.bins).fill(1);
+    this.gain = new Float64Array(this.bins);
+    this.curMin = new Float64Array(this.bins).fill(Infinity);
+    this.subMins = [];
+    this.SUB_FRAMES = 24; // ~0.26 s per sub-window
+    this.SUB_COUNT = 8; // noise memory ~2 s
+    this.WARMUP_FRAMES = 60; // lighter suppression while the noise profile forms
+    this.frameInSub = 0;
+    this.framesSeen = 0;
+
+    this.pending = new Float32Array(0);
+    this.acc = new Float64Array(N);
+    this.ready = new Float32Array(this.H); // primes the constant latency
+    this.frameOut = new Float64Array(N);
+  }
+
+  _fft(re, im, inverse) {
+    const N = this.N;
+    const rev = this.rev;
+    for (let i = 0; i < N; i += 1) {
+      const j = rev[i];
+      if (j > i) {
+        let t = re[i]; re[i] = re[j]; re[j] = t;
+        t = im[i]; im[i] = im[j]; im[j] = t;
+      }
+    }
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1;
+      const step = N / size;
+      for (let start = 0; start < N; start += size) {
+        for (let k = 0, t = 0; k < half; k += 1, t += step) {
+          const wr = this.cosT[t];
+          const wi = inverse ? this.sinT[t] : -this.sinT[t];
+          const a = start + k;
+          const b = a + half;
+          const xr = re[b] * wr - im[b] * wi;
+          const xi = re[b] * wi + im[b] * wr;
+          re[b] = re[a] - xr; im[b] = im[a] - xi;
+          re[a] += xr; im[a] += xi;
+        }
+      }
+    }
+    if (inverse) {
+      for (let i = 0; i < N; i += 1) { re[i] /= N; im[i] /= N; }
+    }
+  }
+
+  _processFrame(frame, out) {
+    const N = this.N;
+    const bins = this.bins;
+    const re = this.re;
+    const im = this.im;
+
+    for (let n = 0; n < N; n += 1) {
+      re[n] = frame[n] * this.window[n];
+      im[n] = 0;
+    }
+    this._fft(re, im, false);
+
+    const first = this.framesSeen === 0;
+    for (let k = 0; k < bins; k += 1) {
+      const p = re[k] * re[k] + im[k] * im[k];
+      this.smoothedPower[k] = first ? p : 0.6 * this.smoothedPower[k] + 0.4 * p;
+      if (this.smoothedPower[k] < this.curMin[k]) this.curMin[k] = this.smoothedPower[k];
+    }
+
+    this.frameInSub += 1;
+    this.framesSeen += 1;
+    if (this.frameInSub >= this.SUB_FRAMES) {
+      this.subMins.push(Float64Array.from(this.curMin));
+      if (this.subMins.length > this.SUB_COUNT) this.subMins.shift();
+      this.curMin.set(this.smoothedPower);
+      this.frameInSub = 0;
+    }
+
+    for (let k = 0; k < bins; k += 1) {
+      let m = this.curMin[k];
+      for (let s = 0; s < this.subMins.length; s += 1) {
+        if (this.subMins[s][k] < m) m = this.subMins[s][k];
+      }
+      this.noise[k] = m * this.noiseBias;
+    }
+
+    const warm = Math.min(1, this.framesSeen / this.WARMUP_FRAMES);
+    const alpha = this.overSubtraction * (0.4 + 0.6 * warm);
+    const floorPower = this.minGain * this.minGain;
+    const binHz = this.sampleRate / N;
+
+    for (let k = 0; k < bins; k += 1) {
+      const ratio = this.noise[k] / Math.max(this.smoothedPower[k], 1e-20);
+      const g2 = 1 - alpha * ratio;
+      let g = g2 <= floorPower ? this.minGain : Math.sqrt(g2);
+      // fast attack (don't clip word starts), slower release (don't chop word ends)
+      g = g > this.gainPrev[k] ? 0.75 * g + 0.25 * this.gainPrev[k] : 0.4 * g + 0.6 * this.gainPrev[k];
+      this.gainPrev[k] = g;
+    }
+    // smooth across frequency to avoid "musical noise"
+    for (let k = 0; k < bins; k += 1) {
+      const lo = this.gainPrev[Math.max(0, k - 1)];
+      const hi = this.gainPrev[Math.min(bins - 1, k + 1)];
+      let g = 0.25 * lo + 0.5 * this.gainPrev[k] + 0.25 * hi;
+      const hz = k * binHz;
+      if (hz < 70) g = Math.min(g, 0.05); // fan/handling rumble
+      else if (hz < 110) g *= 0.5;
+      this.gain[k] = this.bypassGain ? 1 : g;
+    }
+
+    for (let k = 0; k < bins; k += 1) {
+      re[k] *= this.gain[k];
+      im[k] *= this.gain[k];
+      if (k > 0 && k < N / 2) {
+        re[N - k] *= this.gain[k];
+        im[N - k] *= this.gain[k];
+      }
+    }
+    this._fft(re, im, true);
+    for (let n = 0; n < N; n += 1) out[n] = re[n] * this.window[n];
+  }
+
+  // Takes a Float32Array, returns a Float32Array of the same length.
+  process(input) {
+    const N = this.N;
+    const H = this.H;
+    const combined = new Float32Array(this.pending.length + input.length);
+    combined.set(this.pending, 0);
+    combined.set(input, this.pending.length);
+
+    const emitted = [];
+    let pos = 0;
+    while (combined.length - pos >= N) {
+      this._processFrame(combined.subarray(pos, pos + N), this.frameOut);
+      for (let n = 0; n < N; n += 1) this.acc[n] += this.frameOut[n];
+      const chunk = new Float32Array(H);
+      for (let n = 0; n < H; n += 1) chunk[n] = this.acc[n];
+      emitted.push(chunk);
+      this.acc.copyWithin(0, H);
+      this.acc.fill(0, N - H);
+      pos += H;
+    }
+    this.pending = combined.slice(pos);
+
+    let total = this.ready.length;
+    for (const c of emitted) total += c.length;
+    const queue = new Float32Array(total);
+    queue.set(this.ready, 0);
+    let off = this.ready.length;
+    for (const c of emitted) { queue.set(c, off); off += c.length; }
+
+    const out = new Float32Array(input.length);
+    if (queue.length >= input.length) {
+      out.set(queue.subarray(0, input.length));
+      this.ready = queue.slice(input.length);
+    } else {
+      out.set(queue, input.length - queue.length);
+      this.ready = new Float32Array(0);
+    }
+    return out;
+  }
+}
+// END SpectralNoiseSuppressor
+
 function floatTo16BitPCM(float32Array) {
   const buffer = new ArrayBuffer(float32Array.length * 2);
   const view = new DataView(buffer);
@@ -118,6 +384,49 @@ function floatTo16BitPCM(float32Array) {
   }
 
   return buffer;
+}
+
+// NavTalk's `data.delta` can arrive with its whitespace stripped, which makes word
+// boundaries ambiguous ("deliver" + "ables" is ONE word, "Hello" + "world" is two).
+// `raw_data` is the provider's original event, so prefer its delta when it is the same
+// text with the original spacing.
+function pickTranscriptDelta(message, navData) {
+  const cleaned = typeof navData?.delta === "string" ? navData.delta : "";
+  const raw = typeof message?.raw_data?.delta === "string" ? message.raw_data.delta : "";
+  if (raw && (!cleaned || raw.trim() === cleaned.trim())) return raw;
+  return cleaned;
+}
+
+// Join the streamed fragments of one spoken turn. If any fragment carries its own
+// leading/trailing space the feed preserves spacing, so concatenate exactly (this is
+// what keeps "deliver" + "ables" together). Only a feed with no spacing at all falls
+// back to guessing word boundaries.
+function joinTranscriptDeltas(deltas) {
+  const list = Array.isArray(deltas) ? deltas : [];
+  if (list.some((piece) => /^\s|\s$/.test(piece))) return list.join("");
+  return list.reduce((text, piece) => appendTranscriptDelta(text, piece), "");
+}
+
+// NavTalk's `audio_transcript.done` event carries the complete transcript. When it differs
+// from the text built out of streamed fragments, decide what to correct.
+function planFinalTranscriptUpgrade({ turn, finalText, currentQuestion, newTurnStarted, roadmap }) {
+  const finalClean = String(finalText || "").trim();
+  if (!finalClean || finalClean === (turn?.text || "")) return { apply: false };
+
+  const plan = {
+    apply: true,
+    finalText: finalClean,
+    // Do not overwrite the subtitle if ALVIN has already started its next turn.
+    subtitle: newTurnStarted ? null : finalClean,
+    question: "",
+  };
+
+  // Re-extract the question only if this turn set it and nothing has changed it since.
+  if (!turn?.closing && turn?.question && currentQuestion === turn.question) {
+    const corrected = formatQuestionForDisplay(extractDisplayedQuestion(finalClean), roadmap);
+    if (corrected && corrected !== turn.question) plan.question = corrected;
+  }
+  return plan;
 }
 
 function appendTranscriptDelta(existingText, deltaText) {
@@ -157,6 +466,12 @@ function appendTranscriptDelta(existingText, deltaText) {
     return existing + " " + delta;
   }
 
+  // A word right after a comma / semicolon / colon needs a space ("Design,how" -> "Design, how").
+  // Only before LETTERS, so numbers like "3,000" and "10:30" are left alone.
+  if (/[,;:]$/.test(existing) && /^[A-Za-z]/.test(delta)) {
+    return existing + " " + delta;
+  }
+
   // A new capitalized word after sentence punctuation needs a space.
   if (/[.!?]$/.test(existing) && /^[A-Z]/.test(delta)) {
     return existing + " " + delta;
@@ -191,6 +506,68 @@ function normalizeQuestionForMatch(text) {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Letters and digits only, lower-cased. Ignores every spacing/punctuation quirk.
+function compactForMatch(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+// Clean a spoken question for the on-screen subtitle (and for pairing with the
+// candidate's answer). Streamed transcripts can arrive with broken spacing
+// ("yourself.What", "I ' m", double spaces), so:
+//  1. If ALVIN said a Gemini roadmap question word for word, show the roadmap's
+//     original, perfectly formatted text.
+//  2. Otherwise repair spacing and capitalization.
+function formatQuestionForDisplay(rawText, roadmap) {
+  const raw = String(rawText || "");
+  if (!raw.trim()) return "";
+
+  const compactSpoken = compactForMatch(raw);
+  if (compactSpoken && roadmap?.length) {
+    for (const item of roadmap) {
+      const compactQuestion = compactForMatch(item.question);
+      if (compactQuestion.length >= 12 && compactSpoken.includes(compactQuestion)) {
+        return String(item.question).trim();
+      }
+    }
+  }
+
+  return cleanSpokenText(raw);
+}
+
+// Repair spacing and capitalisation of anything ALVIN says. Streamed transcripts can
+// arrive with broken spacing ("yourself.What", "I ' m", double spaces).
+function cleanSpokenText(rawText) {
+  const text = String(rawText || "")
+    .replace(/\s+/g, " ") // collapse spaces and line breaks
+    .replace(/\s*(?:—|--)\s*/g, " — ") // "deliverables—how" -> "deliverables — how"
+    .replace(/\s+([,.;:!?%)\]}])/g, "$1") // no space before punctuation
+    .replace(/([(\[{])\s+/g, "$1") // no space after an opening bracket
+    .replace(/([,;:!?])(?=[A-Za-z])/g, "$1 ") // space after , ; : ! ?
+    .replace(/([.])(?=[A-Z][a-z])/g, "$1 ") // "yourself.What" -> "yourself. What"
+    .replace(/(\w)\s+(['’])\s*(s|t|re|ve|ll|d|m)\b/gi, "$1$2$3") // "I ' m" -> "I'm"
+    .trim();
+
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// Everything ALVIN says is shown as the subtitle. Split it into a lead-in (greeting,
+// short bridge, scenario set-up) and the question itself so the question stands out.
+function splitSubtitleParts(spokenText) {
+  const cleaned = cleanSpokenText(spokenText);
+  if (!cleaned) return { lead: "", question: "" };
+
+  const question = cleanSpokenText(extractDisplayedQuestion(cleaned));
+  if (question) {
+    const at = cleaned.lastIndexOf(question);
+    if (at > 0) {
+      return { lead: cleaned.slice(0, at).trim(), question: cleaned.slice(at).trim() };
+    }
+  }
+  return { lead: "", question: cleaned };
 }
 
 function findClosestGeminiQuestion(spokenQuestion, roadmap) {
@@ -267,6 +644,45 @@ function extractDisplayedQuestion(alvinText) {
   return text.length >= 30 ? text : "";
 }
 
+// NavTalk transcribes each spoken turn ASYNCHRONOUSLY, so the transcript of an answer
+// can arrive after ALVIN has already started replying (or started the closing
+// statement). Such a late transcript is still the candidate's answer and must not be
+// thrown away, otherwise the last answer of the interview can vanish.
+const LATE_TRANSCRIPT_WINDOW_MS = 15000;
+const END_SESSION_TRANSCRIPT_WAIT_MS = 6000;
+
+function shouldAcceptCandidateTranscript({
+  answerWindowOpen,
+  interviewEnded,
+  closingPending,
+  transcriptOwed,
+  msSinceAcceptedSpeechStart,
+}) {
+  const lateButOwed =
+    transcriptOwed && msSinceAcceptedSpeechStart < LATE_TRANSCRIPT_WINDOW_MS;
+  if (lateButOwed) return true;
+  return answerWindowOpen && !interviewEnded && !closingPending;
+}
+
+// Resolves true once no transcript is owed any more, or false after maxMs.
+async function waitForOwedTranscripts({
+  getOwed,
+  getMsSinceSpeechStart,
+  sleep,
+  maxMs = END_SESSION_TRANSCRIPT_WAIT_MS,
+}) {
+  let waited = 0;
+  while (
+    getOwed() > 0 &&
+    getMsSinceSpeechStart() < LATE_TRANSCRIPT_WINDOW_MS &&
+    waited < maxMs
+  ) {
+    await sleep(100);
+    waited += 100;
+  }
+  return getOwed() <= 0;
+}
+
 function base64EncodeAudio(uint8Array) {
   let binary = "";
   const chunkSize = 0x8000;
@@ -314,7 +730,7 @@ async function fetchNavTalkWsUrl(sessionId) {
     throw new Error("Backend response missing ws_url.");
   }
 
-  return data.ws_url;
+  return { wsUrl: data.ws_url, avatarName: data.avatar_name || "" };
 }
 
 async function postBackend(path, payload) {
@@ -591,6 +1007,31 @@ export default function LiveSession() {
   const q01ControlTextRef = useRef("");
   // True until the opening turn's transcript has been checked against Q01.
   const q01VerifyPendingRef = useRef(false);
+  // Name of the active avatar (from the backend avatar_config table).
+  const avatarNameRef = useRef((sessionData?.avatar_name || "").trim());
+  // "No answer after 15s -> simplify" bookkeeping.
+  const noAnswerTimerRef = useRef(null);
+  const simplifyCountRef = useRef(0);
+  const simplifyingRef = useRef(false);
+  const candidateSpokeThisAnswerRef = useRef(false);
+  // Milliseconds of actual speech in the current answer (drives the adaptive hold).
+  const candidateSpeechMsRef = useRef(0);
+  // Set once the client has declared the current answer finished (and sent silence).
+  const answerEndSignalledRef = useRef(false);
+  // Recent microphone levels (for the adaptive noise floor) and the last time the
+  // candidate was judged to be speaking by the adaptive detector.
+  const micRmsHistoryRef = useRef([]);
+  const endpointLastSpeechAtRef = useRef(0);
+  // Spoken turns whose transcript NavTalk still owes us, and when the latest one began.
+  const transcriptOwedRef = useRef(0);
+  // ALVIN's spoken turn: the streamed fragments, NavTalk's final transcript (if it arrives
+  // before audio.done), and the last finished turn (so the final transcript can correct it).
+  const responseDeltasRef = useRef([]);
+  const finalTranscriptRef = useRef("");
+  const lastAlvinTurnRef = useRef({ text: "", question: "", closing: false, finalized: true });
+  const lastAcceptedSpeechStartAtRef = useRef(0);
+  const answerEndSentAtRef = useRef(0);
+  const armNoAnswerTimerRef = useRef(() => {});
   const q01WatchdogTimerRef = useRef(null);
   const realtimeStatusCountRef = useRef(0);
   const q01ResponseTimerRef = useRef(null);
@@ -654,8 +1095,24 @@ export default function LiveSession() {
   const [avatarConnected, setAvatarConnected] =
     useState(false);
 
-  const [statusMessage, setStatusMessage] =
+  const [statusMessage, setStatusMessageRaw] =
     useState("Initializing navtalk.Brain runtime...");
+
+  // The active avatar's name (from the avatar_config table). It is known from the session
+  // start response and confirmed when the NavTalk connection is created.
+  const [avatarName, setAvatarName] = useState(
+    (sessionData?.avatar_name || "").trim()
+  );
+
+  // Any status line that says "ALVIN" shows the active avatar's name instead, e.g.
+  // "Lauren is listening...". Falls back to "ALVIN" if no avatar name is known.
+  const setStatusMessage = useCallback((message) => {
+    setStatusMessageRaw(
+      typeof message === "string"
+        ? message.replace(/\bALVIN\b/g, () => avatarNameRef.current || "ALVIN")
+        : message
+    );
+  }, []);
 
   const [disconnectedReason, setDisconnectedReason] =
     useState(null);
@@ -692,6 +1149,19 @@ export default function LiveSession() {
   useEffect(() => {
     currentQuestionRef.current = currentQuestion;
   }, [currentQuestion]);
+
+  // What ALVIN is saying right now, live and in full, shown as the on-screen subtitle.
+  // (currentQuestion above stays the extracted question used to pair answers.)
+  const [avatarSubtitle, setAvatarSubtitle] = useState("");
+  const subtitleParts = useMemo(
+    () => splitSubtitleParts(avatarSubtitle),
+    [avatarSubtitle]
+  );
+  const subtitleScrollRef = useRef(null);
+  useEffect(() => {
+    const el = subtitleScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [avatarSubtitle]);
 
   // Renew the server-side NavTalk queue lease during the live interview.
   useEffect(() => {
@@ -783,6 +1253,7 @@ export default function LiveSession() {
     const text = candidateAnswerBufferRef.current.trim();
     if (!text) return Promise.resolve();
 
+    simplifyCountRef.current = 0; // answered: the next question starts fresh
     candidateAnswerBufferRef.current = "";
     candidatePendingTranscriptRef.current = "";
     candidateSpeakingRef.current = false;
@@ -797,6 +1268,12 @@ export default function LiveSession() {
   }, [enqueueTranscript, syncCandidateSpeaking]);
 
   const clearSilenceTimer = useCallback(() => {
+    // Any candidate or avatar activity cancels the 15s no-answer countdown.
+    if (noAnswerTimerRef.current) {
+      clearTimeout(noAnswerTimerRef.current);
+      noAnswerTimerRef.current = null;
+    }
+
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
@@ -1008,15 +1485,12 @@ export default function LiveSession() {
         return false;
       }
 
-      const greetingText = openingMessage || DEFAULT_OPENING_GREETING;
-      const firstName =
-        candidateName && candidateName !== "Candidate"
-          ? candidateName.trim().split(/\s+/)[0]
-          : "";
-      const personalizedGreeting =
-        firstName && !openingMessage
-          ? greetingText.replace(/^Hello!/, `Hello ${firstName}!`)
-          : greetingText;
+      // Introduce the interviewer by the ACTIVE avatar's name (avatar_config),
+      // not a hard-coded one. Same wording as the backend's opening_message.
+      const avatarName = (avatarNameRef.current || "").trim();
+      const personalizedGreeting = avatarName
+        ? `Hello! Welcome to your interview. I'm ${avatarName}, and I'll be conducting your interview today. Let's get started.`
+        : openingMessage || DEFAULT_OPENING_GREETING;
 
       // Exactly what ALVIN must say this turn.
       q01SpeechTextRef.current = withGreeting
@@ -1059,7 +1533,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
 
       return true;
     },
-    [openingMessage, candidateName]
+    [openingMessage]
   );
 
   const flushPendingQ01Response = useCallback(
@@ -1206,6 +1680,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
         candidateAnswerEnabledRef.current = true;
         setStatusMessage("ALVIN is listening...");
         notifyAvatarDoneRef.current?.();
+        armNoAnswerTimerRef.current?.();
         return true;
       }
 
@@ -1272,7 +1747,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
         navtalk_session_id: navtalkSessionIdRef.current,
       });
       console.log(
-        "Backend notified that avatar playback ended; 10-second silence timer armed."
+        "Backend notified that avatar playback ended."
       );
     } catch (error) {
       console.warn("Failed to arm silence timer:", error);
@@ -1406,6 +1881,105 @@ Do not add thanks, praise, commentary, or another greeting.`;
       },
       [navtalkSessionId]
     );
+
+  // After a question has finished playing: if the candidate stays completely
+  // silent for NO_ANSWER_SIMPLIFY_MS, ALVIN restates the same question more simply.
+  // Driven from the browser because only it can speak through the NavTalk socket.
+  const armNoAnswerTimer = useCallback(() => {
+    if (noAnswerTimerRef.current) {
+      clearTimeout(noAnswerTimerRef.current);
+      noAnswerTimerRef.current = null;
+    }
+
+    candidateSpokeThisAnswerRef.current = false;
+    candidateSpeechMsRef.current = 0;
+    answerEndSignalledRef.current = false;
+    answerEndSentAtRef.current = 0;
+    endpointLastSpeechAtRef.current = 0;
+
+    if (interviewEndedRef.current || closingPendingRef.current) return;
+
+    const candidateHasSaidSomething = () =>
+      candidateSpokeThisAnswerRef.current ||
+      candidateSpeakingRef.current ||
+      Boolean(candidateAnswerBufferRef.current.trim());
+
+    noAnswerTimerRef.current = setTimeout(async () => {
+      noAnswerTimerRef.current = null;
+
+      if (
+        cancelledRef.current ||
+        interviewEndedRef.current ||
+        closingPendingRef.current ||
+        !candidateAnswerEnabledRef.current ||
+        avatarSpeakingGateRef.current ||
+        candidateHasSaidSomething()
+      ) {
+        return;
+      }
+
+      if (simplifyCountRef.current >= MAX_SIMPLIFICATIONS_PER_QUESTION) {
+        console.log("[NO ANSWER] Simplification limit reached for this question.");
+        return;
+      }
+
+      simplifyCountRef.current += 1;
+      simplifyingRef.current = true;
+      setShowSilenceWarning(true);
+      setStatusMessage("ALVIN is simplifying the question...");
+
+      try {
+        console.log(
+          `[NO ANSWER] No audio for ${NO_ANSWER_SIMPLIFY_MS / 1000}s; simplifying the question.`
+        );
+
+        const simplified = await requestSimplifiedQuestion();
+
+        // The candidate may have started talking while Gemini was working.
+        if (
+          !simplified ||
+          cancelledRef.current ||
+          interviewEndedRef.current ||
+          closingPendingRef.current ||
+          avatarSpeakingGateRef.current ||
+          candidateHasSaidSomething()
+        ) {
+          return;
+        }
+
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        const spoken = `No problem, take your time. Let me put that a little more simply. ${simplified.replace(/"/g, "'")}`;
+
+        ws.send(
+          JSON.stringify({
+            type: NavTalkMessageType.INPUT_TEXT,
+            data: {
+              content: `[INTERVIEW CONTROL]
+The candidate has not answered for about ${NO_ANSWER_SIMPLIFY_MS / 1000} seconds. Help them by making the SAME question easier.
+
+Say exactly the following, word for word, and nothing else:
+"${spoken}"
+
+Do not add another question, praise, or commentary.
+After saying it, stop and wait for the candidate's answer.`,
+              reply: 1,
+            },
+          })
+        );
+
+        console.log("[NO ANSWER] Sent simplified question:", simplified);
+      } finally {
+        simplifyingRef.current = false;
+        setShowSilenceWarning(false);
+      }
+    }, NO_ANSWER_SIMPLIFY_MS);
+  }, [requestSimplifiedQuestion]);
+
+  useEffect(() => {
+    armNoAnswerTimerRef.current = armNoAnswerTimer;
+  }, [armNoAnswerTimer]);
 
   const startSilenceTimer = useCallback(() => {
     clearSilenceTimer();
@@ -1628,6 +2202,43 @@ Do not add thanks, praise, commentary, or another greeting.`;
             localStreamRef.current
           );
 
+        // Streaming noise suppressor for this microphone session. If anything goes
+        // wrong with it, the raw microphone signal is used instead.
+        const noiseSuppressor = MIC_NOISE_SUPPRESSION_ENABLED
+          ? new SpectralNoiseSuppressor(24000)
+          : null;
+        console.log(
+          noiseSuppressor
+            ? "Microphone noise suppression: ON"
+            : "Microphone noise suppression: OFF"
+        );
+
+        // Send `ms` of digital silence to NavTalk instantly (not in real time).
+        const sendSilence = (socket, ms) => {
+          const totalSamples = Math.round((24000 * ms) / 1000);
+          const block = new Float32Array(8192); // all zeros
+          let remaining = totalSamples;
+
+          while (remaining > 0) {
+            const count = Math.min(block.length, remaining);
+            const pcm = floatTo16BitPCM(
+              count === block.length ? block : block.subarray(0, count)
+            );
+            const base64 = base64EncodeAudio(new Uint8Array(pcm));
+
+            for (let i = 0; i < base64.length; i += 4096) {
+              socket.send(
+                JSON.stringify({
+                  type: NavTalkMessageType.INPUT_AUDIO_BUFFER_APPEND,
+                  data: { audio: base64.slice(i, i + 4096) },
+                })
+              );
+            }
+
+            remaining -= count;
+          }
+        };
+
         const processor =
           audioContext.createScriptProcessor(
             8192,
@@ -1657,10 +2268,20 @@ Do not add thanks, praise, commentary, or another greeting.`;
               return;
             }
 
-            const input =
+            const rawInput =
               event.inputBuffer.getChannelData(
                 0
               );
+
+            let input = rawInput;
+            if (noiseSuppressor) {
+              try {
+                input = noiseSuppressor.process(rawInput);
+              } catch (error) {
+                console.warn("Noise suppression failed; using raw audio:", error);
+                input = rawInput;
+              }
+            }
 
             let sumSquares = 0;
             for (let i = 0; i < input.length; i += 1) {
@@ -1671,7 +2292,32 @@ Do not add thanks, praise, commentary, or another greeting.`;
               sumSquares / Math.max(1, input.length)
             );
 
-            if (rms >= CANDIDATE_SPEECH_RMS_THRESHOLD) {
+            // ---- Client-side end-of-answer detection (see THINKING_HOLD_* above) ----
+            // Levels are judged against this microphone's own noise floor, so a soft
+            // speaker is never mistaken for silence (and a noisy room for speech).
+            const levelHistory = micRmsHistoryRef.current;
+            levelHistory.push(rms);
+            if (levelHistory.length > MIC_LEVEL_HISTORY_CHUNKS) levelHistory.shift();
+
+            const noiseFloor = Math.min(...levelHistory);
+            const endpointThreshold = Math.min(
+              ENDPOINT_MAX_SPEECH_RMS,
+              Math.max(
+                ENDPOINT_MIN_SPEECH_RMS,
+                noiseFloor * ENDPOINT_NOISE_FLOOR_FACTOR
+              )
+            );
+            // Only audio this close to the noise floor is withheld during a pause.
+            const withholdBelowRms = Math.max(
+              0.0015,
+              Math.min(noiseFloor * 1.5, endpointThreshold * 0.6)
+            );
+            const nowMs = performance.now();
+
+            // Local "candidate is speaking" flag: never more sensitive than the original
+            // fixed level, but it rises with the noise floor so a steady fan does not
+            // count as speech forever.
+            if (rms >= Math.max(CANDIDATE_SPEECH_RMS_THRESHOLD, endpointThreshold)) {
               if (closingPendingRef.current) cancelClosing();
 
               candidateLastAudioAtRef.current = performance.now();
@@ -1685,6 +2331,50 @@ Do not add thanks, praise, commentary, or another greeting.`;
                 console.log(
                   "Local microphone speech detected; answer finalization paused."
                 );
+              }
+            }
+
+            // ---- Client-side end-of-answer detection (see THINKING_HOLD_* above) ----
+            if (rms >= endpointThreshold) {
+              endpointLastSpeechAtRef.current = nowMs;
+              candidateSpokeThisAnswerRef.current = true;
+              candidateSpeechMsRef.current += (input.length / 24000) * 1000;
+              answerEndSignalledRef.current = false;
+            }
+
+            if (
+              candidateSpokeThisAnswerRef.current &&
+              endpointLastSpeechAtRef.current > 0 &&
+              rms < endpointThreshold
+            ) {
+              const quietForMs = nowMs - endpointLastSpeechAtRef.current;
+              const holdMs = getThinkingHoldMs(candidateSpeechMsRef.current);
+
+              if (quietForMs < holdMs) {
+                // Still within thinking time: withhold only dead-quiet audio so a
+                // pause or an "uhm" does not end the turn. Anything louder than
+                // the noise floor is still forwarded in case it is soft speech.
+                if (rms < withholdBelowRms) {
+                  return;
+                }
+              } else if (!answerEndSignalledRef.current) {
+                // The pause reached the hold: treat the answer as finished and tell
+                // NavTalk right now with a short burst of digital silence. Audio then
+                // keeps flowing normally, so nothing is ever discarded after this.
+                answerEndSignalledRef.current = true;
+                answerEndSentAtRef.current = nowMs;
+
+                try {
+                  sendSilence(ws, ANSWER_END_SILENCE_INJECT_MS);
+                  console.log(
+                    `[ANSWER END] ${Math.round(quietForMs)} ms of quiet after ` +
+                      `${Math.round(candidateSpeechMsRef.current)} ms of speech ` +
+                      `(mic noise floor ${noiseFloor.toFixed(4)}, speech threshold ` +
+                      `${endpointThreshold.toFixed(4)}); sent ${ANSWER_END_SILENCE_INJECT_MS} ms of silence.`
+                  );
+                } catch (error) {
+                  console.warn("[ANSWER END] Could not send silence:", error);
+                }
               }
             }
 
@@ -2044,6 +2734,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
         candidateAnswerEnabledRef.current = true;
         setStatusMessage("ALVIN is listening...");
         notifyAvatarDone();
+        armNoAnswerTimerRef.current?.();
         return;
       }
 
@@ -2450,10 +3141,19 @@ Do not add thanks, praise, commentary, or another greeting.`;
           "Requesting NavTalk session..."
         );
 
-        wsUrl =
+        const connection =
           await fetchNavTalkWsUrl(
             navtalkSessionId
           );
+        wsUrl = connection.wsUrl;
+        if (connection.avatarName) {
+          avatarNameRef.current = connection.avatarName;
+          setAvatarName(connection.avatarName);
+        }
+        console.log(
+          "Active avatar:",
+          connection.avatarName || "(none configured)"
+        );
       } catch (error) {
         if (
           cancelledRef.current
@@ -2508,7 +3208,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
         );
 
         setStatusMessage(
-          "Connecting ALVIN realtime interview..."
+          "Connecting ALVIN..."
         );
 
         // Do NOT send realtime.input_config here.
@@ -2883,6 +3583,8 @@ Do not add thanks, praise, commentary, or another greeting.`;
               candidateSpeakingRef.current = true;
               candidateLocalSpeakingRef.current = true;
               candidateLastAudioAtRef.current = performance.now();
+              transcriptOwedRef.current += 1;
+              lastAcceptedSpeechStartAtRef.current = performance.now();
               // Keep the current answer when speech resumes after a pause.
               if (!candidateAnswerBufferRef.current) {
                 answerQuestionRef.current = currentQuestionRef.current;
@@ -2916,6 +3618,15 @@ Do not add thanks, praise, commentary, or another greeting.`;
               console.log(
                 "NavTalk speech stopped; waiting for transcript stability before finalizing the answer."
               );
+              if (candidateSpokeThisAnswerRef.current) {
+                console.log(
+                  "[TIMING] NavTalk speech_stopped:",
+                  describeAnswerTiming(
+                    endpointLastSpeechAtRef.current,
+                    answerEndSentAtRef.current
+                  )
+                );
+              }
 
               break;
             }
@@ -2924,15 +3635,34 @@ Do not add thanks, praise, commentary, or another greeting.`;
               // The Console greeting is not a question and requires no response.
               // Also reject late/background transcripts once ALVIN starts another turn
               // or the interview is closing/finished.
+              const transcriptWasOwed = transcriptOwedRef.current > 0;
+              if (transcriptOwedRef.current > 0) transcriptOwedRef.current -= 1;
+
               if (
-                !candidateAnswerEnabledRef.current ||
-                interviewEndedRef.current ||
-                closingPendingRef.current
+                !shouldAcceptCandidateTranscript({
+                  answerWindowOpen: candidateAnswerEnabledRef.current,
+                  interviewEnded: interviewEndedRef.current,
+                  closingPending: closingPendingRef.current,
+                  transcriptOwed: transcriptWasOwed,
+                  msSinceAcceptedSpeechStart:
+                    performance.now() - lastAcceptedSpeechStartAtRef.current,
+                })
               ) {
                 console.log(
                   "Ignoring candidate transcript because no interview answer window is open."
                 );
                 break;
+              }
+
+              if (
+                transcriptWasOwed &&
+                (!candidateAnswerEnabledRef.current ||
+                  closingPendingRef.current ||
+                  interviewEndedRef.current)
+              ) {
+                console.log(
+                  "Late candidate transcript accepted: it arrived after ALVIN started replying."
+                );
               }
 
               const candidateText =
@@ -2964,6 +3694,13 @@ Do not add thanks, praise, commentary, or another greeting.`;
               console.log(
                 "Candidate transcript chunk received; waiting for answer to settle:",
                 candidateText
+              );
+              console.log(
+                "[TIMING] transcript received:",
+                describeAnswerTiming(
+                    endpointLastSpeechAtRef.current,
+                  answerEndSentAtRef.current
+                )
               );
 
               if (candidateAnswerFinalizeTimerRef.current) {
@@ -3023,6 +3760,16 @@ Do not add thanks, praise, commentary, or another greeting.`;
               candidateAnswerEnabledRef.current = false;
               if (!avatarTurnStartedAtRef.current) {
                 avatarTurnStartedAtRef.current = performance.now();
+                if (candidateSpokeThisAnswerRef.current) {
+                  console.log(
+                    "[TIMING] ALVIN audio started:",
+                    describeAnswerTiming(
+                    endpointLastSpeechAtRef.current,
+                      answerEndSentAtRef.current
+                    )
+                  );
+                  answerEndSentAtRef.current = 0;
+                }
               }
               avatarSpeakingGateRef.current = true;
               clearSilenceTimer();
@@ -3039,25 +3786,99 @@ Do not add thanks, praise, commentary, or another greeting.`;
               clearSilenceTimer();
 
               const deltaText =
-                (typeof navData?.delta ===
-                  "string" &&
-                  navData.delta) ||
+                pickTranscriptDelta(message, navData) ||
                 extractCandidateText({
                   data: navData,
                 }) ||
                 "";
 
               if (deltaText) {
+                if (!responseTranscriptTextRef.current) {
+                  // First fragment of a new spoken turn.
+                  responseDeltasRef.current = [];
+                  lastAlvinTurnRef.current = {
+                    ...lastAlvinTurnRef.current,
+                    finalized: false,
+                  };
+                }
+
+                responseDeltasRef.current.push(deltaText);
+
                 responseTranscriptLengthRef.current +=
                   deltaText.length;
 
                 responseTranscriptTextRef.current =
-                  appendTranscriptDelta(
-                    responseTranscriptTextRef.current,
-                    deltaText
-                  );
+                  joinTranscriptDeltas(responseDeltasRef.current);
+
+                setAvatarSubtitle(responseTranscriptTextRef.current);
               }
 
+              break;
+            }
+
+            case NavTalkMessageType.RESPONSE_AUDIO_TRANSCRIPT_DONE: {
+              // NavTalk's own complete transcript of what ALVIN said (exact spacing).
+              const finalTranscript =
+                [navData?.transcript, message?.raw_data?.transcript, navData?.text].find(
+                  (value) => typeof value === "string" && value.trim()
+                ) || "";
+
+              if (!finalTranscript) {
+                console.log(
+                  "[SUBTITLE] transcript.done carried no transcript text; keeping the streamed text."
+                );
+                break;
+              }
+
+              const turn = lastAlvinTurnRef.current;
+
+              if (!turn.finalized) {
+                // Arrived before audio.done: audio.done will use this exact text.
+                finalTranscriptRef.current = finalTranscript.trim();
+                break;
+              }
+
+              const upgrade = planFinalTranscriptUpgrade({
+                turn,
+                finalText: finalTranscript,
+                currentQuestion: currentQuestionRef.current,
+                newTurnStarted: Boolean(responseTranscriptTextRef.current),
+                roadmap: parseGeminiRoadmap(navtalkAiPrompt),
+              });
+
+              if (!upgrade.apply) break;
+
+              console.log(
+                "[SUBTITLE] Using NavTalk's final transcript instead of the streamed text:",
+                { streamed: turn.text, final: upgrade.finalText }
+              );
+
+              if (upgrade.subtitle !== null) setAvatarSubtitle(upgrade.subtitle);
+
+              const history = conversationHistoryRef.current;
+              if (Array.isArray(history)) {
+                for (let i = history.length - 1; i >= 0; i -= 1) {
+                  if (history[i]?.speaker === "ALVIN" && history[i]?.text === turn.text) {
+                    history[i] = { ...history[i], text: upgrade.finalText };
+                    break;
+                  }
+                }
+              }
+
+              if (upgrade.question) {
+                if (answerQuestionRef.current === turn.question) {
+                  answerQuestionRef.current = upgrade.question;
+                }
+                currentQuestionRef.current = upgrade.question;
+                setCurrentQuestion(upgrade.question);
+                console.log("[UI QUESTION CORRECTED]", upgrade.question);
+              }
+
+              lastAlvinTurnRef.current = {
+                ...turn,
+                text: upgrade.finalText,
+                question: upgrade.question || turn.question,
+              };
               break;
             }
 
@@ -3077,14 +3898,27 @@ Do not add thanks, praise, commentary, or another greeting.`;
                 )
               );
 
-              const completedAlvinText =
-                responseTranscriptTextRef.current.trim();
+              const completedAlvinText = (
+                finalTranscriptRef.current || responseTranscriptTextRef.current
+              ).trim();
+              finalTranscriptRef.current = "";
+
+              if (!completedAlvinText) {
+                // An empty turn is still a finished turn: a late transcript must not leak
+                // into the next one.
+                lastAlvinTurnRef.current = {
+                  text: "",
+                  question: "",
+                  closing: false,
+                  finalized: true,
+                };
+              }
 
               // Diagnostic: did ALVIN say the Gemini-prepared Q01 verbatim?
               if (q01VerifyPendingRef.current && completedAlvinText) {
                 q01VerifyPendingRef.current = false;
-                const spokenNorm = normalizeQuestionForMatch(completedAlvinText);
-                const expectedNorm = normalizeQuestionForMatch(openingQuestion);
+                const spokenNorm = compactForMatch(completedAlvinText);
+                const expectedNorm = compactForMatch(openingQuestion);
                 if (expectedNorm && spokenNorm.includes(expectedNorm)) {
                   console.log("[Q01 CHECK] ALVIN said the Gemini Q01 verbatim.");
                 } else {
@@ -3095,7 +3929,11 @@ Do not add thanks, praise, commentary, or another greeting.`;
                 }
               }
 
+              let alvinQuestionForHistory = "";
+
               if (completedAlvinText) {
+                setAvatarSubtitle(completedAlvinText);
+
                 conversationHistoryRef.current.push({
                   speaker: "ALVIN",
                   text: completedAlvinText,
@@ -3110,11 +3948,13 @@ Do not add thanks, praise, commentary, or another greeting.`;
                   } else {
                     closingPendingRef.current = false;
 
-                    const spokenQuestion = extractDisplayedQuestion(
-                      completedAlvinText
+                    const spokenQuestion = formatQuestionForDisplay(
+                      extractDisplayedQuestion(completedAlvinText),
+                      parseGeminiRoadmap(navtalkAiPrompt)
                     );
 
                     if (spokenQuestion) {
+                      alvinQuestionForHistory = spokenQuestion;
                       currentQuestionRef.current = spokenQuestion;
                       setCurrentQuestion(spokenQuestion);
                       console.log("[UI QUESTION UPDATED]", spokenQuestion);
@@ -3127,7 +3967,18 @@ Do not add thanks, praise, commentary, or another greeting.`;
                   }
                 }
 
-                enqueueTranscript("ALVIN", completedAlvinText);
+                enqueueTranscript(
+                  "ALVIN",
+                  completedAlvinText,
+                  alvinQuestionForHistory || undefined
+                );
+
+                lastAlvinTurnRef.current = {
+                  text: completedAlvinText,
+                  question: alvinQuestionForHistory,
+                  closing: isClosingStatement(completedAlvinText),
+                  finalized: true,
+                };
               }
 
               // audio.done means NavTalk finished generating/sending audio.
@@ -3294,12 +4145,12 @@ Do not add thanks, praise, commentary, or another greeting.`;
           setShowSilenceWarning(false);
         } else {
           setShowSilenceWarning(
-            Boolean(data.silence_warning)
+            Boolean(data.silence_warning) || simplifyingRef.current
           );
         }
 
         if (
-          data.silence_warning &&
+          (data.silence_warning || simplifyingRef.current) &&
           !backendCandidateSpeaking &&
           !candidateSpeakingRef.current
         ) {
@@ -3514,6 +4365,19 @@ Do not add thanks, praise, commentary, or another greeting.`;
     setDisconnectedReason(null);
     setIsFinishing(true);
     candidateAnswerEnabledRef.current = false;
+
+    // The last answer may still be being transcribed by NavTalk. Keep the connection
+    // open for a few seconds so it is not lost when the socket closes.
+    const gotAllTranscripts = await waitForOwedTranscripts({
+      getOwed: () => transcriptOwedRef.current,
+      getMsSinceSpeechStart: () =>
+        performance.now() - lastAcceptedSpeechStartAtRef.current,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+    if (!gotAllTranscripts) {
+      console.warn("Ending the session while a candidate transcript was still pending.");
+    }
+
     flushCandidateAnswer(); // Don't lose an answer that is still settling.
 
     cancelledRef.current = true;
@@ -3653,8 +4517,8 @@ Do not add thanks, praise, commentary, or another greeting.`;
                 />
 
                 {avatarConnected
-                  ? "ALVIN Connected"
-                  : "Connecting ALVIN..."}
+                  ? `${avatarName || "ALVIN"} Connected`
+                  : `Connecting ${avatarName || "ALVIN"}...`}
               </span>
             </div>
           </header>
@@ -3722,7 +4586,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
                       </h2>
 
                       <p className="text-gray-500 mb-4">
-                        ALVIN will conduct your{" "}
+                        {avatarName || "ALVIN"} will conduct your{" "}
                         {targetRole} interview.
                       </p>
 
@@ -3737,7 +4601,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
                           present.
                         </li>
                         <li>
-                          ALVIN will be monitoring your environment for any disturbances.
+                          {avatarName || "ALVIN"} will be monitoring your environment for any disturbances.
                         </li>
                       </ul>
 
@@ -3787,29 +4651,41 @@ Do not add thanks, praise, commentary, or another greeting.`;
                     </div>
                   )}
 
+                {/* Avatar stage: the largest 16:9 frame that fits the available
+                    space, centered. Nothing is cropped or stretched; any spare
+                    space is the dark page background. */}
                 <div
                   className={`relative w-full h-full ${
                     !sessionStarted
                       ? "hidden"
-                      : "block"
+                      : "flex items-center justify-center"
                   }`}
+                  style={{ containerType: "size" }}
                 >
-                  <video
-                    ref={navtalkVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
+                  <div
+                    className="relative w-full max-h-full overflow-hidden bg-black"
+                    style={{
+                      aspectRatio: "16 / 9",
+                      width: "min(100cqw, calc(100cqh * 16 / 9))",
+                    }}
+                  >
+                    <video
+                      ref={navtalkVideoRef}
+                      autoPlay
+                      playsInline
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
 
-                  {!avatarConnected && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white">
-                      <Sparkles className="w-12 h-12 animate-spin text-[#862334] mb-3" />
+                    {!avatarConnected && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white">
+                        <Sparkles className="w-12 h-12 animate-spin text-[#862334] mb-3" />
 
-                      <p className="text-xs uppercase text-slate-300 font-bold text-center px-4">
-                        {statusMessage}
-                      </p>
-                    </div>
-                  )}
+                        <p className="text-xs uppercase text-slate-300 font-bold text-center px-4">
+                          {statusMessage}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {sessionStarted && (
@@ -3868,17 +4744,29 @@ Do not add thanks, praise, commentary, or another greeting.`;
               )}
 
               {sessionStarted &&
-                currentQuestion &&
+                subtitleParts.question &&
                 !interviewComplete && (
-                  <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[90%]">
-                    <div className="bg-black/60 backdrop-blur-md text-white rounded-xl px-5 py-3 text-center">
-                      <p className="text-[10px] uppercase text-white/60 font-bold mb-1">
-                        Current Question
+                  <div className="absolute inset-x-0 bottom-28 z-40 flex justify-center px-4 sm:px-6 pointer-events-none">
+                    <div className="w-full max-w-3xl rounded-2xl border border-white/10 bg-black/70 px-6 py-4 text-center shadow-2xl backdrop-blur-md">
+                      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Interviewer
                       </p>
 
-                      <p className="text-sm font-medium">
-                        {currentQuestion}
-                      </p>
+                      <div
+                        ref={subtitleScrollRef}
+                        className="max-h-[28vh] space-y-2 overflow-y-auto break-words"
+                        style={{ textWrap: "balance" }}
+                      >
+                        {subtitleParts.lead && (
+                          <p className="text-sm leading-relaxed text-white/70 sm:text-base">
+                            {subtitleParts.lead}
+                          </p>
+                        )}
+
+                        <p className="text-base font-medium leading-relaxed text-white sm:text-lg">
+                          {subtitleParts.question}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}

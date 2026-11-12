@@ -7,8 +7,6 @@ import {
   Mail,
   Bot,
   Search,
-  GraduationCap,
-  Calendar,
   Download,
   CheckCircle2,
   Send,
@@ -16,118 +14,367 @@ import {
   FileBarChart,
   Users,
   TrendingUp,
+  Filter,
+  ChevronDown,
+  BookOpen,
+  Check,
+  GraduationCap,
+  Layers,
+  Calendar,
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
 
-// Imports from the main content target
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import StudentLineChart from "./StudentLineChart";
-import RadarChartComponent from "./RadarChart";
+// Recharts imports
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  Radar,
+} from "recharts";
 
-// Navigation items definition
+// ----------------------------------------------------------------------
+// ANIMATED COUNT-UP NUMBER HELPER COMPONENT
+// ----------------------------------------------------------------------
+function CountUpNumber({ value, duration = 1000, prefix = "", suffix = "" }) {
+  const [currentValue, setCurrentValue] = useState(0);
+
+  useEffect(() => {
+    let target = 0;
+    if (typeof value === "number") {
+      target = value;
+    } else if (typeof value === "string") {
+      const parsed = parseFloat(value.replace(/[^0-9.-]/g, ""));
+      target = isNaN(parsed) ? 0 : parsed;
+    }
+
+    let startTimestamp = null;
+    const startValue = 0;
+
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const easeOutProgress = 1 - Math.pow(1 - progress, 3);
+      const val = startValue + (target - startValue) * easeOutProgress;
+
+      setCurrentValue(val);
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+
+    window.requestAnimationFrame(step);
+  }, [value, duration]);
+
+  const formattedNumber = Math.round(currentValue).toLocaleString();
+
+  return (
+    <span>
+      {prefix}
+      {formattedNumber}
+      {suffix}
+    </span>
+  );
+}
+
+// ----------------------------------------------------------------------
+// 1. STUDENT LINE CHART COMPONENT (Historical Growth Trend)
+// ----------------------------------------------------------------------
+function StudentLineChart({ data = [] }) {
+  const safeData = Array.isArray(data) ? data : [];
+  const latestScore = safeData.length > 0 ? (safeData[safeData.length - 1]?.score ?? 0) : 0;
+
+  return (
+    <div className="flex flex-col justify-between h-full min-h-[280px] w-full min-w-0">
+      <div className="h-[220px] w-full min-w-0 overflow-hidden">
+        {safeData.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={safeData} margin={{ top: 15, right: 10, left: -20, bottom: 5 }}>
+              <defs>
+                <linearGradient id="studentLineGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#862334" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#862334" stopOpacity={0.01} />
+                </linearGradient>
+              </defs>
+
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 11, fill: "#6B7280", fontFamily: "Inter" }}
+                axisLine={false}
+                tickLine={false}
+                dy={5}
+              />
+
+              <YAxis
+                domain={[0, 100]}
+                ticks={[0, 25, 50, 75, 100]}
+                tickFormatter={(v) => `${v}%`}
+                tick={{ fontSize: 11, fill: "#6B7280", fontFamily: "Geist" }}
+                axisLine={false}
+                tickLine={false}
+              />
+
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    const val = payload[0].value ?? 0;
+                    return (
+                      <div className="bg-[#FDFBF7] border border-[#EAE5D9] p-2.5 rounded-xl shadow-md text-xs font-Inter">
+                        <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">{label || "Date"}</p>
+                        <p className="font-bold text-sm text-[#862334] font-Geist mt-0.5">
+                          Attempt Score: {Number(val).toFixed(1)}%
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+
+              <Area
+                type="monotone"
+                dataKey="score"
+                stroke="#862334"
+                strokeWidth={2.5}
+                fill="url(#studentLineGrad)"
+                dot={{ r: 4, fill: "#FFFFFF", stroke: "#862334", strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: "#862334", stroke: "#FFFFFF", strokeWidth: 2 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-full flex items-center justify-center text-gray-400 text-xs font-Inter">
+            No evaluation attempt history recorded for this student.
+          </div>
+        )}
+      </div>
+
+      <div className="pt-3 border-t border-gray-100 flex items-center justify-between font-Inter">
+        <span className="text-xs text-gray-500 font-normal">
+          Latest Score: <strong className="text-gray-900 font-bold font-Geist text-xs">{Number(latestScore).toFixed(1)}%</strong>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// 2. RADAR CHART COMPONENT (Enlarged Diamond & Compact Progress Bars)
+// ----------------------------------------------------------------------
+function RadarChartComponent({ data = [] }) {
+  const safeData = Array.isArray(data) ? data : [];
+  const sortedData = [...safeData].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const highestSubject = sortedData[0]?.subject;
+  const lowestSubject = sortedData[sortedData.length - 1]?.subject;
+
+  const latestAvgScore = safeData.length
+    ? Math.round(safeData.reduce((acc, curr) => acc + (curr.score ?? 0), 0) / safeData.length)
+    : 0;
+
+  const targetMinimum = 70;
+  const competencyGap = (latestAvgScore - targetMinimum).toFixed(1);
+
+  return (
+    <div className="flex flex-col justify-between h-full min-h-[280px] w-full min-w-0">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center flex-1">
+
+        {/* Left Expanded Container for Radar Visual (7 cols) */}
+        <div className="md:col-span-7 h-[250px] w-full flex items-center justify-center min-w-0 overflow-hidden">
+          {safeData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart
+                cx="50%"
+                cy="50%"
+                outerRadius="58%"
+                data={safeData}
+                margin={{ top: 20, right: 15, bottom: 20, left: 15 }}
+              >
+                <PolarGrid stroke="#EAE5D9" />
+                <PolarAngleAxis
+                  dataKey="subject"
+                  tick={({ x, y, payload }) => {
+                    const val = payload.value || "";
+
+                    if (val.includes("Delivery")) {
+                      return (
+                        <text x={x} y={y} textAnchor="end" fill="#4B5563" fontSize={10} fontWeight={600} fontFamily="Inter">
+                          <tspan x={x - 10} dy="-2">Delivery &</tspan>
+                          <tspan x={x - 10} dy="12">Language</tspan>
+                        </text>
+                      );
+                    }
+
+                    if (val.includes("Appearance")) {
+                      return (
+                        <text x={x} y={y} textAnchor="start" fill="#4B5563" fontSize={10} fontWeight={600} fontFamily="Inter">
+                          <tspan x={x + 10} dy="-2">Appearance &</tspan>
+                          <tspan x={x + 10} dy="12">Poise</tspan>
+                        </text>
+                      );
+                    }
+
+                    let dy = 0;
+                    if (val.includes("Resume")) {
+                      dy = -10;
+                    } else if (val.includes("Skill")) {
+                      dy = 16;
+                    }
+
+                    return (
+                      <text x={x} y={y} dy={dy} textAnchor="middle" fill="#4B5563" fontSize={10} fontWeight={600} fontFamily="Inter">
+                        {val}
+                      </text>
+                    );
+                  }}
+                />
+                <Radar
+                  name="Skill Score"
+                  dataKey="score"
+                  stroke="#862334"
+                  fill="#862334"
+                  fillOpacity={0.25}
+                  strokeWidth={2}
+                  dot={{ r: 3.5, fill: "#862334", stroke: "#FFFFFF", strokeWidth: 1.5 }}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-gray-400 text-xs font-Inter">No skill metrics recorded for latest attempt</div>
+          )}
+        </div>
+
+        {/* Side Narrower Itemized Progress Bars (5 cols) */}
+        <div className="md:col-span-5 space-y-2.5 font-Inter pl-0 md:pl-1 select-none pointer-events-none">
+          {safeData.length > 0 ? (
+            safeData.map((item) => {
+              const scoreVal = Number(item.score ?? 0).toFixed(1);
+              const numericVal = Number(item.score ?? 0);
+              const isTop = item.subject === highestSubject && numericVal > 0;
+              const isWeakest = item.subject === lowestSubject && safeData.length > 1;
+
+              return (
+                <div key={item.subject || Math.random()} className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] font-medium">
+                    <span className="text-gray-700 flex-1 pr-1 leading-tight whitespace-nowrap">{item.subject || "Skill"}</span>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <span className="font-bold text-gray-900 font-Geist">{scoreVal}%</span>
+                    </div>
+                  </div>
+
+                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isTop
+                          ? "bg-emerald-500"
+                          : isWeakest
+                          ? "bg-rose-500"
+                          : "bg-[#862334]"
+                      }`}
+                      style={{ width: `${Math.min(Math.max(numericVal, 0), 100)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-xs text-gray-400 font-Inter text-center py-4">
+              Latest skill breakdown unavailable
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Target Minimum & Competency Gap Footer */}
+      <div className="pt-3 border-t border-gray-100 flex items-center justify-between font-Inter text-xs">
+        <span className="text-gray-500 font-normal">
+          Target Benchmark: <strong className="text-gray-800 font-bold font-Geist">{targetMinimum}%</strong>
+        </span>
+
+        <div
+          className={`px-3 py-1 rounded-lg text-xs font-bold font-Geist border ${
+            competencyGap >= 0
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-rose-50 text-[#862334] border-rose-200"
+          }`}
+        >
+          Latest Gap: {competencyGap >= 0 ? `+${competencyGap}%` : `${competencyGap}%`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Custom Data Label for Cohort Area Line Graph
+const CustomDataLabel = (props) => {
+  const { x, y, value } = props;
+  if (value === undefined || value === null) return null;
+  return (
+    <g transform={`translate(${x},${y - 14})`}>
+      <rect
+        x="-18"
+        y="-12"
+        width="36"
+        height="18"
+        rx="9"
+        fill="#FFFFFF"
+        stroke="#FCE7F3"
+        strokeWidth="1"
+      />
+      <text
+        x="0"
+        y="0"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="#862334"
+        fontSize="10"
+        fontWeight="700"
+        className="font-Geist"
+      >
+        {`${value}%`}
+      </text>
+    </g>
+  );
+};
+
 const navItems = [
   { id: "account", label: "Account" },
   { id: "dashboard", label: "Dashboard", path: "/staff/dashboard" },
   { id: "statistics", label: "Statistics", path: "/staff/statistics" },
 ];
 
-// Mock database of students with individual statistics and comments
-const MOCK_STUDENTS = [
-  {
-    id: "1",
-    name: "Juan Dela Cruz",
-    initials: "JD",
-    program: "BSIT",
-    yearLevel: "3rd Year",
-    grade: "85%",
-    aiCritique:
-      "Juan demonstrates excellent structure using the STAR method. Recommendations include reducing reliance on filler words and maintaining a steadier vocal pace during complex technical answers.",
-    lineData: [
-      { name: "May 4", Grade: 40 },
-      { name: "May 6", Grade: 52 },
-      { name: "May 8", Grade: 79 },
-      { name: "May 11", Grade: 65 },
-      { name: "May 13", Grade: 93 },
-      { name: "May 15", Grade: 80 },
-      { name: "May 18", Grade: 85 },
-    ],
-    radarData: [
-      { subject: "Eye Contact", Score: 90, fullMark: 100 },
-      { subject: "Grammar", Score: 68, fullMark: 100 },
-      { subject: "Confidence", Score: 78, fullMark: 100 },
-      { subject: "Answer Quality", Score: 85, fullMark: 100 },
-      { subject: "Posture", Score: 82, fullMark: 100 },
-    ],
-    comments: [
-      "Great improvement on eye contact compared to the last mock interview.",
-    ],
-  },
-  {
-    id: "2",
-    name: "Maria Santos",
-    initials: "MS",
-    program: "BSCS",
-    yearLevel: "4th Year",
-    grade: "92%",
-    aiCritique:
-      "Maria exhibits high confidence and articulate domain knowledge in software engineering concepts. Vocal pace is well-controlled with minimal hesitation.",
-    lineData: [
-      { name: "May 4", Grade: 65 },
-      { name: "May 6", Grade: 72 },
-      { name: "May 8", Grade: 80 },
-      { name: "May 11", Grade: 88 },
-      { name: "May 13", Grade: 89 },
-      { name: "May 15", Grade: 91 },
-      { name: "May 18", Grade: 92 },
-    ],
-    radarData: [
-      { subject: "Eye Contact", Score: 95, fullMark: 100 },
-      { subject: "Grammar", Score: 90, fullMark: 100 },
-      { subject: "Confidence", Score: 92, fullMark: 100 },
-      { subject: "Answer Quality", Score: 94, fullMark: 100 },
-      { subject: "Posture", Score: 88, fullMark: 100 },
-    ],
-    comments: ["Ready for enterprise technical interviews!"],
-  },
-  {
-    id: "3",
-    name: "Alex Reyes",
-    initials: "AR",
-    program: "BSIS",
-    yearLevel: "2nd Year",
-    grade: "78%",
-    aiCritique:
-      "Alex shows strong enthusiasm and posture. Needs to structure responses more clearly around key achievements and avoid rushing technical explanations.",
-    lineData: [
-      { name: "May 4", Grade: 50 },
-      { name: "May 6", Grade: 58 },
-      { name: "May 8", Grade: 62 },
-      { name: "May 11", Grade: 70 },
-      { name: "May 13", Grade: 74 },
-      { name: "May 15", Grade: 76 },
-      { name: "May 18", Grade: 78 },
-    ],
-    radarData: [
-      { subject: "Eye Contact", Score: 80, fullMark: 100 },
-      { subject: "Grammar", Score: 72, fullMark: 100 },
-      { subject: "Confidence", Score: 85, fullMark: 100 },
-      { subject: "Answer Quality", Score: 70, fullMark: 100 },
-      { subject: "Posture", Score: 84, fullMark: 100 },
-    ],
-    comments: [],
-  },
-];
-
+// ----------------------------------------------------------------------
+// 3. MAIN PAGE COMPONENT: StaffStatistics
+// ----------------------------------------------------------------------
 export default function StaffStatistics() {
   const location = useLocation();
   const navigate = useNavigate();
   const printRef = useRef(null);
+  const commentTimerRef = useRef(null);
 
   const [activeNav, setActiveNav] = useState("statistics");
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+
+  // Dynamic Section Filtering States
+  const [sections, setSections] = useState([]);
+  const [selectedSection, setSelectedSection] = useState("ALL");
+  const [sectionsLoading, setSectionsLoading] = useState(true);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
   // Search & Student Management States
   const [searchQuery, setSearchQuery] = useState("");
@@ -137,9 +384,14 @@ export default function StaffStatistics() {
   const [overviewError, setOverviewError] = useState("");
 
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentImageError, setStudentImageError] = useState(false);
   const [commentInput, setCommentInput] = useState("");
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Delete Confirmation Modal State
+  const [commentToDelete, setCommentToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [userProfile, setUserProfile] = useState({
     name: "User",
@@ -148,6 +400,24 @@ export default function StaffStatistics() {
     initials: "U",
   });
   const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (commentTimerRef.current) {
+        clearTimeout(commentTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -218,8 +488,12 @@ export default function StaffStatistics() {
     if (!session?.access_token) throw new Error("Please sign in again.");
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
-      headers: { "X-API-Key": APP_API_KEY, Authorization: `Bearer ${session.access_token}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+      headers: {
+        "X-API-Key": APP_API_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -230,22 +504,112 @@ export default function StaffStatistics() {
 
   useEffect(() => {
     let alive = true;
-    staffRequest("/api/staff/students").then((rows) => {
-      if (!alive) return;
-      const mapped = rows.map((r) => ({ ...r, initials: (r.name || "S").split(/\s+/).map(x => x[0]).slice(0,2).join("").toUpperCase() }));
-      setStudents(mapped);
-      setSelectedStudent(mapped[0] || null);
-    }).catch((err) => { if (alive) setCommentError(err.message); });
-    return () => { alive = false; };
+    setSectionsLoading(true);
+    staffRequest("/api/staff/sections")
+      .then((data) => {
+        if (!alive) return;
+        if (Array.isArray(data)) {
+          setSections(data);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load sections from backend:", err);
+      })
+      .finally(() => {
+        if (alive) setSectionsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const path =
+      selectedSection === "ALL"
+        ? "/api/staff/students"
+        : `/api/staff/students?section_id=${encodeURIComponent(selectedSection)}`;
+
+    staffRequest(path)
+      .then((rows) => {
+        if (!alive) return;
+        const mapped = (rows || []).map((r) => {
+          const rawRadarData = Array.isArray(r.latestRadarData) && r.latestRadarData.length > 0
+            ? r.latestRadarData
+            : Array.isArray(r.radarData)
+            ? r.radarData
+            : [];
+
+          const formattedRadar = rawRadarData.map((item) => ({
+            subject: item.subject || "",
+            score: item.score ?? item.Score ?? 0,
+          }));
+
+          const formattedLine = Array.isArray(r.lineData)
+            ? r.lineData.map((item) => ({
+                date: item.date || item.name || "",
+                score: item.score ?? item.Grade ?? 0,
+              }))
+            : [];
+
+          const avatarPicture =
+            r.avatar_url ||
+            r.avatarUrl ||
+            r.picture ||
+            r.profile_picture ||
+            r.user_metadata?.avatar_url ||
+            r.user_metadata?.picture ||
+            null;
+
+          return {
+            ...r,
+            avatarUrl: avatarPicture,
+            initials: (r.name || "S")
+              .split(/\s+/)
+              .map((x) => x[0])
+              .slice(0, 2)
+              .join("")
+              .toUpperCase(),
+            lineData: formattedLine,
+            radarData: formattedRadar,
+            latestRadarData: formattedRadar,
+            latestScore: formattedLine.length > 0 ? formattedLine[formattedLine.length - 1].score : null,
+            comments: Array.isArray(r.comments) ? r.comments : [],
+            enrollments: Array.isArray(r.enrollments) ? r.enrollments : [],
+          };
+        });
+
+        setStudents(mapped);
+        setSelectedStudent(mapped[0] || null);
+        setStudentImageError(false);
+      })
+      .catch((err) => {
+        if (alive) {
+          setStudents([]);
+          setSelectedStudent(null);
+          setCommentError(err.message);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selectedSection]);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       setOverviewLoading(true);
       try {
-        const data = await staffRequest("/api/staff/statistics/overview");
-        if (active) { setOverview(data); setOverviewError(""); }
+        const path =
+          selectedSection === "ALL"
+            ? "/api/staff/statistics/overview"
+            : `/api/staff/statistics/overview?section_id=${encodeURIComponent(selectedSection)}`;
+
+        const data = await staffRequest(path);
+        if (active) {
+          setOverview(data);
+          setOverviewError("");
+        }
       } catch (error) {
         if (active) setOverviewError(error.message);
       } finally {
@@ -253,69 +617,112 @@ export default function StaffStatistics() {
       }
     };
     load();
-    return () => { active = false; };
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [selectedSection]);
 
-  // Filter students based on search query
   const filteredStudents = students.filter((student) =>
-    student.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (student?.name || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Handle student selection from search dropdown
   const handleSelectStudent = (student) => {
+    if (!student) return;
     setSelectedStudent(student);
+    setStudentImageError(false);
     setSearchQuery("");
     setIsSearchFocused(false);
     setEditingCommentId(null);
   };
 
-  // Add observation comment to selected student
   const handleAddComment = async (e) => {
     e.preventDefault();
     if (!commentInput.trim() || !selectedStudent) return;
     setCommentError("");
     setCommentSuccess(false);
+
+    if (commentTimerRef.current) {
+      clearTimeout(commentTimerRef.current);
+    }
+
     try {
-      const comment = await staffRequest("/api/staff/feedback", { method: "POST", body: JSON.stringify({
-        student_id: selectedStudent.id, message: commentInput.trim() }) });
-      setStudents((prev) => prev.map((s) => s.id === selectedStudent.id ?
-        { ...s, comments: [...(s.comments || []), comment] } : s));
-      setSelectedStudent((prev) => ({ ...prev, comments: [...(prev.comments || []), comment] }));
+      const comment = await staffRequest("/api/staff/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          student_id: selectedStudent.id,
+          message: commentInput.trim(),
+        }),
+      });
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === selectedStudent.id
+            ? { ...s, comments: [...(s.comments || []), comment] }
+            : s
+        )
+      );
+      setSelectedStudent((prev) => ({
+        ...prev,
+        comments: [...(prev?.comments || []), comment],
+      }));
       setCommentInput("");
       setCommentSuccess(true);
-    } catch (err) { setCommentError(err.message); }
+
+      commentTimerRef.current = setTimeout(() => {
+        setCommentSuccess(false);
+      }, 5000);
+    } catch (err) {
+      setCommentError(err.message);
+    }
   };
 
   const updateStudentComment = (studentId, callback) => {
-    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, comments: callback(s.comments || []) } : s));
-    setSelectedStudent(prev => prev?.id === studentId ? { ...prev, comments: callback(prev.comments || []) } : prev);
+    setStudents((prev) =>
+      prev.map((s) =>
+        s.id === studentId ? { ...s, comments: callback(s.comments || []) } : s
+      )
+    );
+    setSelectedStudent((prev) =>
+      prev?.id === studentId ? { ...prev, comments: callback(prev.comments || []) } : prev
+    );
   };
 
   const handleEditComment = async (comment) => {
-    if (!editingText.trim() || !selectedStudent) return;
+    if (!editingText.trim() || !selectedStudent || !comment?.message_id) return;
     const studentId = selectedStudent.id;
     setCommentError("");
     try {
       const updated = await staffRequest(`/api/staff/feedback/${comment.message_id}`, {
-        method: "PATCH", body: JSON.stringify({ message: editingText.trim() })
+        method: "PATCH",
+        body: JSON.stringify({ message: editingText.trim() }),
       });
-      updateStudentComment(studentId, list => list.map(c => c.message_id === comment.message_id ? updated : c));
+      updateStudentComment(studentId, (list) =>
+        list.map((c) => (c.message_id === comment.message_id ? updated : c))
+      );
       setEditingCommentId(null);
       setEditingText("");
-    } catch (err) { setCommentError(err.message); }
+    } catch (err) {
+      setCommentError(err.message);
+    }
   };
 
-  const handleDeleteComment = async (comment) => {
-    if (!selectedStudent || !window.confirm("Delete this comment permanently?")) return;
+  const confirmDeleteComment = async () => {
+    if (!selectedStudent || !commentToDelete?.message_id) return;
     const studentId = selectedStudent.id;
+    setIsDeleting(true);
     setCommentError("");
     try {
-      await staffRequest(`/api/staff/feedback/${comment.message_id}`, { method: "DELETE" });
-      updateStudentComment(studentId, list => list.filter(c => c.message_id !== comment.message_id));
-    } catch (err) { setCommentError(err.message); }
+      await staffRequest(`/api/staff/feedback/${commentToDelete.message_id}`, { method: "DELETE" });
+      updateStudentComment(studentId, (list) =>
+        list.filter((c) => c.message_id !== commentToDelete.message_id)
+      );
+      setCommentToDelete(null);
+    } catch (err) {
+      setCommentError(err.message);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
-  // Download PDF function trigger
   const handleDownloadPDF = () => {
     const originalTitle = document.title;
     document.title = `${selectedStudent?.name || "Student"}_Performance_Report`;
@@ -323,28 +730,37 @@ export default function StaffStatistics() {
     document.title = originalTitle;
   };
 
+  const currentSectionLabel =
+    selectedSection === "ALL"
+      ? "Overall Section"
+      : (Array.isArray(sections) ? sections : []).find(
+          (s) => s.id === selectedSection || s.section_name === selectedSection || s.name === selectedSection
+        )?.section_name || selectedSection;
+
+  const dynamicChartTitle =
+    selectedSection === "ALL"
+      ? "Competency Growth Trend (Overall)"
+      : `Competency Growth Trend (${currentSectionLabel})`;
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white font-Inter relative">
-      {/* Dynamic Multi-Page Print Rules */}
       <style>{`
         @media print {
           @page {
             size: A4 portrait;
-            margin: 15mm 15mm 15mm 15mm;
+            margin: 0 !important;
           }
 
-          /* Hide app shell and non-report sections */
           body * {
             visibility: hidden !important;
           }
 
-          /* Reset containers for print flow */
           html, body, #root, main, div {
             overflow: visible !important;
             height: auto !important;
+            background: #FFFFFF !important;
           }
 
-          /* Render student report area */
           #student-report-section, #student-report-section * {
             visibility: visible !important;
           }
@@ -354,28 +770,48 @@ export default function StaffStatistics() {
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
-            padding: 0 !important;
+            padding: 10mm 12mm !important;
             margin: 0 !important;
             border: none !important;
             box-shadow: none !important;
+            background: #FFFFFF !important;
           }
 
-          /* Block breaking inside critical cards for multi-page overflow */
           .print-card {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
-            margin-bottom: 24px !important;
+            margin-bottom: 12px !important;
+            padding: 16px !important;
+            border: 1px solid #E5E7EB !important;
+            background-color: #FFFFFF !important;
+            box-shadow: none !important;
           }
 
-          /* Responsive chart container fixes during print */
           .grid {
-            display: block !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 12px !important;
           }
 
-          /* Hide interactive or UI-only elements */
-          .no-print {
+          .recharts-responsive-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+          }
+
+          .h-\\[220px\\], .h-\\[230px\\] {
+            height: 180px !important;
+          }
+
+          .no-print, .print-header {
             display: none !important;
           }
+        }
+
+        input:focus, textarea:focus {
+          border-color: #862334 !important;
+          box-shadow: 0 0 0 2px rgba(134, 35, 52, 0.15) !important;
+          outline: none !important;
         }
       `}</style>
 
@@ -385,7 +821,57 @@ export default function StaffStatistics() {
         onConfirm={handleSignOut}
       />
 
-      {/* Slide-out Account Drawer Container */}
+      {/* Delete Comment Confirmation Modal */}
+      {commentToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 no-print font-Inter">
+          <div
+            className="fixed inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity duration-200"
+            onClick={() => setCommentToDelete(null)}
+          />
+
+          <div className="relative bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-[#862334] flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-Geist text-lg font-bold text-gray-900 tracking-tight">
+                  Delete Observation Note?
+                </h3>
+                <p className="text-xs text-gray-500 font-Inter font-normal">
+                  This observation note will be permanently removed from {selectedStudent?.name}'s file.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs text-gray-700 italic max-h-24 overflow-y-auto">
+              "{commentToDelete.message}"
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCommentToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteComment}
+                disabled={isDeleting}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#862334] text-white text-xs font-bold rounded-xl hover:bg-[#a12a3f] transition-all cursor-pointer shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {isDeleting ? "Deleting..." : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Account Drawer */}
       <div
         className={`fixed inset-0 z-40 flex transition-opacity duration-300 ease-in-out no-print ${
           isAccountOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
@@ -397,7 +883,7 @@ export default function StaffStatistics() {
         />
 
         <aside
-          className={`relative left-[100px] w-[340px] h-full bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col overflow-y-auto select-none font-sans text-[#2D3B45] transform transition-transform duration-300 ease-in-out ${
+          className={`relative left-[100px] w-[340px] h-full bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col overflow-y-auto select-none text-[#2D3B45] transform transition-transform duration-300 ease-in-out font-Inter ${
             isAccountOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -419,12 +905,12 @@ export default function StaffStatistics() {
                 className="w-20 h-20 rounded-full object-cover border-2 border-[#1565C0] shadow-sm mb-3"
               />
             ) : (
-              <div className="w-20 h-20 rounded-full border-2 border-[#1565C0] flex items-center justify-center text-[#1565C0] font-semibold text-2xl mb-3 bg-white shadow-xs">
+              <div className="w-20 h-20 rounded-full border-2 border-[#1565C0] flex items-center justify-center text-[#1565C0] font-bold text-2xl mb-3 bg-white shadow-xs font-Geist">
                 {userProfile.initials}
               </div>
             )}
 
-            <h2 className="text-xl font-bold text-[#2D3B45] text-center tracking-tight">
+            <h2 className="text-xl font-bold text-[#2D3B45] text-center tracking-tight font-Geist">
               {userProfile.name}
             </h2>
 
@@ -433,7 +919,7 @@ export default function StaffStatistics() {
                 setIsAccountOpen(false);
                 setIsSignOutModalOpen(true);
               }}
-              className="mt-3 px-4 py-1 bg-[#F5F5F5] hover:bg-gray-200 border border-gray-300 rounded text-xs font-medium text-[#2D3B45] transition-colors cursor-pointer"
+              className="mt-3 px-4 py-1 bg-[#F5F5F5] hover:bg-gray-200 border border-gray-300 rounded text-xs font-medium text-[#2D3B45] transition-colors cursor-pointer font-Inter"
             >
               Logout
             </button>
@@ -449,10 +935,10 @@ export default function StaffStatistics() {
                 <Mail className="w-4 h-4" />
               </div>
               <div className="flex flex-col">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  Email Address
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider font-Inter">
+                  EMAIL ADDRESS
                 </span>
-                <span className="text-sm font-medium text-[#2D3B45] break-all">
+                <span className="text-sm font-medium text-[#2D3B45] break-all font-Inter">
                   {userProfile.email || "Not Available"}
                 </span>
               </div>
@@ -461,8 +947,8 @@ export default function StaffStatistics() {
         </aside>
       </div>
 
-      {/* Sidebar Nav */}
-      <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen no-print">
+      {/* Sidebar Navigation */}
+      <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-40 select-none h-screen no-print">
         <div className="w-full flex flex-col items-center">
           <div
             className="mb-3 px-1 flex flex-col items-center cursor-pointer"
@@ -516,7 +1002,7 @@ export default function StaffStatistics() {
                     }`}
                   />
                   <span
-                    className={`text-[11px] tracking-tight ${
+                    className={`text-xs tracking-tight font-Inter ${
                       isSolidActive
                         ? "font-bold text-white"
                         : "font-medium text-[#862334]"
@@ -532,158 +1018,353 @@ export default function StaffStatistics() {
       </aside>
 
       {/* Main Container */}
-      <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
+      <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen font-Inter">
         <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8">
 
-          {/* ========================================================= */}
-          {/* 4-COLUMN KPI METRIC CARDS                                  */}
-          {/* ========================================================= */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
+          {/* Section Header & Custom Dropdown */}
+          <div className="bg-white border border-[#EAE5D9] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#862334]/10 text-[#862334] flex items-center justify-center flex-shrink-0">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 font-Geist tracking-tight">
+                  Evaluation Overview
+                </h1>
+                <p className="text-xs text-gray-500 font-Inter font-normal">
+                  Filter analytics and roster data by selected section or view overall totals
+                </p>
+              </div>
+            </div>
 
-            {/* CARD 1: Total Mock Interviews */}
-            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-[#862334] hidden sm:block" />
+              <div className="relative w-full sm:w-72" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  disabled={sectionsLoading}
+                  className="w-full bg-[#FDFBF7] border border-[#EAE5D9] hover:border-[#862334]/40 text-gray-900 text-xs font-semibold py-2.5 px-3.5 rounded-xl transition-all flex items-center justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#862334]/10 font-Inter"
+                >
+                  <span className="truncate">{currentSectionLabel}</span>
+                  <ChevronDown className={`w-4 h-4 text-[#862334] transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-full bg-white border border-[#EAE5D9] rounded-xl shadow-xl z-50 py-1 max-h-60 overflow-y-auto font-Inter">
+                    <div
+                      onClick={() => {
+                        setSelectedSection("ALL");
+                        setIsDropdownOpen(false);
+                      }}
+                      className={`px-3.5 py-2.5 text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors ${
+                        selectedSection === "ALL"
+                          ? "bg-[#862334] text-white"
+                          : "text-gray-800 hover:bg-[#862334]/10 hover:text-[#862334]"
+                      }`}
+                    >
+                      <span>Overall</span>
+                      {selectedSection === "ALL" && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+
+                    {(Array.isArray(sections) ? sections : []).map((sec) => {
+                      const secId = sec.id || sec.section_id || sec.name || sec.section_name;
+                      const secName = sec.section_name || sec.name || sec.title || secId;
+                      const courseCode = sec.course_code || sec.subject_code || "";
+                      const isSelected = selectedSection === secId;
+
+                      return (
+                        <div
+                          key={secId}
+                          onClick={() => {
+                            setSelectedSection(secId);
+                            setIsDropdownOpen(false);
+                          }}
+                          className={`px-3.5 py-2.5 text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors ${
+                            isSelected
+                              ? "bg-[#862334] text-white"
+                              : "text-gray-800 hover:bg-[#862334]/10 hover:text-[#862334]"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {secName} {courseCode ? `(${courseCode})` : ""}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* KPI Metric Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
-                    Total Mock Interviews
+                  <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                    Evaluations Completed
                   </span>
-                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    {overviewLoading ? "…" : overview ? overview.total_interviews.toLocaleString() : "—"}
+                  <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                    {overviewLoading ? (
+                      "…"
+                    ) : (
+                      <CountUpNumber value={overview?.total_interviews ?? 0} />
+                    )}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                   <Mic className="w-4 h-4" />
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] font-medium mt-3">
-                <span className="text-emerald-600 font-bold">+12%</span>
-                <span className="text-gray-400">this week</span>
+              <div className="flex items-center gap-1.5 text-xs font-semibold mt-3 font-Inter">
+                <span className="text-emerald-600 font-semibold">+12%</span>
+                <span className="text-gray-500 font-semibold tracking-wider text-xs">This Week</span>
               </div>
             </div>
 
-            {/* CARD 2: Job Readiness Rate */}
-            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
-                    Job Readiness Rate
+                  <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                    Career Readiness Index
                   </span>
-                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    {overviewLoading ? "…" : overview?.job_readiness_rate == null ? "—" : `${overview.job_readiness_rate}%`}
+                  <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                    {overviewLoading ? (
+                      "…"
+                    ) : (
+                      <CountUpNumber value={overview?.job_readiness_rate ?? 0} suffix="%" />
+                    )}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                   <FileBarChart className="w-4 h-4" />
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium mt-3">
-                <span>Scored 80%+ on last attempt</span>
+              <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
+                <span>Scored <span className="text-emerald-600">80%+</span> on Latest Attempt</span>
               </div>
             </div>
 
-            {/* CARD 3: Avg. Skill Improvement */}
-            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
-                    Avg. Improvement
+                  <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                    Progression Velocity
                   </span>
-                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    {overviewLoading ? "…" : overview?.average_improvement == null ? "—" : `${overview.average_improvement > 0 ? "+" : ""}${overview.average_improvement}%`}
+                  <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                    {overviewLoading ? (
+                      "…"
+                    ) : (
+                      <CountUpNumber
+                        value={overview?.average_improvement ?? 0}
+                        prefix={(overview?.average_improvement ?? 0) > 0 ? "+" : ""}
+                        suffix="%"
+                      />
+                    )}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                   <TrendingUp className="w-4 h-4" />
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium mt-3">
-                <span>Between 1st & latest attempt</span>
+              <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
+                <span>Between 1st & Latest Attempt</span>
               </div>
             </div>
 
-            {/* CARD 4: Requires Coaching */}
-            <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between min-h-[125px]">
+            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="text-[12px] font-semibold text-gray-500 font-geist">
-                    Requires Coaching
+                  <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                    Priority Attention
                   </span>
-                  <h3 className="text-2xl font-black text-gray-900 font-geist mt-2 tracking-tight">
-                    {overviewLoading ? "…" : overview ? overview.requires_coaching.toLocaleString() : "—"}
+                  <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                    {overviewLoading ? (
+                      "…"
+                    ) : (
+                      <CountUpNumber value={overview?.requires_coaching ?? 0} />
+                    )}
                   </h3>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-[#862334]">
                   <Users className="w-4 h-4" />
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 text-gray-500 text-[11px] font-semibold mt-3">
-                <span>Students scoring below 60%</span>
+              <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
+                <span>Students Scoring Below <span className="text-yellow-600">70%</span></span>
               </div>
             </div>
-
           </div>
 
-          {/* Overall Performance Section */}
+          {/* Cohort Line Trend Graph */}
           <div className="no-print">
-            <div className="bg-white rounded-lg border border-[#e5e5e5] p-8">
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#862334]">Cohort Analytics</p>
-                    <h2 className="text-xl font-bold text-black mt-1">Overall Class Performance Trend</h2>
+            <div className="bg-white rounded-2xl border border-[#862334]/20 p-6 md:p-8 shadow-xs transition-all">
+              <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EAE5D9] pb-5">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mt-1 font-Geist tracking-tight">
+                    {dynamicChartTitle}
+                  </h2>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl px-3.5 py-1.5 flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full bg-[#862334]" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-500 font-Inter tracking-wider">Cohort Average:</span>
+                      <span className="text-sm font-bold text-[#862334] font-Geist">
+                        {Array.isArray(overview?.trend) && overview.trend.length
+                          ? `${Math.round(overview.trend.reduce((acc, curr) => acc + (curr.average || 0), 0) / overview.trend.length)}%`
+                          : "—"}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500"><span className="h-3 w-3 rounded-full bg-[#862334]" />Average Performance (%)</div>
+
+                  <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl px-3.5 py-1.5 flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-500 font-Inter tracking-wider">Benchmark:</span>
+                      <span className="text-sm font-bold text-gray-800 font-Geist">70% Target</span>
+                    </div>
+                  </div>
                 </div>
-                {overviewError && <p role="alert" className="text-sm text-red-700 mb-4">{overviewError}</p>}
-                <div className="h-[350px] w-full">
-                  {overviewLoading ? (
-                    <div className="h-full flex items-center justify-center text-gray-500">Loading interview statistics…</div>
-                  ) : overview?.trend?.length ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={overview.trend} margin={{ top: 15, right: 10, left: 0, bottom: 12 }}>
-                        <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#e5e7eb" />
-                        <XAxis dataKey="date" tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })} tick={{ fontSize: 11 }} />
-                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 11 }} />
-                        <Tooltip formatter={(value) => [`${value}%`, "Average score"]} labelFormatter={(date) => `Date: ${date}`} />
-                        <Bar dataKey="average" fill="#862334" radius={[10, 10, 0, 0]} maxBarSize={50} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-gray-500 text-sm">No completed evaluations available yet.</div>
-                  )}
+              </div>
+
+              {overviewError && (
+                <div className="p-4 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm mb-4 font-Inter">
+                  {overviewError}
                 </div>
+              )}
+
+              <div className="h-[360px] w-full pt-2">
+                {overviewLoading ? (
+                  <div className="h-full flex items-center justify-center text-gray-400 text-sm font-Inter">
+                    Loading section statistics…
+                  </div>
+                ) : Array.isArray(overview?.trend) && overview.trend.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={overview.trend} margin={{ top: 25, right: 20, left: -10, bottom: 10 }}>
+                      <defs>
+                        <linearGradient id="maroonGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#862334" stopOpacity={0.15} />
+                          <stop offset="100%" stopColor="#862334" stopOpacity={0.01} />
+                        </linearGradient>
+                      </defs>
+
+                      <CartesianGrid strokeDasharray="3 3" vertical={true} stroke="#EAE5D9" opacity={0.6} />
+
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                        tick={{ fontSize: 11, fill: "#4B5563", fontWeight: 600, fontFamily: "Inter" }}
+                        axisLine={{ stroke: "#EAE5D9" }}
+                        tickLine={false}
+                        dy={8}
+                      />
+
+                      <YAxis
+                        domain={[0, 100]}
+                        ticks={[0, 25, 50, 75, 100]}
+                        tickFormatter={(value) => `${value}%`}
+                        tick={{ fontSize: 11, fill: "#4B5563", fontWeight: 600, fontFamily: "Geist" }}
+                        axisLine={{ stroke: "#EAE5D9" }}
+                        tickLine={false}
+                      />
+
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            const val = payload[0].value;
+                            const isPassing = val >= 70;
+                            return (
+                              <div className="bg-[#FDFBF7] border border-[#EAE5D9] p-3 rounded-2xl shadow-lg text-xs font-Inter space-y-1 z-50">
+                                <p className="text-gray-400 text-xs uppercase font-bold tracking-wider font-mono">
+                                  {label ? new Date(`${label}T00:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : ""}
+                                </p>
+                                <div className="flex items-center gap-2.5 pt-0.5">
+                                  <span className="font-extrabold text-base text-[#862334] font-Geist">{val}%</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold font-Inter ${isPassing ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-[#862334] border border-rose-200"}`}>
+                                    {isPassing ? "Passing" : "Needs Coaching"}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+
+                      <ReferenceLine
+                        y={70}
+                        stroke="#D97706"
+                        strokeDasharray="4 4"
+                        strokeWidth={1.5}
+                        label={{
+                          value: "70% Target Benchmark",
+                          fill: "#D97706",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          position: "top",
+                          offset: 6
+                        }}
+                      />
+
+                      <Area
+                        type="monotone"
+                        dataKey="average"
+                        stroke="#862334"
+                        strokeWidth={3}
+                        strokeOpacity={0.95}
+                        fill="url(#maroonGradient)"
+                        dot={{ r: 5, fill: "#FFFFFF", stroke: "#862334", strokeWidth: 2.5 }}
+                        activeDot={{ r: 7, fill: "#FFB003", stroke: "#862334", strokeWidth: 3 }}
+                        label={<CustomDataLabel />}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-400 text-sm font-Inter">
+                    No evaluation data available for {currentSectionLabel} yet.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Detailed Analysis / Multi-Page Printable Report */}
-          <div className="mb-12">
+          {/* Detailed Printable Student Report */}
+          <div className="mb-12 font-Inter">
             <div
               id="student-report-section"
               ref={printRef}
-              className="bg-white rounded-lg border border-[#e5e5e5] p-8"
+              className="bg-white rounded-2xl border border-[#862334]/15 p-6 md:p-8 shadow-sm space-y-8"
             >
-              {/* Header */}
-              <div className="mb-8 print-card">
+              {/* Header & Top Right Search Bar */}
+              <div className="print-card">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                  <div>
-                    <h2 className="font-geist text-xl md:text-2xl font-bold uppercase tracking-[-0.02em] text-black mb-1">
-                      Student Detailed Analysis
-                    </h2>
-                    <p className="text-sm text-[#4a4a4a] font-inter">
-                      Performance metrics and feedback for individual students
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <h2 className="font-Geist text-2xl font-bold tracking-tight text-gray-900 mb-0.5">
+                        Student Detailed Analytics
+                      </h2>
+                      <p className="text-xs text-gray-500 font-Inter font-normal">
+                        In-depth performance metrics and individualized feedback
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Search Bar */}
-                  <div className="relative w-full sm:w-80 no-print">
+                  {/* Search Input at Top Right */}
+                  <div className="relative w-full sm:w-72 no-print">
                     <div className="relative flex items-center">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9ca3af] w-4 h-4" />
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onFocus={() => setIsSearchFocused(true)}
-                        placeholder="SEARCH USERS"
-                        className="w-full bg-white border border-[#e5e7eb] text-black pl-11 pr-4 py-2 text-xs font-geist tracking-wider rounded-lg outline-none focus:border-[#862334] transition-colors"
+                        placeholder="Search Students"
+                        className="w-full bg-[#FDFBF7] border border-[#EAE5D9] text-gray-900 pl-10 pr-4 py-2 text-xs font-Inter rounded-xl outline-none focus:border-[#862334] focus:ring-1 focus:ring-[#862334] transition-all shadow-2xs"
                       />
                       {searchQuery && (
                         <button
@@ -696,7 +1377,7 @@ export default function StaffStatistics() {
                     </div>
 
                     {isSearchFocused && (
-                      <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-[#e5e5e5] rounded-lg shadow-xl z-30 max-h-60 overflow-y-auto">
+                      <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-30 max-h-60 overflow-y-auto font-Inter">
                         {filteredStudents.length > 0 ? (
                           filteredStudents.map((student) => (
                             <div
@@ -707,21 +1388,31 @@ export default function StaffStatistics() {
                               }`}
                             >
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-[#862334]/10 text-[#862334] font-bold text-xs flex items-center justify-center">
-                                  {student.initials}
-                                </div>
+                                {student.avatarUrl ? (
+                                  <img
+                                    src={student.avatarUrl}
+                                    alt={student.name}
+                                    className="w-8 h-8 rounded-full object-cover border border-gray-200"
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-[#862334]/10 text-[#862334] font-bold text-xs flex items-center justify-center font-Geist">
+                                    {student.initials}
+                                  </div>
+                                )}
                                 <div>
-                                  <p className="text-xs font-bold text-black">{student.name}</p>
-                                  <p className="text-[10px] text-gray-500">
-                                    {(student.enrollments || []).map(e => e.course_code || e.course_title).join(", ") || "No enrollment"}
+                                  <p className="text-xs font-bold text-gray-900 font-Geist">{student.name}</p>
+                                  <p className="text-xs text-gray-500 font-Inter font-normal">
+                                    {(Array.isArray(student.enrollments) ? student.enrollments : [])
+                                      .map((e) => e.course_code || e.course_title || e.section)
+                                      .join(", ") || "Enrolled Student"}
                                   </p>
                                 </div>
                               </div>
                             </div>
                           ))
                         ) : (
-                          <div className="p-4 text-xs text-gray-500 text-center">
-                            No students found matching "{searchQuery}"
+                          <div className="p-4 text-xs text-gray-500 text-center font-Inter">
+                            No enrolled students found matching "{searchQuery}"
                           </div>
                         )}
                       </div>
@@ -729,153 +1420,312 @@ export default function StaffStatistics() {
                   </div>
                 </div>
 
-                {/* Student Summary Header Card */}
-                {selectedStudent && (
-                  <div className="bg-white rounded-xl border border-[#e5e5e5] p-8 mb-6 shadow-sm relative overflow-hidden print-card">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
+                {/* Selected Student Featured Banner */}
+                {selectedStudent ? (
+                  <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/20 p-6 md:p-8 shadow-xs relative overflow-hidden print-card">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                       <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334] text-2xl font-bold border-2 border-[#862334]/20">
-                          {selectedStudent.initials}
+                        <div className="relative flex-shrink-0">
+                          {selectedStudent.avatarUrl && !studentImageError ? (
+                            <img
+                              src={selectedStudent.avatarUrl}
+                              alt={selectedStudent.name}
+                              onError={() => setStudentImageError(true)}
+                              className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-xs"
+                            />
+                          ) : (
+                            <div className="w-20 h-20 rounded-full bg-[#862334]/10 text-[#862334] text-2xl font-bold flex items-center justify-center border-4 border-white font-Geist">
+                              {selectedStudent.initials}
+                            </div>
+                          )}
                         </div>
 
                         <div>
-                          <p className="text-[#862334] font-geist font-bold text-xs uppercase tracking-widest mb-1">
-                            Featured Student
-                          </p>
-                          <h3 className="font-geist text-2xl font-bold text-black mb-3">
-                            {selectedStudent.name}
-                          </h3>
+                          <div className="flex items-center gap-3 mb-3">
+                            <h3 className="font-Geist text-2xl font-bold text-gray-900 tracking-tight">
+                              {selectedStudent.name}
+                            </h3>
+                          </div>
 
-                          <div className="space-y-2">
-                            {(selectedStudent.enrollments || []).length ? selectedStudent.enrollments.map((enrollment, i) => (
-                              <div key={`${enrollment.course_id}-${i}`} className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#4a4a4a]">
-                                <span><strong>Course:</strong> {enrollment.course_title || enrollment.course_code || "—"}</span>
-                                <span><strong>Section:</strong> {enrollment.section || "—"}</span>
-                                <span><strong>Term:</strong> {enrollment.academic_term || "—"}</span>
-                              </div>
-                            )) : <p className="text-sm text-gray-500">No course enrollment found.</p>}
+                          <div className="flex flex-wrap items-center gap-4 mt-2">
+                            {(Array.isArray(selectedStudent.enrollments) ? selectedStudent.enrollments : []).length ? (
+                              selectedStudent.enrollments.map((enrollment, i) => (
+                                <React.Fragment key={`${enrollment.course_id || i}-${i}`}>
+                                  <div className="flex items-center gap-3 bg-white border border-[#EAE5D9] px-3.5 py-2 rounded-xl shadow-2xs">
+                                    <div className="w-8 h-8 rounded-lg bg-rose-50 text-[#862334] flex items-center justify-center flex-shrink-0">
+                                      <GraduationCap className="w-4 h-4 stroke-[2]" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-tight font-Inter">
+                                        Course
+                                      </span>
+                                      <span className="text-xs font-bold text-gray-900 font-Geist leading-tight mt-0.5">
+                                        {enrollment.course_title || enrollment.course_code || "—"}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 bg-white border border-[#EAE5D9] px-3.5 py-2 rounded-xl shadow-2xs">
+                                    <div className="w-8 h-8 rounded-lg bg-rose-50 text-[#862334] flex items-center justify-center flex-shrink-0">
+                                      <Layers className="w-4 h-4 stroke-[2]" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-tight font-Inter">
+                                        SECTION
+                                      </span>
+                                      <span className="text-xs font-bold text-gray-900 font-Geist leading-tight mt-0.5">
+                                        {enrollment.section || "—"}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 bg-white border border-[#EAE5D9] px-3.5 py-2 rounded-xl shadow-2xs">
+                                    <div className="w-8 h-8 rounded-lg bg-rose-50 text-[#862334] flex items-center justify-center flex-shrink-0">
+                                      <Calendar className="w-4 h-4 stroke-[2]" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-tight font-Inter">
+                                        TERM
+                                      </span>
+                                      <span className="text-xs font-bold text-gray-900 font-Geist leading-tight mt-0.5">
+                                        {enrollment.academic_term || "—"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </React.Fragment>
+                              ))
+                            ) : (
+                              <p className="text-xs text-gray-400 font-Inter">No course enrollment information available.</p>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-center md:items-end gap-2">
-                        <div className="text-center md:text-right px-4">
-                          <p className="font-inter text-[10px] text-[#4a4a4a] uppercase font-bold tracking-[0.2em] mb-0">
+                      <div className="flex flex-col items-start md:items-end justify-center gap-3">
+                        <div className="text-left md:text-right">
+                          <p className="font-Inter text-xs text-gray-500 font-bold tracking-wider mb-1.5">
                             PERFORMANCE GRADE
                           </p>
-                          <p className="font-geist text-4xl font-black text-[#862334] leading-tight">
-                            {selectedStudent.grade}
+                          <p className="font-Geist text-4xl font-black text-[#862334] leading-none">
+                            {selectedStudent.latestScore != null ? `${Number(selectedStudent.latestScore).toFixed(1)}%` : selectedStudent.grade || "N/A"}
                           </p>
                         </div>
 
                         <button
                           onClick={handleDownloadPDF}
-                          className="no-print flex items-center gap-2 px-6 py-2.5 bg-[#862334] text-white font-bold uppercase text-[10px] tracking-wider rounded-lg hover:bg-[#a12a3f] transition-all shadow-lg shadow-[#862334]/20 cursor-pointer"
+                          className="no-print flex items-center gap-2 px-5 py-2.5 bg-[#862334] text-white font-bold text-xs rounded-xl hover:bg-[#a12a3f] active:scale-[0.99] transition-all shadow-md shadow-[#862334]/20 cursor-pointer font-Inter"
                         >
-                          <Download className="w-4 h-4" />
+                          <Download className="w-3.5 h-3.5" />
                           Download PDF
                         </button>
                       </div>
                     </div>
                   </div>
+                ) : (
+                  <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl p-8 text-center text-gray-500 text-sm font-medium font-Inter">
+                    No enrolled students found for {currentSectionLabel}.
+                  </div>
                 )}
               </div>
 
-              {/* Dynamic Charts Section */}
+              {/* Student Analytics Charts Section */}
               {selectedStudent && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                  <div className="bg-white rounded-lg border border-[#e5e5e5] p-6 print-card">
-                    <h3 className="font-geist text-base font-bold uppercase tracking-[-0.02em] text-black mb-4">
-                      Performance Growth ({selectedStudent.name})
-                    </h3>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print-card">
+                  {/* Historical Line Chart */}
+                  <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0">
+                    <div className="mb-4">
+                      <h3 className="font-Geist text-base font-bold tracking-tight text-gray-900">
+                        Performance Growth ({selectedStudent.name})
+                      </h3>
+                      <p className="text-xs text-gray-500 font-Inter font-normal">
+                        Historical score progression across all completed attempts
+                      </p>
+                    </div>
                     <StudentLineChart data={selectedStudent.lineData || []} />
                   </div>
 
-                  <div className="bg-white rounded-lg border border-[#e5e5e5] p-6 print-card">
-                    <h3 className="font-geist text-base font-bold uppercase tracking-[-0.02em] text-black mb-4">
-                      Skills Assessment ({selectedStudent.name})
-                    </h3>
-                    <RadarChartComponent data={selectedStudent.radarData || []} />
+                  {/* Skills Assessment Radar Chart */}
+                  <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <h3 className="font-Geist text-base font-bold tracking-tight text-gray-900">
+                          Skills Assessment ({selectedStudent.name})
+                        </h3>
+                        <p className="text-xs text-gray-500 font-Inter font-normal">
+                          Competency score breakdown for the student's most recent attempt
+                        </p>
+                      </div>
+                    </div>
+                    <RadarChartComponent data={selectedStudent.latestRadarData || selectedStudent.radarData || []} />
                   </div>
                 </div>
               )}
 
-              {/* Dynamic AI Feedback Analysis */}
+              {/* AI Feedback Analysis */}
               {selectedStudent && (
-                <div className="bg-gradient-to-r from-[#862334]/5 to-[#ffb003]/5 rounded-lg border border-[#e5e5e5] p-6 mb-8 print-card">
+                <div className="bg-gradient-to-r from-[#862334]/5 via-[#FDFBF7] to-[#ffb003]/5 rounded-2xl border border-[#862334]/20 p-6 print-card shadow-2xs">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center w-9 h-9 rounded-full bg-[#862334] text-white">
+                    <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#862334] text-white shadow-xs">
                       <Bot className="w-4 h-4" />
                     </div>
-                    <h3 className="text-[#862334] font-geist font-bold uppercase text-sm tracking-widest">
-                      AI Feedback Analysis
+                    <h3 className="text-[#862334] font-Geist font-bold text-md">
+                      AI Feedback Analysis for {selectedStudent.name}
                     </h3>
                   </div>
-                  <p className="text-black/90 font-inter text-sm leading-relaxed">
-                    {selectedStudent.aiCritique}
+                  <p className="text-black/90 font-Inter text-sm leading-relaxed">
+                    {selectedStudent.aiCritique || "No AI feedback report available for this student yet."}
                   </p>
                 </div>
               )}
 
-              {/* Student Observations Section */}
+              {/* Observations & Feedback Section */}
               {selectedStudent && (
-                <div className="print-card">
-                  <h3 className="font-geist text-base font-bold uppercase tracking-[-0.02em] text-black mb-4">
-                    Your Observations for {selectedStudent.name}
-                  </h3>
+                <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 print-card font-Inter shadow-2xs">
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="font-Geist text-lg font-bold text-gray-900 tracking-tight">
+                      Your Observations for {selectedStudent.name}
+                    </h3>
 
-                  {selectedStudent.comments && selectedStudent.comments.length > 0 && (
-                    <div className="mb-4 space-y-2">
-                      {selectedStudent.comments.map((comment) => (
-                        <div key={comment.message_id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg text-sm font-inter text-gray-800">
-                          {editingCommentId === comment.message_id ? (
-                            <div className="space-y-2 no-print">
-                              <textarea className="w-full border rounded p-2" value={editingText} onChange={e => setEditingText(e.target.value)} rows={3} />
-                              <button type="button" className="text-[#862334] font-bold mr-4" onClick={() => handleEditComment(comment)}>Save</button>
-                              <button type="button" onClick={() => setEditingCommentId(null)}>Cancel</button>
-                            </div>
-                          ) : <p className="whitespace-pre-wrap">{comment.message}</p>}
-                          <div className="flex items-center justify-between mt-2 gap-3">
-                            <span className="text-xs text-gray-500">{comment.created_at ? new Date(comment.created_at).toLocaleString() : ""}</span>
-                            {comment.car_ad_id === selectedStudent.current_advisor_id && editingCommentId !== comment.message_id && (
-                              <div className="flex gap-3 no-print">
-                                <button type="button" className="text-[#862334] font-semibold" onClick={() => { setEditingCommentId(comment.message_id); setEditingText(comment.message); }}>Edit</button>
-                                <button type="button" className="text-red-600 font-semibold" onClick={() => handleDeleteComment(comment)}>Delete</button>
+                    <div className="px-3.5 py-1 bg-white border border-[#EAE5D9] text-[#862334] rounded-full text-xs font-semibold font-Inter shadow-2xs no-print">
+                      {(selectedStudent.comments || []).length}{" "}
+                      {(selectedStudent.comments || []).length === 1 ? "Active Note" : "Active Notes"}
+                    </div>
+                  </div>
+
+                  {(Array.isArray(selectedStudent.comments) ? selectedStudent.comments : []).length > 0 && (
+                    <div className="mb-6 space-y-3">
+                      {selectedStudent.comments.map((comment) => {
+                        const authorName =
+                          comment.author_name ||
+                          userProfile.name ||
+                          "Prof. Staff Advisor";
+
+                        const formattedDate = comment.created_at
+                          ? new Date(comment.created_at).toLocaleString("en-US", {
+                              month: "numeric",
+                              day: "numeric",
+                              year: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              second: "2-digit",
+                              hour12: true,
+                            })
+                          : "Recently added";
+
+                        return (
+                          <div
+                            key={comment.message_id || Math.random()}
+                            className="bg-white border border-[#862334]/15 p-5 rounded-xl text-sm font-Inter text-gray-800 transition-all shadow-2xs"
+                          >
+                            {editingCommentId === comment.message_id ? (
+                              <div className="space-y-3 no-print">
+                                <textarea
+                                  className="w-full border border-gray-300 rounded-lg p-3 font-Inter text-sm bg-white focus:outline-none focus:border-[#862334]"
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
+                                  rows={3}
+                                />
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    type="button"
+                                    className="px-4 py-1.5 bg-[#862334] text-white rounded-md text-xs font-bold font-Inter hover:bg-[#a12a3f] transition-colors cursor-pointer"
+                                    onClick={() => handleEditComment(comment)}
+                                  >
+                                    Save Changes
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 font-semibold font-Inter cursor-pointer"
+                                    onClick={() => setEditingCommentId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
                               </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-gray-900 font-Geist text-sm">
+                                      {authorName}
+                                    </span>
+                                    <span className="text-xs text-gray-400 font-normal">
+                                      {formattedDate}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 text-xs font-medium no-print">
+                                    <button
+                                      type="button"
+                                      className="text-gray-600 hover:text-gray-900 transition-colors font-semibold cursor-pointer"
+                                      onClick={() => {
+                                        setEditingCommentId(comment.message_id);
+                                        setEditingText(comment.message || "");
+                                      }}
+                                    >
+                                      Edit
+                                    </button>
+                                    <span className="text-gray-300">•</span>
+                                    <button
+                                      type="button"
+                                      className="text-rose-600 hover:text-rose-800 transition-colors font-semibold cursor-pointer"
+                                      onClick={() => setCommentToDelete(comment)}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <p className="text-gray-700 leading-relaxed font-Inter text-sm whitespace-pre-wrap">
+                                  {comment.message}
+                                </p>
+                              </>
                             )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
-                  <form onSubmit={handleAddComment} className="no-print">
-                    <textarea
-                      value={commentInput}
-                      onChange={(e) => setCommentInput(e.target.value)}
-                      className="w-full p-4 border border-[#e5e5e5] rounded-lg text-sm font-inter text-black focus:outline-none focus:shadow-[0_0_0_2px_#862334] resize-none"
-                      placeholder={`Add your comments and observations about ${selectedStudent.name}'s performance...`}
-                      rows="4"
-                    ></textarea>
+                  <div className="space-y-3 no-print">
+                    <h4 className="text-md font-bold text-gray-900 font-Geist">
+                      Add Staff Observation & Guidance
+                    </h4>
 
-                    <div className="flex items-center justify-between mt-3">
-                      <button
-                        type="submit"
-                        className="flex items-center gap-2 px-6 py-2.5 bg-[#862334] text-white font-bold uppercase text-xs rounded-md hover:bg-[#ffb003] hover:text-black transition-all cursor-pointer"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        Submit Comment
-                      </button>
+                    <form onSubmit={handleAddComment} className="space-y-4">
+                      <textarea
+                        value={commentInput}
+                        onChange={(e) => setCommentInput(e.target.value)}
+                        className="w-full p-4 border border-[#EAE5D9] rounded-xl text-sm font-Inter text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#862334] focus:ring-1 focus:ring-[#862334] bg-white transition-all resize-none shadow-2xs"
+                        placeholder={`Add your comments, recommended drills, and feedback for ${selectedStudent.name}...`}
+                        rows={3}
+                      />
 
-                      {commentError && <p className="text-red-600 text-xs">{commentError}</p>}
-                      {commentSuccess && (
-                        <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Comment saved for {selectedStudent.name}!
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {commentError && (
+                            <p className="text-rose-600 text-xs font-semibold font-Inter">
+                              {commentError}
+                            </p>
+                          )}
+                          {commentSuccess && (
+                            <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold font-Inter transition-opacity duration-300">
+                              <CheckCircle2 className="w-4 h-4" />
+                              Observation saved successfully!
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </form>
+
+                        <button
+                          type="submit"
+                          className="flex items-center gap-2 px-6 py-2.5 bg-[#862334] text-white font-bold text-xs rounded-xl hover:bg-[#a12a3f] active:scale-[0.99] transition-all shadow-md shadow-[#862334]/15 cursor-pointer font-Inter"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Submit Observation
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
               )}
             </div>
