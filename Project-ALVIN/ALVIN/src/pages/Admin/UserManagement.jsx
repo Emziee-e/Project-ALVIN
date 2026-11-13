@@ -257,7 +257,7 @@ export default function UserManagement() {
         >
           {/* Backdrop Overlay */}
           <div
-            className="fixed inset-0 bg-black/20 transition-opacity duration-300"
+            className="fixed inset-0 bg-black/10 transition-opacity duration-300"
             onClick={() => setIsAccountOpen(false)}
           />
 
@@ -380,7 +380,7 @@ export default function UserManagement() {
                       }`}
                     />
                     <span
-                      className={`text-[11px] tracking-tight ${
+                      className={`text-xs tracking-tight ${
                         isSolidActive
                           ? "font-bold text-white"
                           : "font-medium text-[#862334]"
@@ -396,13 +396,15 @@ export default function UserManagement() {
         </aside>
 
         {/* Main Section */}
-        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen min-w-0">
+        <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
             <section className="px-8 sm:px-12 md:px-16 lg:px-24 py-8 flex-1">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
-                <div className="md:col-span-12 bg-white border border-gray-200 relative overflow-hidden rounded-lg">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-6 md:px-8 py-5 gap-4 border-b border-gray-100 bg-gray-50/50">
-                    <h3 className="font-Geist text-lg font-bold text-black uppercase">
+
+                {/* User Directory Container with Subtle Maroon Border */}
+                <div className="md:col-span-12 bg-white border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] relative overflow-hidden rounded-2xl">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-6 md:px-8 py-5 gap-4 border-b border-[#862334]/15 bg-rose-50/20">
+                    <h3 className="font-Geist text-lg font-bold text-black uppercase tracking-tight">
                       User Directory
                     </h3>
                     <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
@@ -414,13 +416,13 @@ export default function UserManagement() {
                             setRoleFilter(e.target.value);
                             setPage(1);
                           }}
-                          className="w-full bg-white border border-gray-200 text-xs font-bold uppercase tracking-wider py-2.5 pl-9 pr-8 outline-none focus:ring-1 focus:ring-[#862334] appearance-none rounded cursor-pointer text-gray-600 transition-all font-Inter"
+                          className="w-full bg-white border border-[#862334]/30 text-xs font-bold uppercase tracking-wider py-2.5 pl-9 pr-8 outline-none focus:ring-1 focus:ring-[#862334] appearance-none rounded-lg cursor-pointer text-gray-600 transition-all font-Inter"
                         >
                           <option value="All Roles">All Roles</option>
                           <option value="student">Student</option>
                           <option value="career_advisor">Career Advisor</option>
                         </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 pointer-events-none group-hover:text-[#862334] transition-colors" />
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-[#862334] w-3.5 h-3.5 pointer-events-none" />
                       </div>
 
                       <div className="relative w-full sm:w-64 md:w-80">
@@ -431,7 +433,7 @@ export default function UserManagement() {
                             setSearch(e.target.value);
                             setPage(1);
                           }}
-                          className="bg-white border border-gray-200 focus:ring-1 focus:ring-[#862334] text-xs tracking-widest font-Inter w-full pl-10 py-2.5 text-black placeholder:text-gray-400 outline-none rounded"
+                          className="bg-white border border-[#862334]/30 focus:ring-1 focus:ring-[#862334] text-xs tracking-widest font-Inter w-full pl-10 py-2.5 text-black placeholder:text-gray-400 outline-none rounded-lg"
                           placeholder="SEARCH USERS"
                         />
                       </div>
@@ -441,12 +443,12 @@ export default function UserManagement() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>
-                        <tr className="border-b border-gray-100 bg-gray-50">
+                        <tr className="border-b border-[#862334]/15 bg-rose-50/10">
                           {["User", "Role", "Account Status", "Created", ""].map(
                             (h, i) => (
                               <th
                                 key={i}
-                                className={`px-6 md:px-8 py-4 md:py-5 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 font-Geist ${
+                                className={`px-6 md:px-8 py-4 md:py-5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#862334] font-Geist ${
                                   i === 4 ? "text-right" : ""
                                 }`}
                               >
@@ -456,7 +458,7 @@ export default function UserManagement() {
                           )}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50">
+                      <tbody className="divide-y divide-gray-100">
                         {isLoadingAccounts ? (
                           <tr>
                             <td colSpan={5} className="px-6 py-10 text-center text-gray-400 text-sm">
@@ -482,15 +484,15 @@ export default function UserManagement() {
                           paginatedAccounts.map((acc, i) => (
                             <tr
                               key={i}
-                              className="hover:bg-gray-50 transition-colors group"
+                              className="transition-colors group"
                             >
                               <td className="px-6 md:px-8 py-4 md:py-5">
                                 <div className="flex items-center gap-3 md:gap-4">
-                                  <div className="w-9 h-9 md:w-10 md:h-10 rounded-sm flex items-center justify-center flex-shrink-0 bg-gray-100">
-                                    <User className="text-gray-400 w-5 h-5" />
+                                  <div className="w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-rose-50/80 border border-[#862334]/15">
+                                    <User className="text-[#862334] w-5 h-5" />
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="text-sm font-bold text-black truncate font-[Space_Grotesk,sans-serif]">
+                                    <div className="text-sm font-bold text-black truncate font-Geist">
                                       {acc.name}
                                     </div>
                                     <div className="text-[10px] text-gray-400 font-[Inter,sans-serif] truncate">
@@ -548,7 +550,7 @@ export default function UserManagement() {
                                     aria-label={`${
                                       acc.account_status === "active" ? "Deactivate" : "Activate"
                                     } ${acc.name}`}
-                                    className={`inline-flex w-28 items-center justify-center rounded-[2px] border px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap font-Geist focus:outline-none ${
+                                    className={`inline-flex w-28 items-center justify-center rounded-lg border px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap font-Geist focus:outline-none ${
                                       acc.account_status === "active"
                                         ? "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 focus:ring-amber-400"
                                         : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 focus:ring-emerald-400"
@@ -560,7 +562,7 @@ export default function UserManagement() {
                                     type="button"
                                     onClick={() => openAccountAction("delete", acc)}
                                     aria-label={`Delete ${acc.name}`}
-                                    className="inline-flex w-28 items-center justify-center rounded-[2px] bg-[#8B1C2C] px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition-all hover:bg-[#711724] whitespace-nowrap font-Geist focus:outline-none focus:ring-2"
+                                    className="inline-flex w-28 items-center justify-center rounded-lg bg-[#862334] px-3 md:px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition-all hover:bg-[#6e1c2a] whitespace-nowrap font-Geist focus:outline-none focus:ring-2"
                                   >
                                     Delete
                                   </button>

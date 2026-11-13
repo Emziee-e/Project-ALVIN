@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
   FileBarChart,
@@ -36,56 +36,15 @@ const navItems = [
   { id: "avatars", label: "Avatars", path: "/admin/avatars", icon: UserCircle },
 ];
 
-// Mock Data for Interview Volume (Smooth Area Chart)
-const getInterviewVolumeData = (type) => {
-  switch (type) {
-    case "Daily":
-      return Array.from({ length: 24 }, (_, i) => ({
-        label: `${i}:00`,
-        volume: Math.floor(Math.random() * 10) + 2,
-      }));
-    case "Monthly":
-      return Array.from({ length: 30 }, (_, i) => ({
-        label: `Day ${i + 1}`,
-        volume: Math.floor(Math.random() * 20) + 10,
-      }));
-    case "Weekly":
-    default:
-      return [
-        { label: "MON", volume: 8 },
-        { label: "TUE", volume: 5 },
-        { label: "WED", volume: 12 },
-        { label: "THU", volume: 7 },
-        { label: "FRI", volume: 15 },
-        { label: "SAT", volume: 9 },
-        { label: "SUN", volume: 11 },
-      ];
-  }
-};
+// Colors used for the donut segments (maroon / gold / dark / red)
+const DONUT_COLORS = ["#862334", "#FFB003", "#2D0C13", "#991B1B"];
 
-// Mock Data for Active Users (Radial Donut Chart)
-const getUserDonutData = (type) => {
-  switch (type) {
-    case "Monthly":
-      return [
-        { name: "Week 1 Active", value: 520, color: "#862334" },
-        { name: "Week 2 Active", value: 780, color: "#FFB003" },
-        { name: "Week 3 Active", value: 950, color: "#2D0C13" },
-        { name: "Week 4 Active", value: 955, color: "#991B1B" },
-      ];
-    case "Weekly":
-    default:
-      return [
-        { name: "Students", value: 2300, color: "#862334" },
-        { name: "Faculty/Staff", value: 905, color: "#FFB003" },
-      ];
-  }
-};
+// Fallback poll in case Supabase Realtime is unavailable (table not in the
+// realtime publication, blocked by RLS, websocket dropped, ...).
+const POLL_INTERVAL_MS = 30000;
 
 // 1. Interview Volume Area Chart
-function InterviewVolumeAreaChart({ reportType }) {
-  const data = useMemo(() => getInterviewVolumeData(reportType), [reportType]);
-
+function InterviewVolumeAreaChart({ data = [], reportType }) {
   return (
     <div className="w-full h-[320px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -105,10 +64,13 @@ function InterviewVolumeAreaChart({ reportType }) {
             tickLine={false}
             tick={{ fill: "#64748B", fontSize: reportType === "Weekly" ? 11 : 10, fontWeight: 600 }}
             dy={8}
+            interval={reportType === "Weekly" ? 0 : "preserveStartEnd"}
+            minTickGap={16}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
+            allowDecimals={false}
             tick={{ fill: "#64748B", fontSize: 11 }}
           />
 
@@ -141,9 +103,19 @@ function InterviewVolumeAreaChart({ reportType }) {
 }
 
 // 2. Active Users Donut Gauge Chart
-function RadialDonutUsersChart({ timeframe }) {
-  const data = useMemo(() => getUserDonutData(timeframe), [timeframe]);
-  const totalUsers = useMemo(() => data.reduce((acc, curr) => acc + curr.value, 0), [data]);
+function RadialDonutUsersChart({ segments = [], total }) {
+  const data = useMemo(
+    () =>
+      segments.map((segment, index) => ({
+        ...segment,
+        color: DONUT_COLORS[index % DONUT_COLORS.length],
+      })),
+    [segments]
+  );
+  const hasData = data.some((item) => item.value > 0);
+  // Empty grey ring when there is nothing to show yet
+  const chartData = hasData ? data : [{ name: "No activity", value: 1, color: "#E2E8F0" }];
+  const totalUsers = total ?? data.reduce((acc, curr) => acc + curr.value, 0);
 
   return (
     <div className="w-full h-[320px] grid grid-cols-1 md:grid-cols-2 items-center">
@@ -151,26 +123,28 @@ function RadialDonutUsersChart({ timeframe }) {
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={data}
+              data={chartData}
               innerRadius={72}
               outerRadius={96}
               paddingAngle={4}
               dataKey="value"
             >
-              {data.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} cornerRadius={6} />
               ))}
             </Pie>
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#1A090D",
-                border: "1px solid rgba(134, 35, 52, 0.4)",
-                borderRadius: "10px",
-                color: "#FFF",
-              }}
-              itemStyle={{ color: "#FFB003", fontWeight: "bold" }}
-              formatter={(val) => [`${val} Users`, "Active"]}
-            />
+            {hasData && (
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1A090D",
+                  border: "1px solid rgba(134, 35, 52, 0.4)",
+                  borderRadius: "10px",
+                  color: "#FFF",
+                }}
+                itemStyle={{ color: "#FFB003", fontWeight: "bold" }}
+                formatter={(val, name) => [`${val} Users`, name]}
+              />
+            )}
           </PieChart>
         </ResponsiveContainer>
 
@@ -205,6 +179,13 @@ export default function SystemReport() {
   const [activeNav, setActiveNav] = useState("reports");
   const [interviewReportType, setInterviewReportType] = useState("Weekly");
   const [userTrendType, setUserTrendType] = useState("Weekly");
+
+  // Live report data (served by GET /api/admin/reports, computed from the database)
+  const [report, setReport] = useState(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(true);
+  const [reportError, setReportError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const isMountedRef = useRef(true);
 
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
@@ -266,6 +247,65 @@ export default function SystemReport() {
     };
   }, []);
 
+  const loadReport = useCallback(async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+      const response = await fetch(`${base}/api/admin/reports`, {
+        headers: {
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `Request failed (${response.status})`);
+      }
+      const data = await response.json();
+      if (!isMountedRef.current) return;
+      setReport(data);
+      setReportError("");
+      setLastUpdated(new Date());
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error("Unable to load system report:", error);
+      setReportError(error.message || "Unable to load system report.");
+    } finally {
+      if (isMountedRef.current) setIsLoadingReport(false);
+    }
+  }, []);
+
+  // Initial load + realtime refresh (Supabase Realtime) + polling fallback
+  useEffect(() => {
+    isMountedRef.current = true;
+    loadReport();
+
+    let debounceTimer = null;
+    const refreshSoon = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(loadReport, 700); // batch bursts of changes
+    };
+
+    const channel = supabase
+      .channel("admin-system-report")
+      .on("postgres_changes", { event: "*", schema: "public", table: "interview_sessions" }, refreshSoon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "evaluation_reports" }, refreshSoon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_profile" }, refreshSoon)
+      .subscribe();
+
+    const pollTimer = setInterval(loadReport, POLL_INTERVAL_MS);
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(debounceTimer);
+      clearInterval(pollTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [loadReport]);
+
   useEffect(() => {
     if (location.pathname.includes("/users")) {
       setActiveNav("users");
@@ -275,6 +315,19 @@ export default function SystemReport() {
       setActiveNav("reports");
     }
   }, [location.pathname]);
+
+  const summary = report?.summary;
+  const placeholder = report ? null : isLoadingReport ? "…" : "—";
+  const kpi = {
+    total: placeholder ?? (summary?.total_interviews ?? 0).toLocaleString(),
+    performance:
+      placeholder ??
+      (summary?.average_performance != null ? `${summary.average_performance}%` : "—"),
+    active: placeholder ?? (summary?.active_users ?? 0).toLocaleString(),
+    daily: placeholder ?? (summary?.daily_users ?? 0).toLocaleString(),
+  };
+  const volumeData = report?.interview_volume?.[interviewReportType.toLowerCase()] ?? [];
+  const donut = report?.user_activity?.[userTrendType.toLowerCase()];
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -421,7 +474,7 @@ export default function SystemReport() {
                       }`}
                     />
                     <span
-                      className={`text-[11px] tracking-tight ${
+                      className={`text-xs tracking-tight ${
                         isSolidActive
                           ? "font-bold text-white"
                           : "font-medium text-[#862334]"
@@ -440,14 +493,38 @@ export default function SystemReport() {
         <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
             <div className="px-8 sm:px-12 md:px-16 lg:px-20 py-8 space-y-8 w-full">
+              
+              {/* Live status bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-3xl font-black text-slate-900 tracking-tight">System Report</h1>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {lastUpdated
+                      ? `Last updated ${lastUpdated.toLocaleTimeString()}`
+                      : "Loading latest data…"}
+                  </p>
+                </div>
+              </div>
 
-{/* Minimalist Top KPI Row (Maroon Top Accent Border) */}
+              {reportError && (
+                <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
+                  <span>{reportError}</span>
+                  <button
+                    onClick={loadReport}
+                    className="px-3 py-1 rounded-lg border border-red-300 text-xs font-semibold hover:bg-red-100 transition-colors cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Minimalist Top KPI Row (Maroon Top Accent Border) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
 
                 {/* Total Interviews */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
+                    <p className="text-[14px] font-semibold text-[#862334]">
                       Total Interviews
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
@@ -455,14 +532,14 @@ export default function SystemReport() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    12,842
+                    {kpi.total}
                   </h3>
                 </div>
 
                 {/* Avg. Performance */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
+                    <p className="text-[14px] font-semibold text-[#862334]">
                       Avg. Performance
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
@@ -470,29 +547,32 @@ export default function SystemReport() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    94.8%
+                    {kpi.performance}
                   </h3>
                 </div>
 
                 {/* Active Users */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
+                    <p className="text-[14px] font-semibold text-[#862334]">
                       Active Users
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
                       <TrendingUp className="w-4 h-4" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    205
-                  </h3>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
+                      {kpi.active}
+                    </h3>
+                    <span className="text-[11px] font-medium text-gray-400">Last 30 days</span>
+                  </div>
                 </div>
 
                 {/* Daily Users */}
                 <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
+                    <p className="text-[14px] font-semibold text-[#862334]">
                       Daily Users
                     </p>
                     <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
@@ -501,8 +581,9 @@ export default function SystemReport() {
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                      10
+                      {kpi.daily}
                     </h3>
+                    <span className="text-[11px] font-medium text-gray-400">Today</span>
                   </div>
                 </div>
 
@@ -536,7 +617,7 @@ export default function SystemReport() {
                     </div>
                   </div>
                   <div className="p-6">
-                    <InterviewVolumeAreaChart reportType={interviewReportType} />
+                    <InterviewVolumeAreaChart data={volumeData} reportType={interviewReportType} />
                   </div>
                 </div>
 
@@ -564,7 +645,7 @@ export default function SystemReport() {
                     </div>
                   </div>
                   <div className="p-6">
-                    <RadialDonutUsersChart timeframe={userTrendType} />
+                    <RadialDonutUsersChart segments={donut?.segments} total={donut?.total} />
                   </div>
                 </div>
 
