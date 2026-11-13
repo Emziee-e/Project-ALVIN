@@ -5,11 +5,11 @@ import {
   UserCircle,
   Mic,
   TrendingUp,
-  Clock,
   ChevronDown,
   User,
   X,
   Mail,
+  Check,
 } from "lucide-react";
 import {
   PieChart,
@@ -39,9 +39,128 @@ const navItems = [
 // Colors used for the donut segments (maroon / gold / dark / red)
 const DONUT_COLORS = ["#862334", "#FFB003", "#2D0C13", "#991B1B"];
 
-// Fallback poll in case Supabase Realtime is unavailable (table not in the
-// realtime publication, blocked by RLS, websocket dropped, ...).
+// Fallback poll in case Supabase Realtime is unavailable
 const POLL_INTERVAL_MS = 30000;
+
+// ----------------------------------------------------------------------
+// CUSTOM MAROON DROPDOWN COMPONENT
+// ----------------------------------------------------------------------
+function MaroonDropdown({ value, onChange, options = ["Daily", "Weekly", "Monthly"] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`flex items-center justify-between gap-2.5 text-[11px] font-Inter font-bold py-1.5 px-3 rounded-lg border transition-all cursor-pointer uppercase tracking-wider focus:outline-none ${
+          isOpen
+            ? "bg-[#862334] text-white border-[#862334] ring-2 ring-[#862334]/20 shadow-xs"
+            : "bg-white text-[#862334] border-[#862334]/30 hover:bg-[#862334]/10"
+        }`}
+      >
+        <span>{value}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${
+            isOpen ? "rotate-180 text-white" : "text-[#862334]"
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-1.5 w-36 bg-white border border-[#862334]/25 rounded-xl shadow-lg z-50 py-1 overflow-hidden font-Inter">
+          {options.map((option) => {
+            const isSelected = value === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  onChange(option);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider flex items-center justify-between transition-colors cursor-pointer ${
+                  isSelected
+                    ? "bg-[#862334] text-white"
+                    : "text-[#862334] hover:bg-[#862334]/10"
+                }`}
+              >
+                <span>{option}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// ANIMATED COUNT-UP NUMBER HELPER COMPONENT
+// ----------------------------------------------------------------------
+function CountUpNumber({ value, duration = 1000, prefix = "", suffix = "", decimals = 0 }) {
+  const [currentValue, setCurrentValue] = useState(0);
+  const shownRef = useRef(0); // what is on screen right now
+
+  useEffect(() => {
+    let target = 0;
+    if (typeof value === "number") {
+      target = value;
+    } else if (typeof value === "string") {
+      const parsed = parseFloat(value.replace(/[^0-9.-]/g, ""));
+      target = isNaN(parsed) ? 0 : parsed;
+    }
+
+    let startTimestamp = null;
+    // First render counts up from 0; later live updates animate from the old value.
+    const startValue = shownRef.current;
+
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const easeOutProgress = 1 - Math.pow(1 - progress, 3);
+      const val = startValue + (target - startValue) * easeOutProgress;
+
+      shownRef.current = val;
+      setCurrentValue(val);
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+
+    const animId = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(animId);
+  }, [value, duration]);
+
+  const formattedNumber =
+    decimals > 0
+      ? currentValue.toLocaleString(undefined, {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        })
+      : Math.round(currentValue).toLocaleString();
+
+  return (
+    <span>
+      {prefix}
+      {formattedNumber}
+      {suffix}
+    </span>
+  );
+}
 
 // 1. Interview Volume Area Chart
 function InterviewVolumeAreaChart({ data = [], reportType }) {
@@ -103,7 +222,7 @@ function InterviewVolumeAreaChart({ data = [], reportType }) {
 }
 
 // 2. Active Users Donut Gauge Chart
-function RadialDonutUsersChart({ segments = [], total }) {
+function RadialDonutUsersChart({ segments = [], total, reportType }) {
   const data = useMemo(
     () =>
       segments.map((segment, index) => ({
@@ -150,10 +269,10 @@ function RadialDonutUsersChart({ segments = [], total }) {
 
         <div className="absolute flex flex-col items-center justify-center text-center">
           <span className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-            {totalUsers.toLocaleString()}
+            <CountUpNumber value={totalUsers} duration={800} />
           </span>
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            Active Users
+            {reportType} Users
           </span>
         </div>
       </div>
@@ -286,7 +405,7 @@ export default function SystemReport() {
     let debounceTimer = null;
     const refreshSoon = () => {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(loadReport, 700); // batch bursts of changes
+      debounceTimer = setTimeout(loadReport, 700);
     };
 
     const channel = supabase
@@ -317,17 +436,23 @@ export default function SystemReport() {
   }, [location.pathname]);
 
   const summary = report?.summary;
-  const placeholder = report ? null : isLoadingReport ? "…" : "—";
-  const kpi = {
-    total: placeholder ?? (summary?.total_interviews ?? 0).toLocaleString(),
-    performance:
-      placeholder ??
-      (summary?.average_performance != null ? `${summary.average_performance}%` : "—"),
-    active: placeholder ?? (summary?.active_users ?? 0).toLocaleString(),
-    daily: placeholder ?? (summary?.daily_users ?? 0).toLocaleString(),
-  };
   const volumeData = report?.interview_volume?.[interviewReportType.toLowerCase()] ?? [];
-  const donut = report?.user_activity?.[userTrendType.toLowerCase()];
+
+  // Supports Daily, Weekly, and Monthly user activity in the right-side donut chart
+  const donut = useMemo(() => {
+    const key = userTrendType.toLowerCase();
+    if (report?.user_activity?.[key]) {
+      return report.user_activity[key];
+    }
+    if (key === "daily") {
+      const dailyCount = summary?.daily_users ?? 0;
+      return {
+        total: dailyCount,
+        segments: [{ name: "Active Today", value: dailyCount }],
+      };
+    }
+    return { total: 0, segments: [] };
+  }, [report, userTrendType, summary]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -474,7 +599,7 @@ export default function SystemReport() {
                       }`}
                     />
                     <span
-                      className={`text-xs tracking-tight ${
+                      className={`text-[11px] tracking-tight ${
                         isSolidActive
                           ? "font-bold text-white"
                           : "font-medium text-[#862334]"
@@ -493,7 +618,7 @@ export default function SystemReport() {
         <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
             <div className="px-8 sm:px-12 md:px-16 lg:px-20 py-8 space-y-8 w-full">
-              
+
               {/* Live status bar */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -518,134 +643,142 @@ export default function SystemReport() {
                 </div>
               )}
 
-              {/* Minimalist Top KPI Row (Maroon Top Accent Border) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {/* Minimalist Top KPI Row */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
-                {/* Total Interviews */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-[#862334]">
-                      Total Interviews
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
+                {/* 1. Total Interviews */}
+                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                        Total Interviews
+                      </span>
+                      <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                        {!report && isLoadingReport ? (
+                          "…"
+                        ) : !report ? (
+                          "—"
+                        ) : (
+                          <CountUpNumber value={summary?.total_interviews ?? 0} />
+                        )}
+                      </h3>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                       <Mic className="w-4 h-4" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    {kpi.total}
-                  </h3>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold mt-3 font-Inter">
+                    <span className="text-emerald-600 font-semibold">All-Time</span>
+                    <span className="text-gray-500 font-semibold tracking-wider text-xs">
+                      Completed Sessions
+                    </span>
+                  </div>
                 </div>
 
-                {/* Avg. Performance */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-[#862334]">
-                      Avg. Performance
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
+                {/* 2. Avg. Performance */}
+                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                        Avg. Performance
+                      </span>
+                      <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                        {!report && isLoadingReport ? (
+                          "…"
+                        ) : summary?.average_performance == null ? (
+                          "—"
+                        ) : (
+                          <CountUpNumber
+                            value={summary.average_performance}
+                            suffix="%"
+                            decimals={Number.isInteger(summary.average_performance) ? 0 : 1}
+                          />
+                        )}
+                      </h3>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                       <FileBarChart className="w-4 h-4" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    {kpi.performance}
-                  </h3>
+                  <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
+                    <span>
+                      Target Benchmark <span className="text-emerald-600">70%+</span>
+                    </span>
+                  </div>
                 </div>
 
-                {/* Active Users */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-[#862334]">
-                      Active Users
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
+                {/* 3. Active Users */}
+                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                        Active Users
+                      </span>
+                      <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                        {!report && isLoadingReport ? (
+                          "…"
+                        ) : !report ? (
+                          "—"
+                        ) : (
+                          <CountUpNumber value={summary?.active_users ?? 0} />
+                        )}
+                      </h3>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                       <TrendingUp className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="flex flex-col gap-0.5">
-                    <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                      {kpi.active}
-                    </h3>
-                    <span className="text-[11px] font-medium text-gray-400">Last 30 days</span>
-                  </div>
-                </div>
-
-                {/* Daily Users */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-[#862334]">
-                      Daily Users
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                      {kpi.daily}
-                    </h3>
-                    <span className="text-[11px] font-medium text-gray-400">Today</span>
+                  <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
+                    <span>
+                      <span className="text-emerald-600">{summary?.daily_users ?? 0}</span> Active Today • Last 30 Days
+                    </span>
                   </div>
                 </div>
 
               </div>
 
-              {/* Side-by-Side Analytics Section (Static Subtle Maroon Border Containers) */}
+              {/* Side-by-Side Analytics Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
 
                 {/* CHART 1: Interview Volume (Left Container) */}
-                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] overflow-hidden flex flex-col">
-                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20">
+                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col">
+                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20 rounded-t-2xl">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#862334]" />
                       <h3 className="text-base font-bold font-[Geist,Inter] text-slate-900 tracking-tight">
                         {interviewReportType} Interview Volume
                       </h3>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="relative group">
-                        <select
-                          value={interviewReportType}
-                          onChange={(e) => setInterviewReportType(e.target.value)}
-                          className="appearance-none bg-white text-[#862334] text-[11px] font-Inter font-bold py-1.5 px-3 pr-8 rounded-lg border border-[#862334]/30 focus:outline-none focus:ring-1 focus:ring-[#862334] cursor-pointer uppercase tracking-wider transition-all hover:bg-rose-50/50"
-                        >
-                          <option value="Daily">Daily</option>
-                          <option value="Weekly">Weekly</option>
-                          <option value="Monthly">Monthly</option>
-                        </select>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#862334] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
+                    <MaroonDropdown
+                      value={interviewReportType}
+                      onChange={setInterviewReportType}
+                    />
                   </div>
                   <div className="p-6">
                     <InterviewVolumeAreaChart data={volumeData} reportType={interviewReportType} />
                   </div>
                 </div>
 
-                {/* CHART 2: Active Users Donut (Right Container) */}
-                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] overflow-hidden flex flex-col">
-                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20">
+                {/* CHART 2: Users Breakdown Donut (Right Container with Daily, Weekly, Monthly) */}
+                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col">
+                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20 rounded-t-2xl">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#FFB003]" />
                       <h3 className="text-base font-bold font-[Geist,Inter] text-slate-900 tracking-tight">
                         {userTrendType} Users
                       </h3>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="relative group">
-                        <select
-                          value={userTrendType}
-                          onChange={(e) => setUserTrendType(e.target.value)}
-                          className="appearance-none bg-white text-[#862334] text-[11px] font-Inter font-bold py-1.5 px-3 pr-8 rounded-lg border border-[#862334]/30 focus:outline-none focus:ring-1 focus:ring-[#862334] cursor-pointer uppercase tracking-wider transition-all hover:bg-rose-50/50"
-                        >
-                          <option value="Weekly">Weekly</option>
-                          <option value="Monthly">Monthly</option>
-                        </select>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#862334] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
+                    <MaroonDropdown
+                      value={userTrendType}
+                      onChange={setUserTrendType}
+                    />
                   </div>
                   <div className="p-6">
-                    <RadialDonutUsersChart segments={donut?.segments} total={donut?.total} />
+                    <RadialDonutUsersChart
+                      segments={donut?.segments}
+                      total={donut?.total}
+                      reportType={userTrendType}
+                    />
                   </div>
                 </div>
 
