@@ -5,7 +5,6 @@ import {
   BarChart3,
   X,
   Mail,
-  Bot,
   Search,
   Download,
   CheckCircle2,
@@ -622,9 +621,28 @@ export default function StaffStatistics() {
     };
   }, [selectedSection]);
 
-  const filteredStudents = students.filter((student) =>
-    (student?.name || "").toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Student number = the part of the UB mail before "@ub.edu.ph".
+  const getStudentNumber = (student) => {
+    if (student?.student_number) return String(student.student_number);
+    const mail = String(student?.email || "");
+    return mail.toLowerCase().endsWith("@ub.edu.ph") ? mail.split("@")[0] : "";
+  };
+
+  // Ignore case, dashes and spaces so "2021-12345" finds "202112345" and vice versa.
+  const compact = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const matchesSearch = (student, query) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const qCompact = compact(q);
+    return (
+      (student?.name || "").toLowerCase().includes(q) ||
+      (student?.email || "").toLowerCase().includes(q) ||
+      (qCompact !== "" && compact(getStudentNumber(student)).includes(qCompact))
+    );
+  };
+
+  const filteredStudents = students.filter((student) => matchesSearch(student, searchQuery));
 
   const handleSelectStudent = (student) => {
     if (!student) return;
@@ -1363,7 +1381,7 @@ export default function StaffStatistics() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onFocus={() => setIsSearchFocused(true)}
-                        placeholder="Search Students"
+                        placeholder="Search by name or student number"
                         className="w-full bg-[#FDFBF7] border border-[#EAE5D9] text-gray-900 pl-10 pr-4 py-2 text-xs font-Inter rounded-xl outline-none focus:border-[#862334] focus:ring-1 focus:ring-[#862334] transition-all shadow-2xs"
                       />
                       {searchQuery && (
@@ -1401,6 +1419,11 @@ export default function StaffStatistics() {
                                 )}
                                 <div>
                                   <p className="text-xs font-bold text-gray-900 font-Geist">{student.name}</p>
+                                  {getStudentNumber(student) && (
+                                    <p className="text-xs font-semibold text-[#862334] font-Inter">
+                                      {getStudentNumber(student)}
+                                    </p>
+                                  )}
                                   <p className="text-xs text-gray-500 font-Inter font-normal">
                                     {(Array.isArray(student.enrollments) ? student.enrollments : [])
                                       .map((e) => e.course_code || e.course_title || e.section)
@@ -1445,6 +1468,11 @@ export default function StaffStatistics() {
                             <h3 className="font-Geist text-2xl font-bold text-gray-900 tracking-tight">
                               {selectedStudent.name}
                             </h3>
+                            {getStudentNumber(selectedStudent) && (
+                              <span className="px-2.5 py-1 rounded-full bg-[#862334]/10 text-[#862334] text-xs font-semibold font-Inter">
+                                {getStudentNumber(selectedStudent)}
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-4 mt-2">
@@ -1558,23 +1586,6 @@ export default function StaffStatistics() {
                     </div>
                     <RadarChartComponent data={selectedStudent.latestRadarData || selectedStudent.radarData || []} />
                   </div>
-                </div>
-              )}
-
-              {/* AI Feedback Analysis */}
-              {selectedStudent && (
-                <div className="bg-gradient-to-r from-[#862334]/5 via-[#FDFBF7] to-[#ffb003]/5 rounded-2xl border border-[#862334]/20 p-6 print-card shadow-2xs">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#862334] text-white shadow-xs">
-                      <Bot className="w-4 h-4" />
-                    </div>
-                    <h3 className="text-[#862334] font-Geist font-bold text-md">
-                      AI Feedback Analysis for {selectedStudent.name}
-                    </h3>
-                  </div>
-                  <p className="text-black/90 font-Inter text-sm leading-relaxed">
-                    {selectedStudent.aiCritique || "No AI feedback report available for this student yet."}
-                  </p>
                 </div>
               )}
 
