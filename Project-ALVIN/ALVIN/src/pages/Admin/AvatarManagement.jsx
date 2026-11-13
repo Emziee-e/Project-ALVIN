@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Users,
   FileBarChart,
@@ -7,6 +7,7 @@ import {
   CheckCircle,
   Plus,
   Trash2,
+  Pencil,
   User,
   X,
   Mail,
@@ -46,6 +47,17 @@ export default function AvatarManagement() {
     voice: "",
   });
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+  const [avatarBeingEdited, setAvatarBeingEdited] = useState(null);
+  const [editForm, setEditForm] = useState({
+    avatar_name: "",
+    avatar_id: "",
+    avatar_image: "",
+    voice: "",
+  });
+  const [editError, setEditError] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -114,6 +126,14 @@ export default function AvatarManagement() {
     }
   }, [location.pathname]);
 
+  const showToast = useCallback((message) => {
+    clearTimeout(toastTimerRef.current);
+    setToast({ message, id: Date.now() });
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  useEffect(() => () => clearTimeout(toastTimerRef.current), []);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/");
@@ -158,7 +178,18 @@ export default function AvatarManagement() {
     setAvatarError("");
     try {
       const avatars = await apiRequest("/api/admin/avatars");
-      setModels(Array.isArray(avatars) ? avatars.map(mapAvatar) : []);
+      setModels(
+        Array.isArray(avatars)
+          ? avatars
+              .map(mapAvatar)
+              .sort((a, b) =>
+                (a.name || "").localeCompare(b.name || "", undefined, {
+                  sensitivity: "base",
+                  numeric: true,
+                })
+              )
+          : []
+      );
     } catch (error) {
       console.error("Unable to load avatars:", error);
       setAvatarError(error.message || "Unable to load avatars.");
@@ -192,6 +223,7 @@ export default function AvatarManagement() {
     setIsSavingAvatar(true);
     setAvatarError("");
     try {
+      const addedName = avatarForm.avatar_name.trim();
       await apiRequest("/api/admin/avatars", {
         method: "POST",
         body: JSON.stringify(avatarForm),
@@ -199,6 +231,7 @@ export default function AvatarManagement() {
       setAvatarForm({ avatar_name: "", avatar_id: "", avatar_image: "", voice: "" });
       setIsAvatarFormOpen(false);
       await loadAvatars();
+      showToast(`Avatar "${addedName}" was added successfully.`);
     } catch (error) {
       console.error("Unable to add avatar:", error);
       setAvatarError(error.message || "Unable to add avatar.");
@@ -224,10 +257,12 @@ export default function AvatarManagement() {
           method: "DELETE",
         }
       );
+      const deletedName = avatarPendingDeletion.name;
       setModels((prev) =>
         prev.filter((item) => item.id !== avatarPendingDeletion.id)
       );
       setAvatarPendingDeletion(null);
+      showToast(`Avatar "${deletedName}" was deleted.`);
     } catch (error) {
       console.error("Unable to delete avatar:", error);
       setAvatarError(error.message || "Unable to delete avatar.");
@@ -238,34 +273,108 @@ export default function AvatarManagement() {
     setIsVoiceModalOpen(false);
   };
 
-  const handleAvatarImageChange = (event) => {
+  // Validates an image file and returns it as a data URL via onLoaded.
+  const readAvatarImage = (event, onLoaded, onError) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setAvatarError("Please select an image file.");
+      onError("Please select an image file.");
       event.target.value = "";
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setAvatarError("Avatar images must be 5 MB or smaller.");
+      onError("Avatar images must be 5 MB or smaller.");
       event.target.value = "";
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
-      setAvatarForm((current) => ({
-        ...current,
-        avatar_image: typeof reader.result === "string" ? reader.result : "",
-      }));
+      onLoaded(typeof reader.result === "string" ? reader.result : "");
     };
     reader.onerror = () => {
-      setAvatarError("Unable to read the avatar image.");
+      onError("Unable to read the avatar image.");
       event.target.value = "";
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleAvatarImageChange = (event) => {
+    readAvatarImage(
+      event,
+      (dataUrl) => setAvatarForm((current) => ({ ...current, avatar_image: dataUrl })),
+      setAvatarError
+    );
+  };
+
+  const handleEditImageChange = (event) => {
+    setEditError("");
+    readAvatarImage(
+      event,
+      (dataUrl) => setEditForm((current) => ({ ...current, avatar_image: dataUrl })),
+      setEditError
+    );
+  };
+
+  const openEditModal = (model) => {
+    setEditError("");
+    setEditForm({
+      avatar_name: model.name,
+      avatar_id: model.avatar_id,
+      avatar_image: "", // empty = keep the current thumbnail
+      voice: model.voice || "",
+    });
+    setAvatarBeingEdited(model);
+  };
+
+  const closeEditModal = () => {
+    if (isSavingEdit) return;
+    setAvatarBeingEdited(null);
+    setEditError("");
+  };
+
+  const saveAvatarEdit = async (event) => {
+    event.preventDefault();
+    if (!avatarBeingEdited) return;
+
+    const name = editForm.avatar_name.trim();
+    const newId = editForm.avatar_id.trim();
+    if (!name || !newId) {
+      setEditError("Avatar name and avatar ID are required.");
+      return;
+    }
+
+    // Only send what actually changed.
+    const body = {};
+    if (name !== avatarBeingEdited.name) body.avatar_name = name;
+    if (newId !== avatarBeingEdited.avatar_id) body.avatar_id = newId;
+    if (editForm.avatar_image) body.avatar_image = editForm.avatar_image;
+    const newVoice = editForm.voice.trim();
+    if (newVoice !== (avatarBeingEdited.voice || "")) body.voice = newVoice; // "" clears it
+
+    if (Object.keys(body).length === 0) {
+      setAvatarBeingEdited(null);
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError("");
+    try {
+      await apiRequest(
+        `/api/admin/avatars/${encodeURIComponent(avatarBeingEdited.avatar_id)}`,
+        { method: "PATCH", body: JSON.stringify(body) }
+      );
+      setAvatarBeingEdited(null);
+      await loadAvatars();
+      showToast(`Avatar "${name}" was updated successfully.`);
+    } catch (error) {
+      console.error("Unable to update avatar:", error);
+      setEditError(error.message || "Unable to update avatar.");
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   const selected = models.find((m) => m.selected);
@@ -288,6 +397,29 @@ export default function AvatarManagement() {
           isOpen={isVoiceModalOpen}
           onClose={closeVoiceModal}
         />
+
+        {/* Confirmation toast (bottom of the screen) */}
+        {toast && (
+          <div
+            key={toast.id}
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-6 right-6 z-[1100] flex max-w-[90vw] items-center gap-3 rounded-2xl border border-[#862334]/20 bg-white px-5 py-3.5 shadow-[0_12px_40px_rgba(134,35,52,0.25)]"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#862334] text-white">
+              <CheckCircle className="h-5 w-5" />
+            </span>
+            <p className="text-sm font-semibold text-slate-800">{toast.message}</p>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="ml-1 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Dismiss notification"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* Delete Confirmation Modal */}
         {avatarPendingDeletion && (
@@ -342,6 +474,140 @@ export default function AvatarManagement() {
                 </button>
               </div>
             </section>
+          </div>
+        )}
+
+        {/* Edit Avatar Modal */}
+        {avatarBeingEdited && (
+          <div
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-avatar-title"
+            onClick={closeEditModal}
+          >
+            <form
+              className="relative w-full max-w-md space-y-5 rounded-[28px] bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.24)]"
+              onSubmit={saveAvatarEdit}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close edit avatar dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div>
+                <h2 id="edit-avatar-title" className="text-xl font-bold text-slate-900">
+                  Edit Avatar
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Update the details for {avatarBeingEdited.name}.
+                </p>
+              </div>
+
+              {editError && (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {editError}
+                </p>
+              )}
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Avatar Name</span>
+                <input
+                  required
+                  value={editForm.avatar_name}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      avatar_name: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
+                  placeholder="e.g. Tristan"
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Avatar Thumbnail</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleEditImageChange}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#862334]/10 file:px-3 file:py-2 file:font-semibold file:text-[#862334] hover:file:bg-[#862334]/15"
+                />
+                <img
+                  src={editForm.avatar_image || avatarBeingEdited.image}
+                  alt="Avatar thumbnail preview"
+                  className="h-24 w-full rounded-xl object-cover"
+                />
+                <span className="block text-xs text-slate-500">
+                  {editForm.avatar_image
+                    ? "New thumbnail selected. It will replace the current one when you save."
+                    : "Leave empty to keep the current thumbnail."}
+                </span>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Avatar ID</span>
+                <input
+                  required
+                  value={editForm.avatar_id}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      avatar_id: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
+                  placeholder="NavTalk avatar ID"
+                />
+                <span className="block text-xs text-slate-500">
+                  Only change this to match the ID shown in the NavTalk Avatars
+                  Dashboard. A wrong ID will stop interviews from starting with
+                  this avatar.
+                </span>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Voice</span>
+                <input
+                  value={editForm.voice}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      voice: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
+                  placeholder="e.g. marin"
+                />
+                <span className="block text-xs text-slate-500">
+                  Enter the voice set for this avatar in the NavTalk Console so
+                  it stays the same throughout the interview.
+                </span>
+              </label>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  disabled={isSavingEdit}
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="rounded-xl bg-maroon px-4 py-3 text-sm font-semibold text-white hover:bg-[#862334] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingEdit ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
           </div>
         )}
 
@@ -612,7 +878,7 @@ export default function AvatarManagement() {
                       }`}
                     />
                     <span
-                      className={`text-[11px] tracking-tight ${
+                      className={`text-xs tracking-tight ${
                         isSolidActive
                           ? "font-bold text-white"
                           : "font-medium text-[#862334]"
@@ -728,16 +994,27 @@ export default function AvatarManagement() {
                         >
                           Select for Session
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => requestDeleteModel(model)}
-                          disabled={model.selected}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          title={model.selected ? "Select another avatar before deleting this avatar" : "Delete avatar"}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete Avatar
-                        </button>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(model)}
+                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#862334]/30 px-4 py-3 text-sm font-semibold text-[#862334] transition-colors hover:bg-[#862334]/10 cursor-pointer"
+                            title="Edit avatar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => requestDeleteModel(model)}
+                            disabled={model.selected}
+                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            title={model.selected ? "Select another avatar before deleting this avatar" : "Delete avatar"}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     </article>
                   ))}

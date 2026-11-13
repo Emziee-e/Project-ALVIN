@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, MessageSquare, BarChart3, Code2, Shield, Check } from "lucide-react";
+import { Brain, MessageSquare, BarChart3, Briefcase, Shield, Check } from "lucide-react";
 import { useInView } from "../../lib/useInView";
 
 const features = [
@@ -7,31 +7,31 @@ const features = [
     icon: Brain,
     title: "AI-Powered Feedback",
     description:
-      "Real-time technical analysis evaluating your software engineering answers, system design rationale, and code explanations.",
+      "Real-time evaluation analyzing your communication clarity, structured problem-solving, and answer depth across any career track.",
   },
   {
     icon: MessageSquare,
-    title: "Dynamic Tech Interviews",
+    title: "Dynamic Interviewing",
     description:
-      "Simulate real technical screeners with adaptive follow-up questions on algorithms, scalability, and edge cases.",
+      "Simulate real panel and recruiter screeners with adaptive follow-up questions tailored to your target industry.",
   },
   {
     icon: BarChart3,
-    title: "Technical Readiness",
+    title: "Interview Readiness",
     description:
-      "Track your readiness score across data structures, system design, and behavioral tech questions.",
+      "Track your comprehensive performance score across behavioral scenarios, domain knowledge, and leadership readiness.",
   },
   {
-    icon: Code2,
-    title: "Software Role Prep",
+    icon: Briefcase,
+    title: "Role-Specific Prep",
     description:
-      "Practice with questions curated specifically for modern software engineering and developer tracks.",
+      "Practice with thousands of curated interview questions built for diverse corporate, technical, and creative fields.",
   },
   {
     icon: Shield,
     title: "Judgment-Free Zone",
     description:
-      "Practice technical concepts and fail safely before facing actual engineering managers and interviewers.",
+      "Build confidence and refine your pitch in a stress-free environment before meeting actual hiring managers.",
   },
 ];
 
@@ -77,11 +77,11 @@ export function Features() {
 
             <div className="mt-6 bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl p-3.5 font-mono text-[11px] space-y-2">
               <div className="flex justify-between items-center text-[#862334] font-bold">
-                <span>CODE ANALYSIS · ACTIVE</span>
-                <span className="bg-[#862334]/10 px-2 py-0.5 rounded text-[10px]">94% ACCURACY</span>
+                <span>SPEECH & CONTENT ANALYSIS · ACTIVE</span>
+                <span className="bg-[#862334]/10 px-2 py-0.5 rounded text-[10px]">96% ACCURACY</span>
               </div>
               <div className="bg-white p-2.5 rounded-lg border border-gray-200 text-gray-700 font-sans text-xs shadow-2xs">
-                "Good runtime complexity explanation. Remember to account for cache invalidation."
+                "Strong use of the STAR method! Consider highlighting measurable outcomes in your team leadership example."
               </div>
             </div>
           </div>
@@ -102,7 +102,7 @@ export function Features() {
 
             <div className="mt-6 border-l-2 border-[#862334] bg-[#FDFBF7] p-3 rounded-r-xl border-y border-r border-[#EAE5D9] space-y-1 text-[11px] font-mono">
               <span className="text-[#862334] font-bold block">Follow-up Generated:</span>
-              <p className="text-gray-600 italic">"How would this database design scale under 100k writes/sec?"</p>
+              <p className="text-gray-600 italic">"How did you resolve conflict when project priorities shifted under tight deadlines?"</p>
             </div>
           </div>
 
@@ -120,30 +120,29 @@ export function Features() {
               </p>
             </div>
 
-            {/* Richer progress visual to fill vertical space nicely */}
             <div className="mt-6 bg-[#FDFBF7] border border-[#EAE5D9] p-3 rounded-xl space-y-2.5 font-mono text-xs">
               <div className="flex justify-between items-center">
-                <span className="text-gray-600 font-semibold text-[11px]">System Design</span>
-                <span className="text-[#862334] font-bold text-[11px]">92%</span>
+                <span className="text-gray-600 font-semibold text-[11px]">Behavioral & STAR</span>
+                <span className="text-[#862334] font-bold text-[11px]">94%</span>
               </div>
               <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-[#862334] h-full w-[92%]" />
+                <div className="bg-[#862334] h-full w-[94%]" />
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-gray-200/60">
-                <span className="text-gray-600 font-semibold text-[11px]">Algorithms</span>
-                <span className="text-[#862334] font-bold text-[11px]">84%</span>
+                <span className="text-gray-600 font-semibold text-[11px]">Domain Knowledge</span>
+                <span className="text-[#862334] font-bold text-[11px]">88%</span>
               </div>
               <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-[#862334] h-full w-[84%]" />
+                <div className="bg-[#862334] h-full w-[88%]" />
               </div>
             </div>
           </div>
 
-          {/* Feature 4: Tech-Specific Prep */}
+          {/* Feature 4: Role-Specific Prep */}
           <div className={`md:col-span-4 bg-white border border-[#EAE5D9] rounded-2xl p-6 shadow-xs flex flex-col justify-between hover:border-[#862334]/30 transition-all duration-500 delay-200 ${isInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
             <div className="space-y-2">
               <div className="w-10 h-10 rounded-xl bg-[#862334]/10 text-[#862334] flex items-center justify-center mb-4">
-                <Code2 className="w-5 h-5" />
+                <Briefcase className="w-5 h-5" />
               </div>
               <h3 className="font-Geist text-xl font-bold text-[#111827]">
                 {features[3].title}
@@ -157,17 +156,17 @@ export function Features() {
               <div className="bg-[#862334] text-white px-3 py-2 rounded-xl flex items-center justify-between font-semibold shadow-2xs">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>Frontend & React</span>
+                  <span>Business & Management</span>
                 </div>
-                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">350+ Qs</span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">450+ Qs</span>
               </div>
               <div className="bg-[#FDFBF7] border border-[#EAE5D9] text-gray-700 px-3 py-2 rounded-xl flex items-center justify-between">
-                <span>Backend & Node.js</span>
-                <span className="text-[10px] text-gray-400">280+ Qs</span>
+                <span>Healthcare & Sciences</span>
+                <span className="text-[10px] text-gray-400">320+ Qs</span>
               </div>
               <div className="bg-[#FDFBF7] border border-[#EAE5D9] text-gray-700 px-3 py-2 rounded-xl flex items-center justify-between opacity-60">
-                <span>System Design</span>
-                <span className="text-[10px] text-gray-400">190+ Qs</span>
+                <span>Tech & Engineering</span>
+                <span className="text-[10px] text-gray-400">500+ Qs</span>
               </div>
             </div>
           </div>
@@ -186,7 +185,6 @@ export function Features() {
               </p>
             </div>
 
-            {/* Richer security card filling vertical space equal to adjacent cards */}
             <div className="mt-6 space-y-2 bg-[#FDFBF7] border border-[#EAE5D9] p-3 rounded-xl font-mono text-[11px]">
               <div className="flex items-center gap-2 text-[#862334]">
                 <Check className="w-4 h-4 flex-shrink-0" />

@@ -108,7 +108,7 @@ export default function StaffDashboard() {
 
   const [publishedCourses, setPublishedCourses] = useState([]);
   const [concludedCourses, setConcludedCourses] = useState([]);
-  const [coursesLoading, setCoursesLoading] = useState(true); 
+  const [coursesLoading, setCoursesLoading] = useState(true);
   const [restoringCourse, setRestoringCourse] = useState(
     location.pathname.includes("/staff/dashboard/course/")
   );
@@ -736,8 +736,8 @@ export default function StaffDashboard() {
         students = enrollmentRows.map(mapEnrollmentFromDatabase);
       }
 
-      const updatedCourse = { 
-        ...selectedCourse, 
+      const updatedCourse = {
+        ...selectedCourse,
         students,
         studentsCount: students.filter(s => s.status.toLowerCase() !== "dropped").length,
       };
@@ -858,7 +858,7 @@ export default function StaffDashboard() {
             <div className="flex items-center justify-between relative z-20">
               <div className="flex items-center gap-1.5 flex-wrap">
                 {course.section ? (
-                  <span className="bg-black/35 text-white font-mono font-semibold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-xs shadow-xs">
+                  <span className="bg-black/35 text-white font-Inter tracking-widest font-semibold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-xs shadow-xs">
                     {course.section}
                   </span>
                 ) : null}
@@ -969,7 +969,7 @@ export default function StaffDashboard() {
             </div>
 
             <div className="text-white relative z-10">
-              <span className="text-xs font-mono font-bold text-white/90 drop-shadow-xs">
+              <span className="text-xs font-Inter font-bold text-white/90 drop-shadow-xs">
                 {course.code}
               </span>
               <p className="text-[11px] text-white/80 truncate drop-shadow-xs">
@@ -1393,7 +1393,7 @@ export default function StaffDashboard() {
                     }`}
                   />
                   <span
-                    className={`text-[11px] tracking-tight ${
+                    className={`text-xs tracking-tight ${
                       isSolidActive
                         ? "font-bold text-white"
                         : "font-medium text-[#862334]"
@@ -1482,7 +1482,7 @@ export default function StaffDashboard() {
       </aside>
 
       {/* Main Workspace */}
-      <main className="flex-1 bg-white h-screen overflow-y-auto p-6 md:p-8">
+      <main className="flex-1 bg-[#F7F7F8] h-screen overflow-y-auto p-6 md:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
           {activeNav === "statistics" ? (
             <div className="space-y-6">
@@ -1556,7 +1556,7 @@ export default function StaffDashboard() {
                     <tbody className="divide-y divide-gray-100 text-sm">
                       {[...publishedCourses, ...concludedCourses].map((c) => (
                         <tr key={c.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-4 px-6 font-mono font-medium text-gray-700">{c.code}</td>
+                          <td className="py-4 px-6 font-Inter font-medium text-gray-700">{c.code}</td>
                           <td className="py-4 px-6 font-bold text-gray-900">{c.title}</td>
                           <td className="py-4 px-6 text-gray-600">{c.section || "N/A"}</td>
                           <td className="py-4 px-6 text-center">
@@ -1622,10 +1622,10 @@ export default function StaffDashboard() {
                       <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Search published courses..."
+                        placeholder="Search Published Courses..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-64 shadow-xs transition-all"
+                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-400 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-64 shadow-xs transition-all"
                       />
                     </div>
 
@@ -1643,10 +1643,10 @@ export default function StaffDashboard() {
                       <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Search student name or ID..."
+                        placeholder="Search Student Name or ID..."
                         value={studentSearch}
                         onChange={(e) => setStudentSearch(e.target.value)}
-                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-56 md:w-64 shadow-xs transition-all"
+                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-400 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-56 md:w-64 shadow-xs transition-all"
                       />
                     </div>
                     <button
@@ -1667,7 +1667,7 @@ export default function StaffDashboard() {
                         <h2 className="text-lg font-bold font-Geist text-gray-900">
                           Published Courses
                         </h2>
-                        <span className="bg-[#862334]/10 text-[#862334] text-xs font-mono font-bold px-2 py-0.5 rounded-full">
+                        <span className="bg-[#862334]/10 text-[#862334] text-xs font-Inter font-bold px-2 py-0.5 rounded-full">
                           {filteredCourses.length}
                         </span>
                       </div>
@@ -1693,7 +1693,7 @@ export default function StaffDashboard() {
                       <h2 className="text-lg font-bold font-Geist text-gray-900">
                         Concluded Courses
                       </h2>
-                      <span className="bg-gray-100 text-gray-600 text-xs font-mono font-bold px-2 py-0.5 rounded-full">
+                      <span className="bg-gray-100 text-gray-600 text-xs font-Inter font-bold px-2 py-0.5 rounded-full">
                         {filteredConcludedCourses.length}
                       </span>
                     </div>
@@ -1713,7 +1713,7 @@ export default function StaffDashboard() {
                 <div className="space-y-4">
                   <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                      <h3 className="font-bold text-gray-900 text-base">Student List</h3>
+                      <h3 className="font-semibold font-Inter text-gray-900 text-md">Student List</h3>
                       <span className="text-xs text-gray-500">
                         Showing {filteredStudents.length} of {selectedCourse.students?.length || 0} students
                       </span>
@@ -1722,7 +1722,7 @@ export default function StaffDashboard() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-semibold border-b border-gray-200">
+                          <tr className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase font-Inter border-b border-gray-200">
                             <th className="py-3.5 px-6">Student No.</th>
                             <th className="py-3.5 px-6">Student Name</th>
                             <th className="py-3.5 px-6">Email Address</th>
@@ -1733,10 +1733,10 @@ export default function StaffDashboard() {
                         <tbody className="divide-y divide-gray-100 text-sm">
                           {filteredStudents.map((student) => (
                             <tr key={student.id} className="hover:bg-rose-50/30 transition-colors">
-                              <td className="py-4 px-6 font-mono font-medium text-gray-700">{student.studentNo}</td>
-                              <td className="py-4 px-6 font-bold text-gray-900">{student.name}</td>
-                              <td className="py-4 px-6 text-gray-600">{student.email}</td>
-                              <td className="py-4 px-6 text-gray-500 text-xs">{student.dateJoined}</td>
+                              <td className="py-4 px-6 font-Inter font-medium text-gray-700">{student.studentNo}</td>
+                              <td className="py-4 px-6 font-Inter text-gray-700">{student.name}</td>
+                              <td className="py-4 px-6 font-Inter text-gray-700">{student.email}</td>
+                              <td className="py-4 px-6 font-Inter text-gray-700">{student.dateJoined}</td>
                               <td className="py-4 px-6 text-center">
                                 <div className="inline-flex">
                                   <button
