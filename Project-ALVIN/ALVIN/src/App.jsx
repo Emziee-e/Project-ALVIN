@@ -128,7 +128,7 @@ function App() {
     const loadProfile = async () => {
       try {
         const profileResult = await getProfileForUser(session.user)
-        const resolvedRole = profileResult?.role || 'student'
+        const resolvedRole = profileResult?.role || null
 
         if (isMounted) {
           setRole(resolvedRole)
@@ -136,7 +136,7 @@ function App() {
       } catch (error) {
         console.error('Error loading profile:', error)
         if (isMounted) {
-          setRole('student')
+          setRole(null)
         }
       } finally {
         if (isMounted) {

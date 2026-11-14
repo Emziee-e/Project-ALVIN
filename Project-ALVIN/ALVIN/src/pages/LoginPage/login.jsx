@@ -19,7 +19,7 @@ const Login = () => {
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${window.location.origin}/user/dashboard`,
+                redirectTo: `${window.location.origin}/login/users`,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent',
@@ -31,7 +31,7 @@ const Login = () => {
             console.error('Login error:', error.message);
             alert("Login failed: " + error.message);
         } else {
-            navigate('/user/dashboard');
+            navigate('/login/users');
         }
     };
 
