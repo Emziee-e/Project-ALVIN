@@ -43,6 +43,23 @@ const profileTables = [
   },
 ]
 
+const studentEmailPattern = /^\d+@ub\.edu\.ph$/i
+const careerAdvisorEmailPattern = /^[a-z]+(?:\.[a-z]+)+@ub\.edu\.ph$/i
+
+function getProfileTablesForEmail(email) {
+  const normalizedEmail = email?.trim() || ''
+
+  if (studentEmailPattern.test(normalizedEmail)) {
+    return [profileTables[0], profileTables[2], profileTables[1]]
+  }
+
+  if (careerAdvisorEmailPattern.test(normalizedEmail)) {
+    return [profileTables[0], profileTables[1], profileTables[2]]
+  }
+
+  return profileTables
+}
+
 /**
  * Find the profile/role belonging to the
  * currently authenticated Supabase user.
@@ -54,7 +71,7 @@ export async function getProfileForUser(user) {
 
   const authUserId = user.id
 
-  for (const { table, role, key } of profileTables) {
+  for (const { table, role, key } of getProfileTablesForEmail(user.email)) {
     const { data, error } = await supabase
       .from(table)
       .select('*')

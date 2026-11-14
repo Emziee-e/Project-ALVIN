@@ -365,6 +365,7 @@ export default function StaffStatistics() {
   const commentTimerRef = useRef(null);
 
   const [activeNav, setActiveNav] = useState("statistics");
+  const [navAnimKey, setNavAnimKey] = useState(0);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
 
@@ -763,6 +764,21 @@ export default function StaffStatistics() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white font-Inter relative">
       <style>{`
+        @keyframes itemFadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-item-in {
+          opacity: 0;
+          animation: itemFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
         @media print {
           @page {
             size: A4 portrait;
@@ -777,6 +793,12 @@ export default function StaffStatistics() {
             overflow: visible !important;
             height: auto !important;
             background: #FFFFFF !important;
+          }
+
+          .animate-item-in {
+            opacity: 1 !important;
+            transform: none !important;
+            animation: none !important;
           }
 
           #student-report-section, #student-report-section * {
@@ -966,7 +988,7 @@ export default function StaffStatistics() {
       </div>
 
       {/* Sidebar Navigation */}
-      <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-40 select-none h-screen no-print">
+      <aside className="w-[100px] bg-[#FDFBF7] border-r-1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 select-none h-screen z-50 relative">
         <div className="w-full flex flex-col items-center">
           <div
             className="mb-3 px-1 flex flex-col items-center cursor-pointer"
@@ -1005,6 +1027,7 @@ export default function StaffStatistics() {
                     } else {
                       setIsAccountOpen(false);
                       setActiveNav(item.id);
+                      setNavAnimKey((prev) => prev + 1);
                       if (item.path) navigate(item.path);
                     }
                   }}
@@ -1037,10 +1060,16 @@ export default function StaffStatistics() {
 
       {/* Main Container */}
       <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen font-Inter">
-        <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8">
+        <div
+          key={`${activeNav}-${selectedSection}-${navAnimKey}`}
+          className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8"
+        >
 
           {/* Section Header & Custom Dropdown */}
-          <div className="bg-white border border-[#EAE5D9] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
+          <div
+            style={{ animationDelay: "0ms" }}
+            className="animate-item-in bg-white border border-[#EAE5D9] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print"
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#862334]/10 text-[#862334] flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-5 h-5" />
@@ -1119,7 +1148,10 @@ export default function StaffStatistics() {
 
           {/* KPI Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "120ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1143,7 +1175,10 @@ export default function StaffStatistics() {
               </div>
             </div>
 
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "230ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1166,7 +1201,10 @@ export default function StaffStatistics() {
               </div>
             </div>
 
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "340ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1193,7 +1231,10 @@ export default function StaffStatistics() {
               </div>
             </div>
 
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "450ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1218,7 +1259,10 @@ export default function StaffStatistics() {
           </div>
 
           {/* Cohort Line Trend Graph */}
-          <div className="no-print">
+          <div
+            style={{ animationDelay: "540ms" }}
+            className="animate-item-in no-print"
+          >
             <div className="bg-white rounded-2xl border border-[#862334]/20 p-6 md:p-8 shadow-xs transition-all">
               <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EAE5D9] pb-5">
                 <div>
@@ -1352,7 +1396,10 @@ export default function StaffStatistics() {
           </div>
 
           {/* Detailed Printable Student Report */}
-          <div className="mb-12 font-Inter">
+          <div
+            style={{ animationDelay: "660ms" }}
+            className="animate-item-in mb-12 font-Inter"
+          >
             <div
               id="student-report-section"
               ref={printRef}
@@ -1558,9 +1605,15 @@ export default function StaffStatistics() {
 
               {/* Student Analytics Charts Section */}
               {selectedStudent && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print-card">
+                <div
+                  key={`charts-${selectedStudent.id}`}
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-6 print-card"
+                >
                   {/* Historical Line Chart */}
-                  <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0">
+                  <div
+                    style={{ animationDelay: "0ms" }}
+                    className="animate-item-in bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0"
+                  >
                     <div className="mb-4">
                       <h3 className="font-Geist text-base font-bold tracking-tight text-gray-900">
                         Performance Growth ({selectedStudent.name})
@@ -1573,7 +1626,10 @@ export default function StaffStatistics() {
                   </div>
 
                   {/* Skills Assessment Radar Chart */}
-                  <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0">
+                  <div
+                    style={{ animationDelay: "120ms" }}
+                    className="animate-item-in bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0"
+                  >
                     <div className="mb-4 flex items-center justify-between">
                       <div>
                         <h3 className="font-Geist text-base font-bold tracking-tight text-gray-900">
@@ -1591,7 +1647,11 @@ export default function StaffStatistics() {
 
               {/* Observations & Feedback Section */}
               {selectedStudent && (
-                <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 print-card font-Inter shadow-2xs">
+                <div
+                  key={`obs-${selectedStudent.id}`}
+                  style={{ animationDelay: "220ms" }}
+                  className="animate-item-in bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 print-card font-Inter shadow-2xs"
+                >
                   <div className="flex items-center justify-between mb-5">
                     <h3 className="font-Geist text-lg font-bold text-gray-900 tracking-tight">
                       Your Observations for {selectedStudent.name}

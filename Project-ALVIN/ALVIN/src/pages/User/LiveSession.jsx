@@ -606,6 +606,25 @@ function findClosestGeminiQuestion(spokenQuestion, roadmap) {
   return best;
 }
 
+// ALVIN's fixed closing line (see "Ending the Interview" in the backend prompt).
+const CLOSING_LINE =
+  "That concludes our interview. Thank you for your time, and best of luck.";
+
+// True when what ALVIN has said so far this turn (`spoken`) is clearly the start of the text
+// we expect him to say (`expected`), or a short lead-in followed by the start of it. This lets
+// the subtitle show the complete line at once instead of building it up word by word.
+function spokenMatchesExpected(spoken, expected) {
+  const said = compactForMatch(spoken);
+  const planned = compactForMatch(expected);
+  if (said.length < 12 || planned.length < 12) return false;
+
+  const at = said.indexOf(planned.slice(0, 12));
+  if (at < 0) return false;
+
+  const rest = said.slice(at);
+  return planned.startsWith(rest) || rest.startsWith(planned);
+}
+
 const CLOSING_REGEX =
   /(that concludes|this concludes|concludes (our|the) interview|end of (our|the) interview|interview is (now )?(complete|over|finished)|thank you for (your time|joining|coming)|best of luck|good luck)/i;
 
@@ -1158,6 +1177,11 @@ export default function LiveSession() {
     [avatarSubtitle]
   );
   const subtitleScrollRef = useRef(null);
+  // The full line ALVIN is expected to say this turn (known before he finishes saying it),
+  // whether it has been shown yet, and a line that must be shown for the very next turn.
+  const expectedSubtitleRef = useRef("");
+  const subtitleLockedRef = useRef(false);
+  const nextTurnSubtitleRef = useRef("");
   useEffect(() => {
     const el = subtitleScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -1951,6 +1975,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
         const spoken = `No problem, take your time. Let me put that a little more simply. ${simplified.replace(/"/g, "'")}`;
+        nextTurnSubtitleRef.current = spoken;
 
         ws.send(
           JSON.stringify({
@@ -3778,6 +3803,8 @@ After saying it, stop and wait for the candidate's answer.`,
             }
 
             case NavTalkMessageType.RESPONSE_AUDIO_TRANSCRIPT_DELTA: {
+              const isOpeningTurn =
+                q01TriggeredRef.current && !q01SpeechStartedRef.current;
               if (q01TriggeredRef.current && !q01SpeechStartedRef.current) {
                 q01SpeechStartedRef.current = true;
                 console.log("[Q01] ALVIN started speaking (transcript delta received).");
@@ -3800,6 +3827,32 @@ After saying it, stop and wait for the candidate's answer.`,
                     ...lastAlvinTurnRef.current,
                     finalized: false,
                   };
+
+                  // Work out the full line ALVIN is about to say so the subtitle can show
+                  // it at once: a line we told him to say, the opening greeting + Q01, or
+                  // the next roadmap question (or the fixed closing after the last one).
+                  subtitleLockedRef.current = false;
+                  let expectedLine = nextTurnSubtitleRef.current;
+                  nextTurnSubtitleRef.current = "";
+                  if (!expectedLine && isOpeningTurn) {
+                    expectedLine = q01SpeechTextRef.current;
+                  }
+                  if (!expectedLine) {
+                    const roadmap = parseGeminiRoadmap(navtalkAiPrompt);
+                    const current = compactForMatch(currentQuestionRef.current);
+                    const index = current
+                      ? roadmap.findIndex(
+                          (item) => compactForMatch(item.question) === current
+                        )
+                      : -1;
+                    if (index >= 0) {
+                      expectedLine =
+                        index + 1 < roadmap.length
+                          ? roadmap[index + 1].question
+                          : CLOSING_LINE;
+                    }
+                  }
+                  expectedSubtitleRef.current = expectedLine || "";
                 }
 
                 responseDeltasRef.current.push(deltaText);
@@ -3810,7 +3863,24 @@ After saying it, stop and wait for the candidate's answer.`,
                 responseTranscriptTextRef.current =
                   joinTranscriptDeltas(responseDeltasRef.current);
 
-                setAvatarSubtitle(responseTranscriptTextRef.current);
+                // Never type the subtitle out word by word.
+                const spokenSoFar = responseTranscriptTextRef.current;
+                const expectedLine = expectedSubtitleRef.current;
+                if (expectedLine && spokenMatchesExpected(spokenSoFar, expectedLine)) {
+                  // ALVIN is saying the planned line: show all of it immediately.
+                  if (!subtitleLockedRef.current) {
+                    subtitleLockedRef.current = true;
+                    setAvatarSubtitle(expectedLine);
+                  }
+                } else {
+                  subtitleLockedRef.current = false;
+                  const stillMightBeLeadIn =
+                    expectedLine && compactForMatch(spokenSoFar).length < 60;
+                  // Off-script or unplanned speech: update one finished sentence at a time.
+                  if (!stillMightBeLeadIn && /[.!?]["')\]]?\s*$/.test(spokenSoFar.trim())) {
+                    setAvatarSubtitle(spokenSoFar);
+                  }
+                }
               }
 
               break;
@@ -4002,6 +4072,8 @@ After saying it, stop and wait for the candidate's answer.`,
 
               responseTranscriptLengthRef.current = 0;
               responseTranscriptTextRef.current = "";
+              expectedSubtitleRef.current = "";
+              subtitleLockedRef.current = false;
 
               avatarSpeakingGateRef.current = true;
               waitForActualAvatarPlaybackEnd();

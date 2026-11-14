@@ -24,6 +24,8 @@ import {
   PauseCircle,
   PlayCircle,
   Pause,
+  Check,
+  ChevronDown,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
@@ -48,11 +50,19 @@ const navItems = [
   { id: "statistics", label: "Statistics", path: "/staff/statistics" },
 ];
 
+const SORT_OPTIONS = [
+  { id: "newest", label: "Date Created (Newest)" },
+  { id: "oldest", label: "Date Created (Oldest)" },
+  { id: "az", label: "Alphabetical (A – Z)" },
+  { id: "za", label: "Alphabetical (Z – A)" },
+];
+
 export default function StaffDashboard() {
   const location = useLocation();
   const navigate = useNavigate();
 
   const [activeNav, setActiveNav] = useState("dashboard");
+  const [navAnimKey, setNavAnimKey] = useState(0);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -92,6 +102,11 @@ export default function StaffDashboard() {
   const [activeMenuId, setActiveMenuId] = useState(null);
   const menuRef = useRef(null);
 
+  // Course sort/filter state
+  const [courseSort, setCourseSort] = useState("newest");
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedCourse, setSelectedCourse] = useState(null);
@@ -129,6 +144,9 @@ export default function StaffDashboard() {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setActiveMenuId(null);
+      }
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target)) {
+        setIsSortMenuOpen(false);
       }
       const clickedStudentTrigger = studentMenuTriggerRef.current?.contains(event.target);
       const clickedStudentMenu = studentMenuRef.current?.contains(event.target);
@@ -353,6 +371,7 @@ export default function StaffDashboard() {
     section: course.section || "",
     term: course.academic_term || "",
     status: course.course_status,
+    createdAt: course.created_at || null,
     is_interviews_paused: toBoolean(course.is_interviews_paused),
     color: course.course_color || "bg-[#862334]",
     imageUrl: course.course_image || null,
@@ -739,7 +758,7 @@ export default function StaffDashboard() {
       const updatedCourse = {
         ...selectedCourse,
         students,
-        studentsCount: students.filter(s => s.status.toLowerCase() !== "dropped").length,
+        studentsCount: students.filter((s) => s.status.toLowerCase() !== "dropped").length,
       };
 
       setSelectedCourse(updatedCourse);
@@ -785,6 +804,7 @@ export default function StaffDashboard() {
       };
 
       setSelectedCourse(courseWithStudents);
+      setNavAnimKey((prev) => prev + 1);
 
       setPublishedCourses((prev) =>
         prev.map((item) => (item.id === course.id ? courseWithStudents : item))
@@ -801,19 +821,57 @@ export default function StaffDashboard() {
     }
   };
 
-  const filteredCourses = publishedCourses.filter(
-    (course) =>
-      course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (course.section && course.section.toLowerCase().includes(searchQuery.toLowerCase()))
+  const sortCourses = (list) => {
+    const items = [...list];
+    switch (courseSort) {
+      case "az":
+        return items.sort((a, b) =>
+          (a.title || "").localeCompare(b.title || "", undefined, {
+            sensitivity: "base",
+          })
+        );
+      case "za":
+        return items.sort((a, b) =>
+          (b.title || "").localeCompare(a.title || "", undefined, {
+            sensitivity: "base",
+          })
+        );
+      case "oldest":
+        return items.sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeA - timeB;
+        });
+      case "newest":
+      default:
+        return items.sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
+        });
+    }
+  };
+
+  const filteredCourses = sortCourses(
+    publishedCourses.filter(
+      (course) =>
+        course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (course.section && course.section.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
   );
 
-  const filteredConcludedCourses = concludedCourses.filter(
-    (course) =>
-      course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (course.section && course.section.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredConcludedCourses = sortCourses(
+    concludedCourses.filter(
+      (course) =>
+        course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (course.section && course.section.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
   );
+
+  const activeSortLabel =
+    SORT_OPTIONS.find((opt) => opt.id === courseSort)?.label || "Date Created (Newest)";
 
   const filteredStudents = (selectedCourse?.students || []).filter(
     (s) =>
@@ -827,7 +885,7 @@ export default function StaffDashboard() {
     0
   );
 
-  const renderCourseCard = (course, isConcluded = false) => {
+  const renderCourseCard = (course, isConcluded = false, index = 0) => {
     const courseImg = course.imageUrl || course.image;
     const isMenuOpen = activeMenuId === course.id;
     const isPaused = course.is_interviews_paused;
@@ -835,7 +893,8 @@ export default function StaffDashboard() {
     return (
       <div
         key={course.id}
-        className="bg-white border border-gray-200 rounded-2xl shadow-xs hover:shadow-md transition-all group flex flex-col justify-between relative"
+        style={{ animationDelay: `${Math.min(index * 110, 900)}ms` }}
+        className="animate-item-in bg-white border border-gray-200 rounded-2xl shadow-xs hover:shadow-md transition-all group flex flex-col justify-between relative"
       >
         <div>
           <div
@@ -1027,6 +1086,20 @@ export default function StaffDashboard() {
         }
         .animate-toast-progress {
           animation: shrinkWidth 4s linear forwards;
+        }
+        @keyframes itemFadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-item-in {
+          opacity: 0;
+          animation: itemFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
       `}</style>
 
@@ -1337,7 +1410,7 @@ export default function StaffDashboard() {
       )}
 
       {/* Sidebar Navigation */}
-      <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 select-none h-screen z-50 relative">
+      <aside className="w-[100px] bg-[#FDFBF7] border-r-1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 select-none h-screen z-50 relative">
         <div className="w-full flex flex-col items-center">
           <div
             className="mb-3 px-1 flex flex-col items-center cursor-pointer"
@@ -1345,6 +1418,7 @@ export default function StaffDashboard() {
               setIsAccountOpen(false);
               setSelectedCourse(null);
               setActiveNav("dashboard");
+              setNavAnimKey((prev) => prev + 1);
               navigate("/staff/dashboard");
             }}
           >
@@ -1378,6 +1452,7 @@ export default function StaffDashboard() {
                       setIsAccountOpen(false);
                       setActiveNav(item.id);
                       setSelectedCourse(null);
+                      setNavAnimKey((prev) => prev + 1);
                       if (item.path) navigate(item.path);
                     }
                   }}
@@ -1483,10 +1558,16 @@ export default function StaffDashboard() {
 
       {/* Main Workspace */}
       <main className="flex-1 bg-[#F7F7F8] h-screen overflow-y-auto p-6 md:p-8">
-        <div className="max-w-7xl mx-auto space-y-6">
+        <div
+          key={`${activeNav}-${selectedCourse?.id || "list"}-${navAnimKey}`}
+          className="max-w-7xl mx-auto space-y-6"
+        >
           {activeNav === "statistics" ? (
             <div className="space-y-6">
-              <div className="border-b border-gray-200 pb-5">
+              <div
+                style={{ animationDelay: "0ms" }}
+                className="animate-item-in border-b border-gray-200 pb-5"
+              >
                 <h1 className="text-3xl font-black font-Geist text-gray-900">
                   Analytics & Statistics
                 </h1>
@@ -1496,7 +1577,10 @@ export default function StaffDashboard() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                <div className="p-5 bg-stone-50 border border-gray-200 rounded-2xl flex items-center justify-between">
+                <div
+                  style={{ animationDelay: "120ms" }}
+                  className="animate-item-in p-5 bg-stone-50 border border-gray-200 rounded-2xl flex items-center justify-between"
+                >
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Published Courses
@@ -1510,7 +1594,10 @@ export default function StaffDashboard() {
                   </div>
                 </div>
 
-                <div className="p-5 bg-stone-50 border border-gray-200 rounded-2xl flex items-center justify-between">
+                <div
+                  style={{ animationDelay: "240ms" }}
+                  className="animate-item-in p-5 bg-stone-50 border border-gray-200 rounded-2xl flex items-center justify-between"
+                >
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Total Students Enrolled
@@ -1524,7 +1611,10 @@ export default function StaffDashboard() {
                   </div>
                 </div>
 
-                <div className="p-5 bg-stone-50 border border-gray-200 rounded-2xl flex items-center justify-between">
+                <div
+                  style={{ animationDelay: "360ms" }}
+                  className="animate-item-in p-5 bg-stone-50 border border-gray-200 rounded-2xl flex items-center justify-between"
+                >
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Completion Rate
@@ -1537,7 +1627,10 @@ export default function StaffDashboard() {
                 </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs mt-6">
+              <div
+                style={{ animationDelay: "480ms" }}
+                className="animate-item-in bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs mt-6"
+              >
                 <div className="px-6 py-4 border-b border-gray-100">
                   <h3 className="font-bold text-gray-900 text-base">Course Statistics Breakdown</h3>
                 </div>
@@ -1582,13 +1675,17 @@ export default function StaffDashboard() {
             </div>
           ) : (
             <>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-5">
+              <div
+                style={{ animationDelay: "0ms" }}
+                className="animate-item-in flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-5"
+              >
                 <div className="flex items-center gap-3">
                   {selectedCourse && (
                     <button
                       onClick={() => {
                         setSelectedCourse(null);
                         setStudentSearch("");
+                        setNavAnimKey((prev) => prev + 1);
                         navigate("/staff/dashboard");
                       }}
                       className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
@@ -1617,7 +1714,7 @@ export default function StaffDashboard() {
                 </div>
 
                 {!selectedCourse ? (
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="relative">
                       <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                       <input
@@ -1631,14 +1728,14 @@ export default function StaffDashboard() {
 
                     <button
                       onClick={() => setIsCreateModalOpen(true)}
-                      className="flex items-center gap-2 bg-[#862334] text-white px-4 py-2 rounded-xl text-sm font-bold font-Geist hover:bg-[#701c2b] transition-all shadow-xs active:scale-95 cursor-pointer"
+                      className="flex items-center gap-2 bg-[#862334] text-white px-4 py-2 rounded-xl text-sm font-bold font-Geist hover:bg-[#701c2b] transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
                     >
                       <Plus className="w-4 h-4" />
                       Add Course
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="relative">
                       <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                       <input
@@ -1646,12 +1743,12 @@ export default function StaffDashboard() {
                         placeholder="Search Student Name or ID..."
                         value={studentSearch}
                         onChange={(e) => setStudentSearch(e.target.value)}
-                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-400 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-56 md:w-64 shadow-xs transition-all"
+                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-400 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-64 shadow-xs transition-all"
                       />
                     </div>
                     <button
                       onClick={() => setIsEnrollModalOpen(true)}
-                      className="flex items-center gap-2 bg-[#862334] text-white px-4 py-2 rounded-xl text-sm font-bold font-Geist hover:bg-[#701c2b] transition-all shadow-xs active:scale-95 cursor-pointer"
+                      className="flex items-center gap-2 bg-[#862334] text-white px-4 py-2 rounded-xl text-sm font-bold font-Geist hover:bg-[#701c2b] transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
                     >
                       <UserPlus className="w-4 h-4" /> Enroll Student
                     </button>
@@ -1662,7 +1759,10 @@ export default function StaffDashboard() {
               {!selectedCourse ? (
                 <div className="space-y-10">
                   <div>
-                    <div className="flex items-center justify-between mb-4">
+                    <div
+                      style={{ animationDelay: "120ms" }}
+                      className="animate-item-in flex items-center justify-between mb-4 relative z-30"
+                    >
                       <div className="flex items-center gap-2">
                         <h2 className="text-lg font-bold font-Geist text-gray-900">
                           Published Courses
@@ -1671,25 +1771,74 @@ export default function StaffDashboard() {
                           {filteredCourses.length}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-500 font-medium">
-                        <SlidersHorizontal className="w-3.5 h-3.5" />
-                        <span>Card View</span>
+
+                      <div className="relative" ref={sortMenuRef}>
+                        <button
+                          type="button"
+                          onClick={() => setIsSortMenuOpen((prev) => !prev)}
+                          className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900 bg-white hover:bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl font-medium shadow-2xs transition-colors cursor-pointer"
+                        >
+                          <SlidersHorizontal className="w-3.5 h-3.5 text-[#862334]" />
+                          <span>{activeSortLabel}</span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${
+                              isSortMenuOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+
+                        {isSortMenuOpen && (
+                          <div className="absolute right-0 top-full mt-1.5 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+                            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100">
+                              Sort Courses By
+                            </div>
+                            {SORT_OPTIONS.map((option) => {
+                              const isSelected = courseSort === option.id;
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setCourseSort(option.id);
+                                    setIsSortMenuOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? "bg-[#862334]/10 text-[#862334]"
+                                      : "text-gray-700 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  <span>{option.label}</span>
+                                  {isSelected && <Check className="w-3.5 h-3.5 text-[#862334]" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {filteredCourses.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {filteredCourses.map((course) => renderCourseCard(course, false))}
+                        {filteredCourses.map((course, idx) =>
+                          renderCourseCard(course, false, idx + 2)
+                        )}
                       </div>
                     ) : (
-                      <div className="p-8 border border-dashed border-gray-200 rounded-2xl text-center text-gray-500 text-sm">
+                      <div
+                        style={{ animationDelay: "220ms" }}
+                        className="animate-item-in p-8 border border-dashed border-gray-200 rounded-2xl text-center text-gray-500 text-sm"
+                      >
                         No Published Courses Available.
                       </div>
                     )}
                   </div>
 
                   <div className="pt-6 border-t border-gray-200">
-                    <div className="flex items-center gap-2 mb-4">
+                    <div
+                      style={{ animationDelay: "320ms" }}
+                      className="animate-item-in flex items-center gap-2 mb-4"
+                    >
                       <h2 className="text-lg font-bold font-Geist text-gray-900">
                         Concluded Courses
                       </h2>
@@ -1700,17 +1849,25 @@ export default function StaffDashboard() {
 
                     {filteredConcludedCourses.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {filteredConcludedCourses.map((course) => renderCourseCard(course, true))}
+                        {filteredConcludedCourses.map((course, idx) =>
+                          renderCourseCard(course, true, idx + 4)
+                        )}
                       </div>
                     ) : (
-                      <div className="p-8 border border-dashed border-gray-200 rounded-2xl text-center text-gray-400 text-sm">
+                      <div
+                        style={{ animationDelay: "420ms" }}
+                        className="animate-item-in p-8 border border-dashed border-gray-200 rounded-2xl text-center text-gray-400 text-sm"
+                      >
                         No concluded courses available.
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div
+                  style={{ animationDelay: "150ms" }}
+                  className="animate-item-in space-y-4"
+                >
                   <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                       <h3 className="font-semibold font-Inter text-gray-900 text-md">Student List</h3>

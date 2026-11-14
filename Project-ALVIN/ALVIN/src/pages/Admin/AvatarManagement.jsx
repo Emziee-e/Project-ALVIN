@@ -32,6 +32,7 @@ const DEFAULT_AVATAR_IMAGE = "/images/Alvin.png";
 
 export default function AvatarManagement() {
   const [activeNav, setActiveNav] = useState("avatars");
+  const [navAnimKey, setNavAnimKey] = useState(0);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [models, setModels] = useState([]);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
@@ -126,11 +127,22 @@ export default function AvatarManagement() {
     }
   }, [location.pathname]);
 
-  const showToast = useCallback((message) => {
+  const dismissToast = useCallback(() => {
     clearTimeout(toastTimerRef.current);
-    setToast({ message, id: Date.now() });
-    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+    setToast((prev) => (prev ? { ...prev, closing: true } : null));
+    toastTimerRef.current = setTimeout(() => setToast(null), 260);
   }, []);
+
+  const showToast = useCallback(
+    (message) => {
+      clearTimeout(toastTimerRef.current);
+      setToast({ message, id: Date.now(), closing: false });
+      toastTimerRef.current = setTimeout(() => {
+        dismissToast();
+      }, 2740);
+    },
+    [dismissToast]
+  );
 
   useEffect(() => () => clearTimeout(toastTimerRef.current), []);
 
@@ -383,6 +395,41 @@ export default function AvatarManagement() {
     <>
       <style>{`
         html, body, #root { height: 100%; margin: 0; width: 100%; }
+        @keyframes toast-slide-in {
+          from {
+            opacity: 0;
+            transform: translateY(16px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes toast-slide-out {
+          from {
+            opacity: 1;
+            transform: translateY(0);
+          }
+          to {
+            opacity: 0;
+            transform: translateY(16px);
+          }
+        }
+        @keyframes toast-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+        @keyframes itemFadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-item-in {
+          opacity: 0;
+          animation: itemFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
       `}</style>
 
       <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Geist, Inter] relative">
@@ -404,20 +451,30 @@ export default function AvatarManagement() {
             key={toast.id}
             role="status"
             aria-live="polite"
-            className="fixed bottom-6 right-6 z-[1100] flex max-w-[90vw] items-center gap-3 rounded-2xl border border-[#862334]/20 bg-white px-5 py-3.5 shadow-[0_12px_40px_rgba(134,35,52,0.25)]"
+            className={`fixed bottom-6 right-6 z-[1100] max-w-[90vw] overflow-hidden rounded-2xl border border-[#862334]/20 bg-white shadow-[0_12px_40px_rgba(134,35,52,0.25)] ${
+              toast.closing
+                ? "motion-safe:animate-[toast-slide-out_260ms_cubic-bezier(0.4,0,1,1)_forwards]"
+                : "motion-safe:animate-[toast-slide-in_320ms_cubic-bezier(0.22,1,0.36,1)_forwards]"
+            }`}
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#862334] text-white">
-              <CheckCircle className="h-5 w-5" />
-            </span>
-            <p className="text-sm font-semibold text-slate-800">{toast.message}</p>
-            <button
-              type="button"
-              onClick={() => setToast(null)}
-              className="ml-1 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              aria-label="Dismiss notification"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-3 px-5 py-3.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#862334] text-white">
+                <CheckCircle className="h-5 w-5" />
+              </span>
+              <p className="text-sm font-semibold text-slate-800">{toast.message}</p>
+              <button
+                type="button"
+                onClick={dismissToast}
+                className="ml-1 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+                aria-label="Dismiss notification"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div
+              key={toast.id}
+              className="h-1 origin-left bg-[#862334] motion-safe:animate-[toast-progress_3s_linear_forwards]"
+            />
           </div>
         )}
 
@@ -829,13 +886,14 @@ export default function AvatarManagement() {
         </div>
 
         {/* Canvas-style Vertical Navigation Sidebar */}
-        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen">
+        <aside className="w-[100px] bg-[#FDFBF7] border-r-1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 select-none h-screen z-50 relative">
           <div className="w-full flex flex-col items-center">
             <div
               className="mb-3 px-1 flex flex-col items-center cursor-pointer"
               onClick={() => {
                 setIsAccountOpen(false);
                 setActiveNav("avatars");
+                setNavAnimKey((prev) => prev + 1);
                 navigate("/admin/avatars");
               }}
             >
@@ -863,6 +921,7 @@ export default function AvatarManagement() {
                       } else {
                         setIsAccountOpen(false);
                         setActiveNav(item.id);
+                        setNavAnimKey((prev) => prev + 1);
                         if (item.path) navigate(item.path);
                       }
                     }}
@@ -897,8 +956,14 @@ export default function AvatarManagement() {
         <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
             {/* Same generous padding as User Management and System Report */}
-            <div className="px-12 sm:px-16 md:px-20 lg:px-28 py-8 space-y-8 w-full">
-              <div className="space-y-2">
+            <div
+              key={`${activeNav}-${navAnimKey}`}
+              className="px-12 sm:px-16 md:px-20 lg:px-28 py-8 space-y-8 w-full"
+            >
+              <div
+                style={{ animationDelay: "0ms" }}
+                className="animate-item-in space-y-2"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <h3 className="font-[Geist,Inter] text-2xl md:text-3xl font-bold tracking-tight mb-3 text-maroon">
@@ -919,7 +984,10 @@ export default function AvatarManagement() {
                   </button>
                 </div>
                 {selected && (
-                  <div className="inline-flex items-center gap-2 rounded-full border border-[#862334]/15 bg-[#862334]/5 px-4 py-1.5 text-sm font-semibold text-[#862334]">
+                  <div
+                    style={{ animationDelay: "100ms" }}
+                    className="animate-item-in inline-flex items-center gap-2 rounded-full border border-[#862334]/15 bg-[#862334]/5 px-4 py-1.5 text-sm font-semibold text-[#862334]"
+                  >
                     <CheckCircle className="h-5 w-5" />
                     Current Interviewer: {selected.name}
                   </div>
@@ -927,7 +995,7 @@ export default function AvatarManagement() {
               </div>
 
               {avatarError && (
-                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <p className="animate-item-in rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {avatarError}
                 </p>
               )}
@@ -935,15 +1003,19 @@ export default function AvatarManagement() {
               {isLoadingModels ? (
                 <p className="py-12 text-center text-sm text-slate-500">Loading avatars...</p>
               ) : models.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">
+                <p
+                  style={{ animationDelay: "160ms" }}
+                  className="animate-item-in rounded-2xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500"
+                >
                   No avatars configured yet. Add a NavTalk avatar to get started.
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                  {models.map((model) => (
+                  {models.map((model, idx) => (
                     <article
                       key={model.id}
-                      className={`group overflow-hidden rounded-2xl border bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition-all duration-300 ease-out ${
+                      style={{ animationDelay: `${Math.min(160 + idx * 110, 900)}ms` }}
+                      className={`animate-item-in group overflow-hidden rounded-2xl border bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition-all duration-300 ease-out ${
                         model.selected
                           ? "border-[#862334] ring-1 ring-[#862334]/20"
                           : "border-[#e8e8e8]"
