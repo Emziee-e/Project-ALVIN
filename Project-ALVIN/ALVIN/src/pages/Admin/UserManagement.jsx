@@ -298,7 +298,7 @@ export default function UserManagement() {
           }
           to {
             opacity: 1;
-            transform: translateY(0);
+            transform: none;
           }
         }
         .animate-item-in {
@@ -583,7 +583,9 @@ export default function UserManagement() {
                               <tr
                                 key={rowKey}
                                 style={{ animationDelay: `${Math.min((i + 1) * 80, 500)}ms` }}
-                                className="animate-item-in transition-colors group"
+                                className={`animate-item-in transition-colors group relative ${
+                                  isMenuOpen ? "z-30" : "z-0"
+                                }`}
                               >
                                 <td className="px-6 md:px-8 py-4 md:py-5">
                                   <div className="flex items-center gap-3 md:gap-4">

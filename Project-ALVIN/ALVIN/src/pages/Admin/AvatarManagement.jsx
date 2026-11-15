@@ -5,6 +5,7 @@ import {
   UserCircle,
   Mic,
   CheckCircle,
+  CheckCircle2,
   Plus,
   Trash2,
   Pencil,
@@ -134,9 +135,9 @@ export default function AvatarManagement() {
   }, []);
 
   const showToast = useCallback(
-    (message) => {
+    (title, message) => {
       clearTimeout(toastTimerRef.current);
-      setToast({ message, id: Date.now(), closing: false });
+      setToast({ title, message, id: Date.now(), closing: false });
       toastTimerRef.current = setTimeout(() => {
         dismissToast();
       }, 2740);
@@ -243,7 +244,7 @@ export default function AvatarManagement() {
       setAvatarForm({ avatar_name: "", avatar_id: "", avatar_image: "", voice: "" });
       setIsAvatarFormOpen(false);
       await loadAvatars();
-      showToast(`Avatar "${addedName}" was added successfully.`);
+      showToast("Avatar Added", `Avatar "${addedName}" was added successfully.`);
     } catch (error) {
       console.error("Unable to add avatar:", error);
       setAvatarError(error.message || "Unable to add avatar.");
@@ -274,7 +275,7 @@ export default function AvatarManagement() {
         prev.filter((item) => item.id !== avatarPendingDeletion.id)
       );
       setAvatarPendingDeletion(null);
-      showToast(`Avatar "${deletedName}" was deleted.`);
+      showToast("Avatar Deleted", `Avatar "${deletedName}" was deleted.`);
     } catch (error) {
       console.error("Unable to delete avatar:", error);
       setAvatarError(error.message || "Unable to delete avatar.");
@@ -380,7 +381,7 @@ export default function AvatarManagement() {
       );
       setAvatarBeingEdited(null);
       await loadAvatars();
-      showToast(`Avatar "${name}" was updated successfully.`);
+      showToast("Avatar Updated", `Avatar "${name}" was updated successfully.`);
     } catch (error) {
       console.error("Unable to update avatar:", error);
       setEditError(error.message || "Unable to update avatar.");
@@ -445,43 +446,44 @@ export default function AvatarManagement() {
           onClose={closeVoiceModal}
         />
 
-        {/* Confirmation toast (bottom of the screen) */}
+        {/* Confirmation toast matching AccountActionToast */}
         {toast && (
-          <div
+          <aside
             key={toast.id}
             role="status"
             aria-live="polite"
-            className={`fixed bottom-6 right-6 z-[1100] max-w-[90vw] overflow-hidden rounded-2xl border border-[#862334]/20 bg-white shadow-[0_12px_40px_rgba(134,35,52,0.25)] ${
+            className={`fixed bottom-4 right-4 z-[1100] w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl ${
               toast.closing
                 ? "motion-safe:animate-[toast-slide-out_260ms_cubic-bezier(0.4,0,1,1)_forwards]"
                 : "motion-safe:animate-[toast-slide-in_320ms_cubic-bezier(0.22,1,0.36,1)_forwards]"
             }`}
           >
-            <div className="flex items-center gap-3 px-5 py-3.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#862334] text-white">
-                <CheckCircle className="h-5 w-5" />
-              </span>
-              <p className="text-sm font-semibold text-slate-800">{toast.message}</p>
+            <div className="flex gap-3 p-4">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#16A34A]" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="font-Geist text-sm font-bold text-gray-900">{toast.title}</p>
+                <p className="mt-1 font-Inter text-xs leading-5 text-gray-500">{toast.message}</p>
+              </div>
               <button
                 type="button"
                 onClick={dismissToast}
-                className="ml-1 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
                 aria-label="Dismiss notification"
+                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#8B1C2C] cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div
               key={toast.id}
-              className="h-1 origin-left bg-[#862334] motion-safe:animate-[toast-progress_3s_linear_forwards]"
+              className="h-1 origin-left bg-[#16A34A] motion-safe:animate-[toast-progress_3s_linear_forwards]"
             />
-          </div>
+          </aside>
         )}
 
-        {/* Delete Confirmation Modal */}
+        {/* Delete Confirmation Modal (SignOutModal style) */}
         {avatarPendingDeletion && (
           <div
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-avatar-title"
@@ -492,316 +494,354 @@ export default function AvatarManagement() {
             }}
           >
             <section
-              className="relative w-full max-w-md rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl"
+              className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100"
               onMouseDown={(event) => event.stopPropagation()}
             >
+              {/* Close Button - Overlapping */}
               <button
                 type="button"
                 onClick={() => setAvatarPendingDeletion(null)}
-                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                 aria-label="Close delete avatar dialog"
+                className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5 text-maroon group-hover:rotate-90 transition-transform duration-200" />
               </button>
 
-              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600">
-                <Trash2 className="h-6 w-6" aria-hidden="true" />
-              </div>
-              <h2 id="delete-avatar-title" className="pr-10 text-2xl font-bold text-slate-900">
-                Delete Avatar
-              </h2>
-              <p className="mt-4 rounded-xl border border-red-100 bg-red-50 p-4 text-sm leading-6 text-red-800">
-                Are you sure you want to delete "{avatarPendingDeletion.name}"? This action cannot be undone.
-              </p>
-
-              <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setAvatarPendingDeletion(null)}
-                  className="rounded-xl border border-gray-300 bg-white px-5 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={deleteModel}
-                  className="rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-red-700"
-                >
+              {/* Header/Icon */}
+              <div className="pt-6 pb-2 px-6 flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-3">
+                  <Trash2 className="w-6 h-6 text-maroon" aria-hidden="true" />
+                </div>
+                <h2 id="delete-avatar-title" className="text-xl font-bold text-gray-900 font-Geist">
                   Delete Avatar
-                </button>
+                </h2>
+              </div>
+
+              {/* Content */}
+              <div className="px-6 pb-6 text-center">
+                <p className="text-sm text-gray-600 mb-6 font-Inter leading-relaxed">
+                  Are you sure you want to delete <span className="font-semibold text-gray-900">"{avatarPendingDeletion.name}"</span>? This action cannot be undone.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAvatarPendingDeletion(null)}
+                    className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-sm text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteModel}
+                    className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-sm text-white bg-maroon hover:bg-maroon/90 shadow-lg hover:shadow-maroon/20 transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    Delete Avatar
+                  </button>
+                </div>
               </div>
             </section>
           </div>
         )}
 
-        {/* Edit Avatar Modal */}
+        {/* Edit Avatar Modal (SignOutModal style) */}
         {avatarBeingEdited && (
           <div
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-md"
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-avatar-title"
             onClick={closeEditModal}
           >
             <form
-              className="relative w-full max-w-md space-y-5 rounded-[28px] bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.24)]"
+              className="relative w-full max-w-md bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100"
               onSubmit={saveAvatarEdit}
               onClick={(event) => event.stopPropagation()}
             >
+              {/* Close Button - Overlapping */}
               <button
                 type="button"
                 onClick={closeEditModal}
-                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                 aria-label="Close edit avatar dialog"
+                className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5 text-maroon group-hover:rotate-90 transition-transform duration-200" />
               </button>
-              <div>
-                <h2 id="edit-avatar-title" className="text-xl font-bold text-slate-900">
+
+              {/* Header/Icon */}
+              <div className="pt-6 pb-2 px-6 flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-3">
+                  <Pencil className="w-6 h-6 text-maroon" aria-hidden="true" />
+                </div>
+                <h2 id="edit-avatar-title" className="text-xl font-bold text-gray-900 font-Geist">
                   Edit Avatar
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-gray-600 font-Inter">
                   Update the details for {avatarBeingEdited.name}.
                 </p>
               </div>
 
-              {editError && (
-                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {editError}
-                </p>
-              )}
+              {/* Form Fields */}
+              <div className="px-6 pb-6 pt-3 space-y-4 max-h-[75vh] overflow-y-auto">
+                {editError && (
+                  <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 font-Inter">
+                    {editError}
+                  </p>
+                )}
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Avatar Name</span>
-                <input
-                  required
-                  value={editForm.avatar_name}
-                  onChange={(event) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      avatar_name: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
-                  placeholder="e.g. Tristan"
-                />
-              </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Avatar Name
+                  </span>
+                  <input
+                    required
+                    value={editForm.avatar_name}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        avatar_name: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="e.g. Tristan"
+                  />
+                </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Avatar Thumbnail</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleEditImageChange}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#862334]/10 file:px-3 file:py-2 file:font-semibold file:text-[#862334] hover:file:bg-[#862334]/15"
-                />
-                <img
-                  src={editForm.avatar_image || avatarBeingEdited.image}
-                  alt="Avatar thumbnail preview"
-                  className="h-24 w-full rounded-xl object-cover"
-                />
-                <span className="block text-xs text-slate-500">
-                  {editForm.avatar_image
-                    ? "New thumbnail selected. It will replace the current one when you save."
-                    : "Leave empty to keep the current thumbnail."}
-                </span>
-              </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Avatar Thumbnail
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleEditImageChange}
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-3.5 py-2 text-xs text-gray-600 font-Inter file:mr-3 file:rounded-xl file:border-0 file:bg-maroon/10 file:px-3 file:py-1.5 file:font-semibold file:text-maroon hover:file:bg-maroon/15 cursor-pointer"
+                  />
+                  <img
+                    src={editForm.avatar_image || avatarBeingEdited.image}
+                    alt="Avatar thumbnail preview"
+                    className="h-24 w-full rounded-2xl object-cover border border-gray-100"
+                  />
+                  <span className="block text-[11px] text-gray-400 font-Inter">
+                    {editForm.avatar_image
+                      ? "New thumbnail selected. It will replace the current one when you save."
+                      : "Leave empty to keep the current thumbnail."}
+                  </span>
+                </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Avatar ID</span>
-                <input
-                  required
-                  value={editForm.avatar_id}
-                  onChange={(event) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      avatar_id: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
-                  placeholder="NavTalk avatar ID"
-                />
-                <span className="block text-xs text-slate-500">
-                  Only change this to match the ID shown in the NavTalk Avatars
-                  Dashboard. A wrong ID will stop interviews from starting with
-                  this avatar.
-                </span>
-              </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Avatar ID
+                  </span>
+                  <input
+                    required
+                    value={editForm.avatar_id}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        avatar_id: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="NavTalk avatar ID"
+                  />
+                  <span className="block text-[11px] text-gray-400 font-Inter leading-relaxed">
+                    Only change this to match the ID shown in the NavTalk Avatars
+                    Dashboard. A wrong ID will stop interviews from starting with
+                    this avatar.
+                  </span>
+                </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Voice</span>
-                <input
-                  value={editForm.voice}
-                  onChange={(event) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      voice: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
-                  placeholder="e.g. marin"
-                />
-                <span className="block text-xs text-slate-500">
-                  Enter the voice set for this avatar in the NavTalk Console so
-                  it stays the same throughout the interview.
-                </span>
-              </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Voice
+                  </span>
+                  <input
+                    value={editForm.voice}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        voice: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="e.g. marin"
+                  />
+                  <span className="block text-[11px] text-gray-400 font-Inter leading-relaxed">
+                    Enter the voice set for this avatar in the NavTalk Console so
+                    it stays the same throughout the interview.
+                  </span>
+                </label>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={closeEditModal}
-                  disabled={isSavingEdit}
-                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingEdit}
-                  className="rounded-xl bg-maroon px-4 py-3 text-sm font-semibold text-white hover:bg-[#862334] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingEdit ? "Saving..." : "Save Changes"}
-                </button>
+                <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={closeEditModal}
+                    disabled={isSavingEdit}
+                    className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-sm text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingEdit}
+                    className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-sm text-white bg-maroon hover:bg-maroon/90 shadow-lg hover:shadow-maroon/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                  >
+                    {isSavingEdit ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
         )}
 
-        {/* Add Avatar Modal */}
+        {/* Add Avatar Modal (SignOutModal style) */}
         {isAvatarFormOpen && (
           <div
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-md"
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-avatar-title"
             onClick={() => setIsAvatarFormOpen(false)}
           >
             <form
-              className="relative w-full max-w-md space-y-5 rounded-[28px] bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.24)]"
+              className="relative w-full max-w-md bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100"
               onSubmit={addAvatar}
               onClick={(event) => event.stopPropagation()}
             >
+              {/* Close Button - Overlapping */}
               <button
                 type="button"
                 onClick={() => setIsAvatarFormOpen(false)}
-                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                 aria-label="Close add avatar dialog"
+                className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5 text-maroon group-hover:rotate-90 transition-transform duration-200" />
               </button>
-              <div>
-                <h2 id="add-avatar-title" className="text-xl font-bold text-slate-900">
+
+              {/* Header/Icon */}
+              <div className="pt-6 pb-2 px-6 flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-3">
+                  <Plus className="w-6 h-6 text-maroon" aria-hidden="true" />
+                </div>
+                <h2 id="add-avatar-title" className="text-xl font-bold text-gray-900 font-Geist">
                   Add Avatar
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-gray-600 font-Inter">
                   Enter the avatar details from NavTalk.
                 </p>
               </div>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Avatar Name</span>
-                <input
-                  required
-                  value={avatarForm.avatar_name}
-                  onChange={(event) =>
-                    setAvatarForm((current) => ({
-                      ...current,
-                      avatar_name: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
-                  placeholder="e.g. Tristan"
-                />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Avatar Thumbnail</span>
-                <input
-                  required
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarImageChange}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#862334]/10 file:px-3 file:py-2 file:font-semibold file:text-[#862334] hover:file:bg-[#862334]/15"
-                />
-                {avatarForm.avatar_image && (
-                  <img
-                    src={avatarForm.avatar_image}
-                    alt="Avatar thumbnail preview"
-                    className="h-24 w-full rounded-xl object-cover"
+              {/* Form Fields */}
+              <div className="px-6 pb-6 pt-3 space-y-4 max-h-[75vh] overflow-y-auto">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Avatar Name
+                  </span>
+                  <input
+                    required
+                    value={avatarForm.avatar_name}
+                    onChange={(event) =>
+                      setAvatarForm((current) => ({
+                        ...current,
+                        avatar_name: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="e.g. Tristan"
                   />
-                )}
-              </label>
+                </label>
 
-              <label className="block space-y-2">
-                <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                  Avatar ID
-                  <span
-                    className="group relative inline-flex"
-                    title="The Avatar ID is only available in the NavTalk Avatar Dashboard."
-                  >
-                    <HelpCircle
-                      className="h-4 w-4 cursor-help text-slate-400 transition-colors group-hover:text-[#862334]"
-                      aria-label="Avatar ID reminder"
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Avatar Thumbnail
+                  </span>
+                  <input
+                    required
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarImageChange}
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-3.5 py-2 text-xs text-gray-600 font-Inter file:mr-3 file:rounded-xl file:border-0 file:bg-maroon/10 file:px-3 file:py-1.5 file:font-semibold file:text-maroon hover:file:bg-maroon/15 cursor-pointer"
+                  />
+                  {avatarForm.avatar_image && (
+                    <img
+                      src={avatarForm.avatar_image}
+                      alt="Avatar thumbnail preview"
+                      className="h-24 w-full rounded-2xl object-cover border border-gray-100"
                     />
+                  )}
+                </label>
+
+                <label className="block space-y-1.5">
+                  <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Avatar ID
                     <span
-                      role="tooltip"
-                      className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-64 -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+                      className="group relative inline-flex"
+                      title="The Avatar ID is only available in the NavTalk Avatar Dashboard."
                     >
-                      The Avatar ID is only available in the NavTalk Avatars Dashboard.
+                      <HelpCircle
+                        className="h-3.5 w-3.5 cursor-help text-gray-400 transition-colors group-hover:text-maroon"
+                        aria-label="Avatar ID reminder"
+                      />
+                      <span
+                        role="tooltip"
+                        className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-60 -translate-x-1/2 rounded-xl bg-gray-900 px-3 py-2 text-center text-[11px] font-normal normal-case tracking-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+                      >
+                        The Avatar ID is only available in the NavTalk Avatars Dashboard.
+                      </span>
                     </span>
                   </span>
-                </span>
-                <input
-                  required
-                  value={avatarForm.avatar_id}
-                  onChange={(event) =>
-                    setAvatarForm((current) => ({
-                      ...current,
-                      avatar_id: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
-                  placeholder="NavTalk avatar ID"
-                />
-              </label>
+                  <input
+                    required
+                    value={avatarForm.avatar_id}
+                    onChange={(event) =>
+                      setAvatarForm((current) => ({
+                        ...current,
+                        avatar_id: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="NavTalk avatar ID"
+                  />
+                </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">
-                  Voice
-                </span>
-                <input
-                  value={avatarForm.voice}
-                  onChange={(event) =>
-                    setAvatarForm((current) => ({
-                      ...current,
-                      voice: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#862334]/50 focus:ring-4 focus:ring-[#862334]/10"
-                  placeholder="e.g. marin"
-                />
-                <span className="block text-xs text-slate-500">
-                  Enter the voice set for this avatar in the NavTalk Console so
-                  it stays the same throughout the interview.
-                </span>
-              </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Voice
+                  </span>
+                  <input
+                    value={avatarForm.voice}
+                    onChange={(event) =>
+                      setAvatarForm((current) => ({
+                        ...current,
+                        voice: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="e.g. marin"
+                  />
+                  <span className="block text-[11px] text-gray-400 font-Inter leading-relaxed">
+                    Enter the voice set for this avatar in the NavTalk Console so
+                    it stays the same throughout the interview.
+                  </span>
+                </label>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAvatarFormOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingAvatar}
-                  className="rounded-xl bg-maroon px-4 py-3 text-sm font-semibold text-white hover:bg-[#862334] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingAvatar ? "Adding..." : "Add Avatar"}
-                </button>
+                <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAvatarFormOpen(false)}
+                    className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-sm text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingAvatar}
+                    className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-sm text-white bg-maroon hover:bg-maroon/90 shadow-lg hover:shadow-maroon/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                  >
+                    {isSavingAvatar ? "Adding..." : "Add Avatar"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
-import { createPortal } from "react-dom";
+import React, { useState, useEffect, useRef } from "react";
 import {
   User,
   LayoutDashboard,
   BarChart3,
   MoreVertical,
+  EllipsisVertical,
   Users,
   Plus,
   Search,
@@ -26,6 +26,8 @@ import {
   Pause,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
@@ -56,6 +58,8 @@ const SORT_OPTIONS = [
   { id: "az", label: "Alphabetical (A – Z)" },
   { id: "za", label: "Alphabetical (Z – A)" },
 ];
+
+const STUDENTS_PER_PAGE = 5;
 
 export default function StaffDashboard() {
   const location = useLocation();
@@ -94,9 +98,7 @@ export default function StaffDashboard() {
   const [studentAction, setStudentAction] = useState("unenroll");
   const [isUnenrolling, setIsUnenrolling] = useState(false);
   const [activeStudentMenuId, setActiveStudentMenuId] = useState(null);
-  const [studentMenuPosition, setStudentMenuPosition] = useState({ top: 0, left: 0 });
-  const studentMenuRef = useRef(null);
-  const studentMenuTriggerRef = useRef(null);
+  const studentMenuContainerRef = useRef(null);
 
   // Course dropdown state
   const [activeMenuId, setActiveMenuId] = useState(null);
@@ -109,6 +111,7 @@ export default function StaffDashboard() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
+  const [studentPage, setStudentPage] = useState(1);
   const [selectedCourse, setSelectedCourse] = useState(null);
 
   const [userProfile, setUserProfile] = useState({
@@ -148,53 +151,35 @@ export default function StaffDashboard() {
       if (sortMenuRef.current && !sortMenuRef.current.contains(event.target)) {
         setIsSortMenuOpen(false);
       }
-      const clickedStudentTrigger = studentMenuTriggerRef.current?.contains(event.target);
-      const clickedStudentMenu = studentMenuRef.current?.contains(event.target);
-      if (!clickedStudentTrigger && !clickedStudentMenu) {
+      if (
+        studentMenuContainerRef.current &&
+        !studentMenuContainerRef.current.contains(event.target)
+      ) {
         setActiveStudentMenuId(null);
       }
     };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setActiveStudentMenuId(null);
+        setActiveMenuId(null);
+        setIsSortMenuOpen(false);
+      }
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (activeStudentMenuId == null) return;
-
-    const updateStudentMenuPosition = () => {
-      const trigger = studentMenuTriggerRef.current;
-      if (!trigger) return;
-
-      const rect = trigger.getBoundingClientRect();
-      const menuWidth = 176;
-      const menuHeight = 92;
-      const gap = 8;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const openAbove = spaceBelow < menuHeight + gap && rect.top > menuHeight + gap;
-      const left = Math.min(
-        Math.max(8, rect.right - menuWidth),
-        Math.max(8, window.innerWidth - menuWidth - 8)
-      );
-      const top = openAbove
-        ? Math.max(8, rect.top - menuHeight - gap)
-        : Math.min(rect.bottom + gap, Math.max(8, window.innerHeight - menuHeight - 8));
-
-      setStudentMenuPosition({ top, left });
-    };
-
-    updateStudentMenuPosition();
-    window.addEventListener("resize", updateStudentMenuPosition);
-    window.addEventListener("scroll", updateStudentMenuPosition, true);
-
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("resize", updateStudentMenuPosition);
-      window.removeEventListener("scroll", updateStudentMenuPosition, true);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeStudentMenuId]);
+  }, []);
 
   useEffect(() => {
     const fetchUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (user) {
         const metadata = user.user_metadata || {};
@@ -253,16 +238,13 @@ export default function StaffDashboard() {
       const mappedCourses = data.map(mapCourseFromDatabase);
 
       setPublishedCourses(
-        mappedCourses.filter(
-          (course) => course.status === "active"
-        )
+        mappedCourses.filter((course) => course.status === "active")
       );
 
       setConcludedCourses(
         mappedCourses.filter(
           (course) =>
-            course.status === "concluded" ||
-            course.status === "archived"
+            course.status === "concluded" || course.status === "archived"
         )
       );
     } catch (error) {
@@ -295,10 +277,9 @@ export default function StaffDashboard() {
 
       const courseId = match[1];
 
-      const course = [
-        ...publishedCourses,
-        ...concludedCourses,
-      ].find((item) => item.id === courseId);
+      const course = [...publishedCourses, ...concludedCourses].find(
+        (item) => item.id === courseId
+      );
 
       if (!course) {
         setRestoringCourse(false);
@@ -346,12 +327,8 @@ export default function StaffDashboard() {
           row.enrollment_status.slice(1)
         : "Enrolled",
       dateJoined: row.enrolled_at
-        ? new Date(row.enrolled_at).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-        : "",
+        ? new Date(row.enrolled_at).toLocaleDateString()
+        : "—",
     };
   };
 
@@ -406,9 +383,7 @@ export default function StaffDashboard() {
     } catch (error) {
       console.error("Error creating course:", error);
 
-      showToastNotification(
-        error.message || "Unable to create course."
-      );
+      showToastNotification(error.message || "Unable to create course.");
 
       return {
         error: error.message || "Unable to create course.",
@@ -419,7 +394,9 @@ export default function StaffDashboard() {
   const confirmTogglePauseInterviews = async () => {
     if (!courseToTogglePause || isTogglingPause) return;
 
-    const currentPauseState = toBoolean(courseToTogglePause.is_interviews_paused);
+    const currentPauseState = toBoolean(
+      courseToTogglePause.is_interviews_paused
+    );
     const newPauseState = !currentPauseState;
 
     try {
@@ -522,9 +499,7 @@ export default function StaffDashboard() {
     } catch (error) {
       console.error("Error concluding course:", error);
 
-      showToastNotification(
-        error.message || "Unable to conclude course."
-      );
+      showToastNotification(error.message || "Unable to conclude course.");
     }
   };
 
@@ -553,15 +528,11 @@ export default function StaffDashboard() {
       setCourseToDelete(null);
       setActiveMenuId(null);
 
-      showToastNotification(
-        `Course "${courseCode}" successfully deleted!`
-      );
+      showToastNotification(`Course "${courseCode}" successfully deleted!`);
     } catch (error) {
       console.error("Error deleting course:", error);
 
-      showToastNotification(
-        error.message || "Unable to delete course."
-      );
+      showToastNotification(error.message || "Unable to delete course.");
     }
   };
 
@@ -617,9 +588,7 @@ export default function StaffDashboard() {
     } catch (error) {
       console.error("Error updating course:", error);
 
-      showToastNotification(
-        error.message || "Unable to update course."
-      );
+      showToastNotification(error.message || "Unable to update course.");
 
       return {
         error: error.message || "Unable to update course.",
@@ -679,7 +648,10 @@ export default function StaffDashboard() {
         }
       } catch (emailError) {
         emailNotificationSent = false;
-        console.error("Enrollment saved, but email notification failed:", emailError);
+        console.error(
+          "Enrollment saved, but email notification failed:",
+          emailError
+        );
       }
 
       const enrollmentRows = await getCourseEnrollments(selectedCourse.id);
@@ -758,7 +730,9 @@ export default function StaffDashboard() {
       const updatedCourse = {
         ...selectedCourse,
         students,
-        studentsCount: students.filter((s) => s.status.toLowerCase() !== "dropped").length,
+        studentsCount: students.filter(
+          (s) => s.status.toLowerCase() !== "dropped"
+        ).length,
       };
 
       setSelectedCourse(updatedCourse);
@@ -783,9 +757,13 @@ export default function StaffDashboard() {
       setStudentToUnenroll(null);
       setActiveStudentMenuId(null);
     } catch (error) {
-      console.error(`Error ${action === "drop" ? "dropping" : "unenrolling"} student:`, error);
+      console.error(
+        `Error ${action === "drop" ? "dropping" : "unenrolling"} student:`,
+        error
+      );
       showToastNotification(
-        error.message || `Unable to ${action === "drop" ? "drop" : "unenroll"} student.`
+        error.message ||
+          `Unable to ${action === "drop" ? "drop" : "unenroll"} student.`
       );
     } finally {
       setIsUnenrolling(false);
@@ -804,6 +782,9 @@ export default function StaffDashboard() {
       };
 
       setSelectedCourse(courseWithStudents);
+      setStudentPage(1);
+      setStudentSearch("");
+      setActiveStudentMenuId(null);
       setNavAnimKey((prev) => prev + 1);
 
       setPublishedCourses((prev) =>
@@ -817,7 +798,9 @@ export default function StaffDashboard() {
       navigate(`/staff/dashboard/course/${course.id}`);
     } catch (error) {
       console.error("Error loading course enrollments:", error);
-      showToastNotification(error.message || "Unable to load enrolled students.");
+      showToastNotification(
+        error.message || "Unable to load enrolled students."
+      );
     }
   };
 
@@ -857,7 +840,8 @@ export default function StaffDashboard() {
       (course) =>
         course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (course.section && course.section.toLowerCase().includes(searchQuery.toLowerCase()))
+        (course.section &&
+          course.section.toLowerCase().includes(searchQuery.toLowerCase()))
     )
   );
 
@@ -866,12 +850,14 @@ export default function StaffDashboard() {
       (course) =>
         course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (course.section && course.section.toLowerCase().includes(searchQuery.toLowerCase()))
+        (course.section &&
+          course.section.toLowerCase().includes(searchQuery.toLowerCase()))
     )
   );
 
   const activeSortLabel =
-    SORT_OPTIONS.find((opt) => opt.id === courseSort)?.label || "Date Created (Newest)";
+    SORT_OPTIONS.find((opt) => opt.id === courseSort)?.label ||
+    "Date Created (Newest)";
 
   const filteredStudents = (selectedCourse?.students || []).filter(
     (s) =>
@@ -880,8 +866,49 @@ export default function StaffDashboard() {
       s.email.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
+  const totalStudentPages = Math.ceil(
+    filteredStudents.length / STUDENTS_PER_PAGE
+  );
+  const displayedStudentPage = Math.min(
+    studentPage,
+    Math.max(totalStudentPages, 1)
+  );
+  const paginatedStudents = filteredStudents.slice(
+    (displayedStudentPage - 1) * STUDENTS_PER_PAGE,
+    displayedStudentPage * STUDENTS_PER_PAGE
+  );
+
+  const getVisibleStudentPages = () => {
+    if (totalStudentPages <= 5) {
+      return Array.from({ length: totalStudentPages }, (_, i) => i + 1);
+    }
+    if (displayedStudentPage <= 3) {
+      return [1, 2, 3, 4, "...", totalStudentPages];
+    }
+    if (displayedStudentPage >= totalStudentPages - 2) {
+      return [
+        1,
+        "...",
+        totalStudentPages - 3,
+        totalStudentPages - 2,
+        totalStudentPages - 1,
+        totalStudentPages,
+      ];
+    }
+    return [
+      1,
+      "...",
+      displayedStudentPage - 1,
+      displayedStudentPage,
+      displayedStudentPage + 1,
+      "...",
+      totalStudentPages,
+    ];
+  };
+
   const totalEnrolledStudents = [...publishedCourses, ...concludedCourses].reduce(
-    (acc, course) => acc + (course.studentsCount ?? course.students?.length ?? 0),
+    (acc, course) =>
+      acc + (course.studentsCount ?? course.students?.length ?? 0),
     0
   );
 
@@ -894,14 +921,12 @@ export default function StaffDashboard() {
       <div
         key={course.id}
         style={{ animationDelay: `${Math.min(index * 110, 900)}ms` }}
-        className="animate-item-in bg-white border border-gray-200 rounded-2xl shadow-xs hover:shadow-md transition-all group flex flex-col justify-between relative"
+        className="animate-item-in bg-white border border-[#862334]/25 hover:border-[#862334]/45 rounded-2xl shadow-[0_4px_16px_rgba(134,35,52,0.05)] hover:shadow-md transition-all group flex flex-col justify-between relative"
       >
         <div>
           <div
             className={`h-36 relative p-4 flex flex-col justify-between overflow-visible rounded-t-2xl ${
-              !courseImg
-                ? course.color || "bg-[#862334]"
-                : "bg-gray-800"
+              !courseImg ? course.color || "bg-[#862334]" : "bg-gray-800"
             }`}
           >
             {courseImg && (
@@ -912,7 +937,9 @@ export default function StaffDashboard() {
               />
             )}
 
-            {courseImg && <div className="absolute inset-0 bg-black/40 rounded-t-2xl z-0" />}
+            {courseImg && (
+              <div className="absolute inset-0 bg-black/40 rounded-t-2xl z-0" />
+            )}
 
             <div className="flex items-center justify-between relative z-20">
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -930,7 +957,10 @@ export default function StaffDashboard() {
                 )}
               </div>
 
-              <div className="relative ml-auto" ref={isMenuOpen ? menuRef : null}>
+              <div
+                className="relative ml-auto"
+                ref={isMenuOpen ? menuRef : null}
+              >
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1045,7 +1075,7 @@ export default function StaffDashboard() {
               {course.title}
             </h3>
 
-            <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
+            <div className="flex items-center justify-between pt-2 border-t border-[#862334]/15 text-xs text-gray-500">
               <span className="flex items-center gap-1.5 font-medium text-gray-600">
                 <Users className="w-4 h-4 text-[#862334]" />
                 {course.studentsCount ?? course.students?.length ?? 0} Students
@@ -1094,7 +1124,7 @@ export default function StaffDashboard() {
           }
           to {
             opacity: 1;
-            transform: translateY(0);
+            transform: none;
           }
         }
         .animate-item-in {
@@ -1202,7 +1232,8 @@ export default function StaffDashboard() {
                     <span className="font-semibold text-gray-800">
                       "{courseToTogglePause.title}"
                     </span>
-                    ? Enrolled students will be able to start AI interviews again.
+                    ? Enrolled students will be able to start AI interviews
+                    again.
                   </>
                 ) : (
                   <>
@@ -1210,7 +1241,8 @@ export default function StaffDashboard() {
                     <span className="font-semibold text-gray-800">
                       "{courseToTogglePause.title}"
                     </span>
-                    ? Students enrolled in this course will temporarily be restricted from starting new AI interviews.
+                    ? Students enrolled in this course will temporarily be
+                    restricted from starting new AI interviews.
                   </>
                 )}
               </p>
@@ -1268,9 +1300,15 @@ export default function StaffDashboard() {
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold font-Geist text-gray-900">Conclude Course?</h3>
+              <h3 className="text-xl font-bold font-Geist text-gray-900">
+                Conclude Course?
+              </h3>
               <p className="text-xs text-gray-500 leading-relaxed px-2">
-                Are you sure you want to conclude <span className="font-semibold text-gray-800">"{courseToConclude.title}"</span>? This will move it to the concluded courses list.
+                Are you sure you want to conclude{" "}
+                <span className="font-semibold text-gray-800">
+                  "{courseToConclude.title}"
+                </span>
+                ? This will move it to the concluded courses list.
               </p>
             </div>
 
@@ -1315,16 +1353,35 @@ export default function StaffDashboard() {
 
             <div className="space-y-1">
               <h3 className="text-xl font-bold font-Geist text-gray-900">
-                {studentAction === "drop" ? "Drop Student?" : "Unenroll Student?"}
+                {studentAction === "drop"
+                  ? "Drop Student?"
+                  : "Unenroll Student?"}
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed px-2">
                 {studentAction === "drop" ? (
                   <>
-                    Mark <span className="font-semibold text-gray-800">{studentToUnenroll.name}</span> as dropped from <span className="font-semibold text-gray-800">{selectedCourse?.code}</span>? The enrollment record will be kept for history.
+                    Mark{" "}
+                    <span className="font-semibold text-gray-800">
+                      {studentToUnenroll.name}
+                    </span>{" "}
+                    as dropped from{" "}
+                    <span className="font-semibold text-gray-800">
+                      {selectedCourse?.code}
+                    </span>
+                    ? The enrollment record will be kept for history.
                   </>
                 ) : (
                   <>
-                    Remove <span className="font-semibold text-gray-800">{studentToUnenroll.name}</span> from <span className="font-semibold text-gray-800">{selectedCourse?.code}</span>? This removes only the course enrollment and does not delete the student's account.
+                    Remove{" "}
+                    <span className="font-semibold text-gray-800">
+                      {studentToUnenroll.name}
+                    </span>{" "}
+                    from{" "}
+                    <span className="font-semibold text-gray-800">
+                      {selectedCourse?.code}
+                    </span>
+                    ? This removes only the course enrollment and does not
+                    delete the student's account.
                   </>
                 )}
               </p>
@@ -1346,8 +1403,12 @@ export default function StaffDashboard() {
                 className="px-5 py-2.5 bg-red-600 text-white rounded-full text-xs font-bold hover:bg-red-700 transition-all shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isUnenrolling
-                  ? (studentAction === "drop" ? "Dropping..." : "Unenrolling...")
-                  : (studentAction === "drop" ? "Yes, Drop Student" : "Yes, Unenroll Student")}
+                  ? studentAction === "drop"
+                    ? "Dropping..."
+                    : "Unenrolling..."
+                  : studentAction === "drop"
+                  ? "Yes, Drop Student"
+                  : "Yes, Unenroll Student"}
               </button>
             </div>
           </div>
@@ -1572,7 +1633,8 @@ export default function StaffDashboard() {
                   Analytics & Statistics
                 </h1>
                 <p className="text-xs text-gray-500 mt-1">
-                  Overview of active courses, total enrolled students, and engagement metrics.
+                  Overview of active courses, total enrolled students, and
+                  engagement metrics.
                 </p>
               </div>
 
@@ -1632,7 +1694,9 @@ export default function StaffDashboard() {
                 className="animate-item-in bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs mt-6"
               >
                 <div className="px-6 py-4 border-b border-gray-100">
-                  <h3 className="font-bold text-gray-900 text-base">Course Statistics Breakdown</h3>
+                  <h3 className="font-bold text-gray-900 text-base">
+                    Course Statistics Breakdown
+                  </h3>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1642,16 +1706,29 @@ export default function StaffDashboard() {
                         <th className="py-3.5 px-6">Course Code</th>
                         <th className="py-3.5 px-6">Course Title</th>
                         <th className="py-3.5 px-6">Section</th>
-                        <th className="py-3.5 px-6 text-center">Interviews Status</th>
-                        <th className="py-3.5 px-6 text-right">Enrolled Students</th>
+                        <th className="py-3.5 px-6 text-center">
+                          Interviews Status
+                        </th>
+                        <th className="py-3.5 px-6 text-right">
+                          Enrolled Students
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-sm">
                       {[...publishedCourses, ...concludedCourses].map((c) => (
-                        <tr key={c.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-4 px-6 font-Inter font-medium text-gray-700">{c.code}</td>
-                          <td className="py-4 px-6 font-bold text-gray-900">{c.title}</td>
-                          <td className="py-4 px-6 text-gray-600">{c.section || "N/A"}</td>
+                        <tr
+                          key={c.id}
+                          className="hover:bg-gray-50 transition-colors"
+                        >
+                          <td className="py-4 px-6 font-Inter font-medium text-gray-700">
+                            {c.code}
+                          </td>
+                          <td className="py-4 px-6 font-bold text-gray-900">
+                            {c.title}
+                          </td>
+                          <td className="py-4 px-6 text-gray-600">
+                            {c.section || "N/A"}
+                          </td>
                           <td className="py-4 px-6 text-center">
                             {c.is_interviews_paused ? (
                               <span className="inline-flex items-center gap-1 font-semibold text-xs px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
@@ -1685,6 +1762,8 @@ export default function StaffDashboard() {
                       onClick={() => {
                         setSelectedCourse(null);
                         setStudentSearch("");
+                        setStudentPage(1);
+                        setActiveStudentMenuId(null);
                         setNavAnimKey((prev) => prev + 1);
                         navigate("/staff/dashboard");
                       }}
@@ -1701,13 +1780,15 @@ export default function StaffDashboard() {
                       </h1>
                       {selectedCourse?.is_interviews_paused && (
                         <span className="bg-amber-100 text-amber-800 font-bold text-xs px-2.5 py-1 rounded-full flex items-center gap-1 border border-amber-200">
-                          <Pause className="w-3 h-3 stroke-[2.5]" /> Interviews Paused
+                          <Pause className="w-3 h-3 stroke-[2.5]" /> Interviews
+                          Paused
                         </span>
                       )}
                     </div>
                     {selectedCourse && (
                       <p className="text-xs text-gray-500 mt-1">
-                        {selectedCourse.code} • Section {selectedCourse.section} • Enrolled Student Roster
+                        {selectedCourse.code} • Section {selectedCourse.section}{" "}
+                        • Enrolled Student Roster
                       </p>
                     )}
                   </div>
@@ -1736,19 +1817,9 @@ export default function StaffDashboard() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <div className="relative">
-                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search Student Name or ID..."
-                        value={studentSearch}
-                        onChange={(e) => setStudentSearch(e.target.value)}
-                        className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-400 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] w-64 shadow-xs transition-all"
-                      />
-                    </div>
                     <button
                       onClick={() => setIsEnrollModalOpen(true)}
-                      className="flex items-center gap-2 bg-[#862334] text-white px-4 py-2 rounded-xl text-sm font-bold font-Geist hover:bg-[#701c2b] transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
+                      className="flex items-center gap-2 bg-[#862334] text-white px-4 py-2.5 rounded-xl text-sm font-bold font-Geist hover:bg-[#701c2b] transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
                     >
                       <UserPlus className="w-4 h-4" /> Enroll Student
                     </button>
@@ -1809,7 +1880,9 @@ export default function StaffDashboard() {
                                   }`}
                                 >
                                   <span>{option.label}</span>
-                                  {isSelected && <Check className="w-3.5 h-3.5 text-[#862334]" />}
+                                  {isSelected && (
+                                    <Check className="w-3.5 h-3.5 text-[#862334]" />
+                                  )}
                                 </button>
                               );
                             })}
@@ -1864,141 +1937,289 @@ export default function StaffDashboard() {
                   </div>
                 </div>
               ) : (
-                <div
-                  style={{ animationDelay: "150ms" }}
-                  className="animate-item-in space-y-4"
-                >
-                  <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                      <h3 className="font-semibold font-Inter text-gray-900 text-md">Student List</h3>
-                      <span className="text-xs text-gray-500">
-                        Showing {filteredStudents.length} of {selectedCourse.students?.length || 0} students
-                      </span>
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
+                  {/* Student Roster Container matching UserManagement_2.jsx */}
+                  <div
+                    style={{ animationDelay: "120ms" }}
+                    className="animate-item-in md:col-span-12 bg-white border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] relative z-20 overflow-visible rounded-2xl"
+                  >
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-6 md:px-8 py-5 gap-4 border-b border-[#862334]/15 bg-rose-50/20 rounded-t-2xl">
+                      <h3 className="font-Geist text-lg font-bold text-black tracking-tight">
+                        Student Roster
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        <div className="relative w-full sm:w-64 md:w-80">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                          <input
+                            value={studentSearch}
+                            onChange={(e) => {
+                              setStudentSearch(e.target.value);
+                              setStudentPage(1);
+                              setActiveStudentMenuId(null);
+                            }}
+                            className="bg-white border border-[#862334]/30 focus:ring-1 focus:ring-[#862334] text-xs font-Inter w-full pl-10 py-2.5 text-black placeholder:text-gray-400 outline-none rounded-lg"
+                            placeholder="SEARCH STUDENTS..."
+                          />
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
+                    <div className="overflow-x-auto md:overflow-visible">
+                      <table className="w-full text-left border-collapse min-w-[600px]">
                         <thead>
-                          <tr className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase font-Inter border-b border-gray-200">
-                            <th className="py-3.5 px-6">Student No.</th>
-                            <th className="py-3.5 px-6">Student Name</th>
-                            <th className="py-3.5 px-6">Email Address</th>
-                            <th className="py-3.5 px-6">Date Enrolled</th>
-                            <th className="py-3.5 px-6 text-center">Status</th>
+                          <tr className="border-b border-[#862334]/15 bg-rose-50/10">
+                            {[
+                              "Student",
+                              "Student No.",
+                              "Status",
+                              "Date Enrolled",
+                              "Action",
+                            ].map((h, i) => (
+                              <th
+                                key={i}
+                                className={`px-6 md:px-8 py-4 md:py-5 text-[14px] font-bold text-gray-900 font-Geist ${
+                                  i === 4 ? "text-right" : ""
+                                }`}
+                              >
+                                {h}
+                              </th>
+                            ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100 text-sm">
-                          {filteredStudents.map((student) => (
-                            <tr key={student.id} className="hover:bg-rose-50/30 transition-colors">
-                              <td className="py-4 px-6 font-Inter font-medium text-gray-700">{student.studentNo}</td>
-                              <td className="py-4 px-6 font-Inter text-gray-700">{student.name}</td>
-                              <td className="py-4 px-6 font-Inter text-gray-700">{student.email}</td>
-                              <td className="py-4 px-6 font-Inter text-gray-700">{student.dateJoined}</td>
-                              <td className="py-4 px-6 text-center">
-                                <div className="inline-flex">
-                                  <button
-                                    ref={activeStudentMenuId === student.id ? studentMenuTriggerRef : null}
-                                    type="button"
-                                    aria-haspopup="menu"
-                                    aria-expanded={activeStudentMenuId === student.id}
-                                    aria-label={`Enrollment actions for ${student.name}; status ${student.status}`}
-                                    disabled={isUnenrolling || student.status.toLowerCase() !== "enrolled"}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      if (activeStudentMenuId === student.id) {
-                                        setActiveStudentMenuId(null);
-                                      } else {
-                                        const rect = event.currentTarget.getBoundingClientRect();
-                                        const menuWidth = 176;
-                                        const menuHeight = 92;
-                                        const gap = 8;
-                                        const spaceBelow = window.innerHeight - rect.bottom;
-                                        const openAbove = spaceBelow < menuHeight + gap && rect.top > menuHeight + gap;
-                                        const left = Math.min(
-                                          Math.max(8, rect.right - menuWidth),
-                                          Math.max(8, window.innerWidth - menuWidth - 8)
-                                        );
-                                        const top = openAbove
-                                          ? Math.max(8, rect.top - menuHeight - gap)
-                                          : Math.min(rect.bottom + gap, Math.max(8, window.innerHeight - menuHeight - 8));
-                                        setStudentMenuPosition({ top, left });
-                                        setActiveStudentMenuId(student.id);
-                                      }
-                                    }}
-                                    className={`inline-flex items-center justify-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
-                                      student.status.toLowerCase() === "enrolled"
-                                        ? "text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
-                                        : "text-gray-600 bg-gray-100 border-gray-200 cursor-default"
-                                    } disabled:opacity-70`}
-                                  >
-                                    {student.status.toLowerCase() === "enrolled" && (
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                    )}
-                                    {student.status}
-                                    {student.status.toLowerCase() === "enrolled" && (
-                                      <span aria-hidden="true" className="ml-0.5">▾</span>
-                                    )}
-                                  </button>
+                        <tbody
+                          key={`students-page-${displayedStudentPage}-${studentSearch}`}
+                          className="divide-y divide-gray-100"
+                        >
+                          {paginatedStudents.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={5}
+                                className="px-6 py-10 text-center text-gray-400 text-sm font-[Manrope,sans-serif]"
+                              >
+                                No enrolled students match your query.
+                              </td>
+                            </tr>
+                          ) : (
+                            paginatedStudents.map((student, i) => {
+                              const isMenuOpen =
+                                activeStudentMenuId === student.id;
+                              const isEnrolled =
+                                student.status.toLowerCase() === "enrolled";
+                              const openUpward =
+                                i >= paginatedStudents.length - 2 &&
+                                paginatedStudents.length > 2;
 
-                                  {activeStudentMenuId === student.id && createPortal(
+                              return (
+                                <tr
+                                  key={student.id}
+                                  style={{
+                                    animationDelay: `${Math.min(
+                                      (i + 1) * 80,
+                                      500
+                                    )}ms`,
+                                  }}
+                                  className={`animate-item-in transition-colors group relative ${
+                                    isMenuOpen ? "z-30" : "z-0"
+                                  }`}
+                                >
+                                  <td className="px-6 md:px-8 py-4 md:py-5">
+                                    <div className="flex items-center gap-3 md:gap-4">
+                                      <div className="w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100 border border-gray-200">
+                                        <User className="text-[#862334] w-5 h-5" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-bold text-black truncate font-Geist">
+                                          {student.name}
+                                        </div>
+                                        <div className="text-[10px] text-gray-400 font-[Inter,sans-serif] truncate">
+                                          {student.email}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  <td className="px-6 md:px-8 py-4 md:py-5">
+                                    <span className="px-2.5 md:px-3.5 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full font-Inter bg-gray-100 text-gray-500">
+                                      {student.studentNo || "—"}
+                                    </span>
+                                  </td>
+
+                                  <td className="px-6 md:px-8 py-4 md:py-5">
                                     <div
-                                      ref={studentMenuRef}
-                                      role="menu"
-                                      aria-label={`Actions for ${student.name}`}
-                                      onMouseDown={(event) => event.stopPropagation()}
-                                      style={{
-                                        position: "fixed",
-                                        top: studentMenuPosition.top,
-                                        left: studentMenuPosition.left,
-                                        width: 176,
-                                        zIndex: 9999,
-                                      }}
-                                      className="bg-white rounded-xl shadow-lg border border-gray-200 py-1 text-left"
+                                      className={`flex items-center text-[11px] font-semibold font-[Inter,sans-serif] uppercase ${
+                                        isEnrolled
+                                          ? "text-green-700"
+                                          : "text-gray-400"
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full mr-2 flex-shrink-0 ${
+                                          isEnrolled
+                                            ? "bg-green-700 animate-pulse"
+                                            : "bg-gray-300"
+                                        }`}
+                                      />
+                                      {student.status}
+                                    </div>
+                                  </td>
+
+                                  <td className="px-6 md:px-8 py-4 md:py-5 text-sm text-gray-400 font-[Inter,sans-serif] whitespace-nowrap">
+                                    {student.dateJoined || "—"}
+                                  </td>
+
+                                  <td className="px-6 md:px-8 py-4 md:py-5 text-right">
+                                    <div
+                                      ref={
+                                        isMenuOpen
+                                          ? studentMenuContainerRef
+                                          : null
+                                      }
+                                      className="relative inline-block text-left"
                                     >
                                       <button
                                         type="button"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setStudentAction("unenroll");
-                                          setStudentToUnenroll(student);
-                                          setActiveStudentMenuId(null);
-                                        }}
-                                        className="w-full px-3.5 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                        disabled={isUnenrolling || !isEnrolled}
+                                        onClick={() =>
+                                          setActiveStudentMenuId((prev) =>
+                                            prev === student.id
+                                              ? null
+                                              : student.id
+                                          )
+                                        }
+                                        aria-haspopup="menu"
+                                        aria-expanded={isMenuOpen}
+                                        aria-label={`Enrollment actions for ${student.name}`}
+                                        className={`inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors focus:outline-none ${
+                                          !isEnrolled
+                                            ? "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed opacity-60"
+                                            : isMenuOpen
+                                            ? "border-[#862334]/40 bg-[#862334]/[0.08] text-[#862334] cursor-pointer"
+                                            : "border-gray-200 bg-white text-gray-600 hover:border-[#862334]/30 hover:text-[#862334] hover:bg-rose-50/30 cursor-pointer"
+                                        }`}
                                       >
-                                        <UserMinus className="w-4 h-4 text-gray-500" />
-                                        Unenroll
+                                        <EllipsisVertical className="w-4 h-4" />
                                       </button>
-                                      <button
-                                        type="button"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setStudentAction("drop");
-                                          setStudentToUnenroll(student);
-                                          setActiveStudentMenuId(null);
-                                        }}
-                                        className="w-full px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-gray-100"
-                                      >
-                                        <UserMinus className="w-4 h-4" />
-                                        Drop Student
-                                      </button>
-                                    </div>,
-                                    document.body
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
 
-                          {filteredStudents.length === 0 && (
-                            <tr>
-                              <td colSpan={5} className="py-12 text-center text-gray-500">
-                                No enrolled students found matching your search.
-                              </td>
-                            </tr>
+                                      {isMenuOpen && isEnrolled && (
+                                        <div
+                                          role="menu"
+                                          aria-label={`Actions for ${student.name}`}
+                                          className={`absolute right-0 ${
+                                            openUpward
+                                              ? "bottom-full mb-1.5"
+                                              : "top-full mt-1.5"
+                                          } w-44 rounded-xl bg-white border border-gray-200 shadow-lg py-1.5 z-30 font-Inter`}
+                                        >
+                                          <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => {
+                                              setStudentAction("unenroll");
+                                              setStudentToUnenroll(student);
+                                              setActiveStudentMenuId(null);
+                                            }}
+                                            className="w-full px-3.5 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                          >
+                                            <UserMinus className="w-3.5 h-3.5" />
+                                            <span>Unenroll</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => {
+                                              setStudentAction("drop");
+                                              setStudentToUnenroll(student);
+                                              setActiveStudentMenuId(null);
+                                            }}
+                                            className="w-full px-3.5 py-2 text-left text-xs font-semibold text-[#862334] hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                          >
+                                            <UserMinus className="w-3.5 h-3.5" />
+                                            <span>Drop Student</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
                           )}
                         </tbody>
                       </table>
                     </div>
+                  </div>
+
+                  {/* Pill Pagination matching UserManagement_2.jsx */}
+                  <div
+                    style={{ animationDelay: "260ms" }}
+                    className="animate-item-in md:col-span-12 relative z-0 mt-2 mb-4 flex justify-between items-center flex-wrap gap-4"
+                  >
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStudentPage((p) => Math.max(1, p - 1));
+                          setActiveStudentMenuId(null);
+                        }}
+                        disabled={displayedStudentPage === 1}
+                        aria-label="Previous page"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-500 hover:text-[#862334] hover:bg-[#862334]/[0.06] transition-colors disabled:opacity-35 disabled:pointer-events-none cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Previous</span>
+                      </button>
+
+                      {getVisibleStudentPages().map((item, idx) =>
+                        item === "..." ? (
+                          <span
+                            key={`ellipsis-${idx}`}
+                            className="px-2 py-1 text-xs text-slate-400 select-none"
+                          >
+                            …
+                          </span>
+                        ) : (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setStudentPage(item);
+                              setActiveStudentMenuId(null);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium tabular-nums transition-colors cursor-pointer ${
+                              displayedStudentPage === item
+                                ? "bg-[#862334] text-white font-semibold"
+                                : "text-slate-500 hover:text-[#862334] hover:bg-[#862334]/[0.06]"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        )
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStudentPage((p) =>
+                            Math.min(totalStudentPages, p + 1)
+                          );
+                          setActiveStudentMenuId(null);
+                        }}
+                        disabled={
+                          displayedStudentPage === totalStudentPages ||
+                          totalStudentPages === 0
+                        }
+                        aria-label="Next page"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-500 hover:text-[#862334] hover:bg-[#862334]/[0.06] transition-colors disabled:opacity-35 disabled:pointer-events-none cursor-pointer"
+                      >
+                        <span>Next</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <span className="hidden sm:block font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-400">
+                      Viewing {paginatedStudents.length} of{" "}
+                      {filteredStudents.length} students
+                    </span>
                   </div>
                 </div>
               )}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { AlertTriangle, GraduationCap } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 import Logo from "/images/Alvin-logo.png";
 
@@ -18,7 +18,8 @@ import { supabase } from "../lib/supabaseClient";
  * Statuses:
  *   checking     -> waiting for the enrollment check
  *   enrolled     -> render the requested student page
- *   not_enrolled -> show the "enrollment required" page
+ *   not_enrolled -> also renders the student page (interviews are blocked
+ *                   elsewhere); only the interview needs an enrollment
  *   error        -> the check itself failed (network / server); never
  *                   treated as "enrolled", never shown as "not enrolled"
  */
@@ -160,24 +161,9 @@ export default function EnrollmentGate() {
 
   if (status === "checking") return <Loading />;
 
-  if (status === "enrolled") return <Outlet />;
-
-  if (status === "not_enrolled") {
-    return (
-      <GatePage
-        icon={GraduationCap}
-        title="You need to be enrolled in a course first"
-        email={email}
-        primaryLabel="Check again"
-        onPrimary={() => checkEnrollment({ showLoader: true })}
-        onSignOut={handleSignOut}
-        busy={signingOut}
-      >
-        ALVIN is open to students who are enrolled in a course. Ask your Career
-        Advisor to enroll you, then select Check again.
-      </GatePage>
-    );
-  }
+  // Enrollment is only required to conduct an interview, not to use ALVIN.
+  // The interview is blocked in UserDashboard (button) and on the server.
+  if (status === "enrolled" || status === "not_enrolled") return <Outlet />;
 
   if (status === "deactivated") {
     return (
