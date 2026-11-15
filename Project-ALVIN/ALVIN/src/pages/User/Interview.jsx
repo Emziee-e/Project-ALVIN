@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   LayoutDashboard,
   Mic,
@@ -6,11 +6,14 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Check,
   Mail,
   Calendar,
-  GraduationCap,
   BookOpen,
   Users,
+  Search,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
@@ -23,13 +26,54 @@ const navItems = [
   { id: "interviews", label: "History", path: "/user/interviews", icon: Mic },
 ];
 
+const SORT_OPTIONS = [
+  { id: "recent", label: "Most Recent" },
+  { id: "score", label: "Highest Score" },
+];
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 const PER_PAGE = 5;
 
-const formatInterviewDate = (date) => date
-  ? new Date(date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
-  : "—";
+const formatInterviewDate = (date) =>
+  date
+    ? new Date(date).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "—";
+
+const getScoreDotColor = (score) => {
+  if (score == null) return "bg-slate-300";
+  const num = Number(score);
+  if (num >= 70) return "bg-emerald-600";
+  if (num >= 40) return "bg-amber-500";
+  if (num >= 25) return "bg-[#862334]";
+  return "bg-slate-300";
+};
+
+function getPaginationNumbers(current, totalPages) {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+
+  // Group into chunks of 3: [1,2,3], [4,5,6], [7,8,9], etc.
+  const chunkStart = Math.floor((current - 1) / 3) * 3 + 1;
+
+  // First chunk: [1, 2, 3, ..., totalPages]
+  if (chunkStart === 1) {
+    return [1, 2, 3, "...", totalPages];
+  }
+
+  // Final chunk: [1, ..., totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+  if (chunkStart >= totalPages - 3) {
+    return [1, "...", totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+
+  // Middle chunks: [1, ..., chunkStart, chunkStart + 1, chunkStart + 2, ..., totalPages]
+  return [1, "...", chunkStart, chunkStart + 1, chunkStart + 2, "...", totalPages];
+}
 
 export default function Interview() {
   const [activeNav, setActiveNav] = useState("interviews");
@@ -39,11 +83,12 @@ export default function Interview() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const total = interviews.length;
-  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
-  const visibleInterviews = interviews.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("recent"); // "recent" | "score"
+  const [isSortOpen, setIsSortOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
 
+  const sortDropdownRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -55,6 +100,70 @@ export default function Interview() {
     initials: "V",
   });
   const [imageError, setImageError] = useState(false);
+
+  // Close sort dropdown when clicking outside or pressing Escape
+  useEffect(() => {
+    if (!isSortOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setIsSortOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setIsSortOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSortOpen]);
+
+  const processedInterviews = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = query
+      ? interviews.filter((row) => {
+          const role = (row.target_role || "Interview").toLowerCase();
+          const formattedDate = formatInterviewDate(row.started_at).toLowerCase();
+          return role.includes(query) || formattedDate.includes(query);
+        })
+      : [...interviews];
+
+    if (sortBy === "score") {
+      filtered.sort((a, b) => {
+        const scoreA = a.overall_score == null ? -1 : Number(a.overall_score);
+        const scoreB = b.overall_score == null ? -1 : Number(b.overall_score);
+        return scoreB - scoreA;
+      });
+    } else {
+      filtered.sort((a, b) => {
+        const timeA = a.started_at ? new Date(a.started_at).getTime() : 0;
+        const timeB = b.started_at ? new Date(b.started_at).getTime() : 0;
+        return timeB - timeA;
+      });
+    }
+
+    return filtered;
+  }, [interviews, searchQuery, sortBy]);
+
+  const total = processedInterviews.length;
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const safePage = Math.min(page, pages);
+  const visibleInterviews = processedInterviews.slice(
+    (safePage - 1) * PER_PAGE,
+    safePage * PER_PAGE
+  );
+  const pageNumbers = getPaginationNumbers(safePage, pages);
+  const activeSortLabel =
+    SORT_OPTIONS.find((opt) => opt.id === sortBy)?.label || "Most Recent";
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, sortBy]);
 
   useEffect(() => {
     let isMounted = true;
@@ -93,7 +202,7 @@ export default function Interview() {
           name: fullName,
           email: emailAddress,
           avatarUrl: avatar,
-          initials: initials,
+          initials,
         }));
       }
     };
@@ -109,7 +218,9 @@ export default function Interview() {
     let active = true;
     const loadEnrollments = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         if (!session?.access_token) return;
         const response = await fetch(`${API_BASE_URL}/api/student/enrollments`, {
           headers: {
@@ -119,13 +230,20 @@ export default function Interview() {
         });
         if (!response.ok) throw new Error(`Enrollment request failed (${response.status})`);
         const rows = await response.json();
-        if (active) setUserProfile((prev) => ({ ...prev, enrollments: Array.isArray(rows) ? rows : [] }));
+        if (active) {
+          setUserProfile((prev) => ({
+            ...prev,
+            enrollments: Array.isArray(rows) ? rows : [],
+          }));
+        }
       } catch (error) {
         console.error("Unable to load student enrollments:", error);
       }
     };
     loadEnrollments();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -142,8 +260,13 @@ export default function Interview() {
       setHistoryLoading(true);
       setHistoryError("");
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error || !session?.access_token) throw new Error("Please log in to view your interview history.");
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+        if (error || !session?.access_token) {
+          throw new Error("Please log in to view your interview history.");
+        }
         const response = await fetch(`${API_BASE_URL}/api/interview/history`, {
           headers: {
             "X-API-Key": APP_API_KEY,
@@ -153,7 +276,11 @@ export default function Interview() {
         });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
-          throw new Error(typeof body.detail === "string" ? body.detail : `Failed to load interviews (${response.status}).`);
+          throw new Error(
+            typeof body.detail === "string"
+              ? body.detail
+              : `Failed to load interviews (${response.status}).`
+          );
         }
         const data = await response.json();
         if (!controller.signal.aborted) {
@@ -161,9 +288,13 @@ export default function Interview() {
           setPage(1);
         }
       } catch (error) {
-        if (!controller.signal.aborted) setHistoryError(error.message || "Unable to load interview history.");
+        if (!controller.signal.aborted) {
+          setHistoryError(error.message || "Unable to load interview history.");
+        }
       } finally {
-        if (!controller.signal.aborted) setHistoryLoading(false);
+        if (!controller.signal.aborted) {
+          setHistoryLoading(false);
+        }
       }
     }
     loadHistory();
@@ -180,17 +311,51 @@ export default function Interview() {
     }
   };
 
+  const staggerStyle = (index) => ({
+    animationDelay: `${index * 110}ms`,
+  });
+
   return (
     <>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
-        rel="stylesheet"
-      />
       <style>{`
         html, body, #root { height: 100%; margin: 0; width: 100%; }
+        @keyframes pillPop {
+          0% {
+            transform: scale(0.88);
+          }
+          60% {
+            transform: scale(1.06);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+        .animate-pill-pop {
+          animation: pillPop 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes pageFadeSlideIn {
+          0% {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-slide-in {
+          animation: pageFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .animate-fade-slide-in {
+            animation: none;
+            opacity: 1;
+            transform: none;
+          }
+        }
       `}</style>
 
-      <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Geist,Inter] relative">
+      <div className="flex h-screen w-full overflow-hidden bg-white text-slate-900 font-[Inter] relative">
         {/* Modals */}
         <SignOutModal
           isOpen={isSignOutModalOpen}
@@ -198,13 +363,12 @@ export default function Interview() {
           onConfirm={handleSignOut}
         />
 
-        {/* ── Slide-out Account Drawer Wrapper ── */}
+        {/* Slide-out Account Drawer */}
         <div
           className={`fixed inset-0 z-40 flex transition-all duration-300 ${
             isAccountOpen ? "pointer-events-auto" : "pointer-events-none"
           }`}
         >
-          {/* Dark Backdrop Overlay with Opacity Animation */}
           <div
             className={`fixed inset-0 bg-black/30 transition-opacity duration-300 ease-in-out ${
               isAccountOpen ? "opacity-100" : "opacity-0"
@@ -212,9 +376,8 @@ export default function Interview() {
             onClick={() => setIsAccountOpen(false)}
           />
 
-          {/* Sliding Drawer Content Container */}
           <aside
-            className={`relative left-0 md:left-[100px] w-[340px] h-full bg-white border-r border-gray-200 z-50 flex flex-col overflow-y-auto select-none font-sans text-[#2D3B45] transition-transform duration-300 ease-in-out ${
+            className={`relative left-0 md:left-[100px] w-[340px] h-full bg-white border-r border-[#862334] z-50 flex flex-col overflow-y-auto select-none font-[Inter] text-[#2D3B45] transition-transform duration-300 ease-in-out ${
               isAccountOpen ? "translate-x-0" : "-translate-x-full"
             }`}
           >
@@ -233,15 +396,15 @@ export default function Interview() {
                   src={userProfile.avatarUrl}
                   alt={userProfile.name}
                   onError={() => setImageError(true)}
-                  className="w-20 h-20 rounded-full object-cover border-2 border-[#862334] mb-3"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#862334] shadow-sm mb-3"
                 />
               ) : (
-                <div className="w-20 h-20 rounded-full border-2 border-[#1565C0] flex items-center justify-center text-[#1565C0] font-semibold text-2xl mb-3 bg-white">
+                <div className="w-20 h-20 rounded-full border-2 border-[#862334] flex items-center justify-center text-[#862334] font-[Geist] font-semibold text-2xl mb-3 bg-white shadow-xs">
                   {userProfile.initials}
                 </div>
               )}
 
-              <h2 className="text-xl font-bold text-[#2D3B45] text-center tracking-tight">
+              <h2 className="font-[Geist] text-xl font-bold text-[#2D3B45] text-center tracking-tight">
                 {userProfile.name}
               </h2>
 
@@ -250,7 +413,7 @@ export default function Interview() {
                   setIsAccountOpen(false);
                   setIsSignOutModalOpen(true);
                 }}
-                className="mt-3 px-4 py-1 bg-[#F5F5F5] hover:bg-gray-200 border border-gray-300 rounded text-xs font-medium text-[#2D3B45] transition-colors cursor-pointer"
+                className="mt-3 px-4 py-1 bg-[#F5F5F5] hover:bg-gray-200 border border-gray-300 rounded font-[Inter] text-xs font-medium text-[#2D3B45] transition-colors cursor-pointer"
               >
                 Logout
               </button>
@@ -266,47 +429,78 @@ export default function Interview() {
                   <Mail className="w-4 h-4" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                     Email Address
                   </span>
-                  <span className="text-sm font-medium text-[#2D3B45] break-all">
+                  <span className="font-[Inter] text-sm font-medium text-[#2D3B45] break-all">
                     {userProfile.email || "Not Available"}
                   </span>
                 </div>
               </div>
 
-              {userProfile.enrollments.length ? userProfile.enrollments.map((enrollment, index) => (
-                <div key={`${enrollment.course_id}-${index}`} className="space-y-4 border-t border-gray-100 pt-4">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><BookOpen className="w-4 h-4" /></div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Enrolled Course</span>
-                      <span className="text-sm font-medium text-[#2D3B45] break-words">{enrollment.course_title || "Not available"}</span>
-                      {enrollment.course_code && <span className="text-xs text-gray-500">{enrollment.course_code}</span>}
+              {userProfile.enrollments.length ? (
+                userProfile.enrollments.map((enrollment, index) => (
+                  <div
+                    key={`${enrollment.course_id}-${index}`}
+                    className="space-y-4 border-t border-gray-100 pt-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
+                        <BookOpen className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                          Enrolled Course
+                        </span>
+                        <span className="font-[Inter] text-sm font-medium text-[#2D3B45] break-words">
+                          {enrollment.course_title || "Not available"}
+                        </span>
+                        {enrollment.course_code && (
+                          <span className="font-[Inter] text-xs text-gray-500">
+                            {enrollment.course_code}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                          Section
+                        </span>
+                        <span className="font-[Inter] text-sm font-medium text-[#2D3B45]">
+                          {enrollment.section || "Not available"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                          Academic Term
+                        </span>
+                        <span className="font-[Inter] text-sm font-medium text-[#2D3B45]">
+                          {enrollment.academic_term || "Not available"}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Users className="w-4 h-4" /></div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Section</span>
-                      <span className="text-sm font-medium text-[#2D3B45]">{enrollment.section || "Not available"}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5"><Calendar className="w-4 h-4" /></div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Academic Term</span>
-                      <span className="text-sm font-medium text-[#2D3B45]">{enrollment.academic_term || "Not available"}</span>
-                    </div>
-                  </div>
-                </div>
-              )) : <p className="text-sm text-gray-500">No course enrollment found.</p>}
+                ))
+              ) : (
+                <p className="font-[Inter] text-sm text-gray-500">
+                  No course enrollment found.
+                </p>
+              )}
             </div>
           </aside>
         </div>
 
-        {/* Canvas-style Vertical Navigation Sidebar */}
-        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen">
+        {/* Left Navigation Sidebar */}
+        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen font-[Inter]">
           <div className="w-full flex flex-col items-center">
             <div
               className="mb-3 px-1 flex flex-col items-center cursor-pointer"
@@ -326,7 +520,6 @@ export default function Interview() {
             <nav className="w-full flex flex-col gap-1">
               {navItems.map((item) => {
                 const Icon = item.id === "account" ? User : item.icon;
-
                 const isSolidActive = isAccountOpen
                   ? item.id === "account"
                   : activeNav === item.id;
@@ -355,9 +548,9 @@ export default function Interview() {
                       }`}
                     />
                     <span
-                      className={`text-[11px] tracking-tight ${
+                      className={`font-[Inter] text-[11px] tracking-tight ${
                         isSolidActive
-                          ? "font-bold text-white"
+                          ? "font-semibold text-white"
                           : "font-medium text-[#862334]"
                       }`}
                     >
@@ -370,120 +563,311 @@ export default function Interview() {
           </div>
         </aside>
 
-        {/* ── Main Content ── */}
-        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen min-w-0">
-          {/* ── Page Content ── */}
-          <div className="flex-1 overflow-y-auto pt-14 pb-12 px-12 sm:px-16 lg:px-24 w-full">
-            <div className="mb-10">
-              <h1 className="text-3xl sm:text-4xl font-bold uppercase tracking-tight text-black font-[Geist]">
+        {/* Main Content: Non-scrollable, full-size 5-row table with pagination right beneath */}
+        <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
+          <div className="flex-1 overflow-hidden flex flex-col pt-9 pb-6 px-10 sm:px-16 lg:px-24 w-full">
+            {/* Level 1: Header Block (0ms) */}
+            <div style={staggerStyle(0)} className="mb-10 animate-fade-slide-in">
+              <h1 className="font-[Geist] text-3xl sm:text-4xl md:text-5xl font-bold tracking-[-0.03em] text-black leading-tight">
                 Interview History
               </h1>
-              <p className="text-[#4a4a4a] text-sm mt-2">
+              <p className="font-[Inter] text-[#4a4a4a] text-sm sm:text-base mt-1.5 max-w-2xl leading-relaxed">
                 Review your previous performance and detailed interview feedback reports.
               </p>
             </div>
 
-            <div className="flex justify-end mb-4">
-              <button onClick={() => setRefreshKey((n) => n + 1)} disabled={historyLoading}
-                className="border border-[#862334] text-[#862334] rounded px-4 py-2 text-sm font-bold hover:bg-[#862334]/5 disabled:opacity-50 cursor-pointer">
-                Refresh History
-              </button>
+            {/* Level 2: Single-Line Compact Toolbar (110ms) */}
+            <div
+              style={staggerStyle(1)}
+              className="relative z-20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 animate-fade-slide-in"
+            >
+              {/* Search Input */}
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Filter by Role or Keyword..."
+                  className="w-full h-9 bg-white border border-gray-350 focus:border-[#862334]/50 focus:outline-none rounded-lg pl-9 pr-3.5 font-[Inter] text-xs text-gray-700 placeholder:text-gray-500 shadow-2xs transition-colors"
+                />
+              </div>
+
+              {/* Right Cluster: "Sort By" Label + Active Option Dropdown + Refresh History Button */}
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2" ref={sortDropdownRef}>
+                  <span className="font-[Inter] text-xs font-md text-gray-500 whitespace-nowrap">
+                    Sort By:
+                  </span>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsSortOpen((prev) => !prev)}
+                      aria-haspopup="listbox"
+                      aria-expanded={isSortOpen}
+                      className={`h-9 min-w-[118px] inline-flex items-center justify-between gap-2.5 bg-white border rounded-lg px-3.5 font-[Inter] text-xs font-semibold shadow-2xs transition-colors cursor-pointer ${
+                        isSortOpen
+                          ? "border-[#862334]/50 bg-[#862334]/5 text-[#862334]"
+                          : "border-gray-350 hover:border-[#862334]/40 hover:bg-[#862334]/5 text-gray-700 hover:text-[#862334]"
+                      }`}
+                    >
+                      <span>{activeSortLabel}</span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                          isSortOpen ? "rotate-180 text-[#862334]" : "text-slate-400"
+                        }`}
+                      />
+                    </button>
+
+                    {isSortOpen && (
+                      <div
+                        role="listbox"
+                        className="absolute right-0 mt-1.5 w-44 bg-white border border-[#862334]/20 rounded-xl shadow-lg p-1.5 space-y-1 z-30"
+                      >
+                        {SORT_OPTIONS.map((option) => {
+                          const isSelected = sortBy === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              role="option"
+                              aria-selected={isSelected}
+                              onClick={() => {
+                                setSortBy(option.id);
+                                setIsSortOpen(false);
+                              }}
+                              className={`w-full px-3 py-2 rounded-lg text-left font-[Inter] text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                                isSelected
+                                  ? "bg-[#862334] text-white font-semibold"
+                                  : "text-slate-700 hover:bg-[#862334]/10 hover:text-[#862334] font-medium"
+                              }`}
+                            >
+                              <span>{option.label}</span>
+                              {isSelected && (
+                                <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Refresh History Button */}
+                <button
+                  type="button"
+                  onClick={() => setRefreshKey((n) => n + 1)}
+                  disabled={historyLoading}
+                  className="h-9 inline-flex items-center gap-2 bg-white border border-slate-200 hover:border-[#862334]/40 hover:bg-[#862334]/5 text-gray-700 hover:text-[#862334] rounded-lg px-3.5 font-[Inter] text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${historyLoading ? "animate-spin" : ""}`}
+                  />
+                  Refresh History
+                </button>
+              </div>
             </div>
-            {historyError && <p role="alert" className="mb-4 text-red-700 bg-red-50 border border-red-200 p-4 rounded">{historyError}</p>}
-            {/* ── Data Table ── */}
-            <div className="bg-white rounded-xl overflow-hidden border border-gray-200">
+
+            {historyError && (
+              <p
+                role="alert"
+                className="mb-4 font-[Inter] text-sm text-red-700 bg-red-50 border border-red-200 px-4 py-3 rounded-xl"
+              >
+                {historyError}
+              </p>
+            )}
+
+            {/* Level 3: Fixed-Column Data Table Card (220ms) */}
+            <div
+              style={staggerStyle(2)}
+              className="relative z-10 bg-white rounded-xl overflow-hidden border border-[#862334]/20 shadow-xs animate-fade-slide-in"
+            >
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[560px]">
+                <table className="w-full table-fixed text-left border-collapse min-w-[640px]">
+                  <colgroup>
+                    <col className="w-[34%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[22%]" />
+                    <col className="w-[24%]" />
+                  </colgroup>
                   <thead>
-                    <tr className="bg-gray-50/50 border-b border-gray-200">
-                      {["Target Role", "Date", "Readiness Score", ""].map((h, i) => (
-                        <th
-                          key={i}
-                          className={`px-6 py-4 font-Geist text-xs uppercase tracking-widest text-[#862334] font-bold ${
-                            i === 3 ? "text-right" : ""
-                          }`}
-                        >
-                          {h}
-                        </th>
-                      ))}
+                    <tr className="bg-slate-50/70 border-b border-slate-100">
+                      <th className="pl-7 pr-4 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold">
+                        Target Role
+                      </th>
+                      <th className="px-4 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold">
+                        Date
+                      </th>
+                      <th className="px-4 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold">
+                        Readiness Score
+                      </th>
+                      <th className="pl-4 pr-7 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold text-right">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-slate-100">
                     {historyLoading ? (
-                      <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">Loading interview history...</td></tr>
-                    ) : historyError ? (
-                      <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">Unable to display interviews.</td></tr>
-                    ) : total === 0 ? (
-                      <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">No saved interviews yet. Complete an interview to view its report here.</td></tr>
-                    ) : visibleInterviews.map((row) => (
-                      <tr key={row.session_id} className="hover:bg-gray-50/60 transition-colors">
-                        {/* Role */}
-                        <td className="px-6 py-5">
-                          <p className="font-bold text-black text-sm md:text-base truncate">
-                            {row.target_role || "Interview"}
-                          </p>
-                        </td>
-                        {/* Date */}
-                        <td className="px-6 py-5 text-gray-500 font-[Inter,sans-serif] text-xs md:text-sm whitespace-nowrap">
-                          {formatInterviewDate(row.started_at)}
-                        </td>
-                        {/* Score */}
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-20 md:w-28 bg-gray-100 h-1.5 rounded-full overflow-hidden flex-shrink-0">
-                              <div
-                                className="bg-[#862334] h-full rounded-full"
-                                style={{ width: `${Math.min(100, Math.max(0, Number(row.overall_score) || 0))}%` }}
-                              />
-                            </div>
-                            <span className="font-bold text-[#862334] text-sm whitespace-nowrap">
-                              {row.overall_score == null ? "Pending" : `${Number(row.overall_score).toFixed(1)}%`}
-                            </span>
-                          </div>
-                        </td>
-                        {/* Action */}
-                        <td className="px-6 py-5 text-right">
-                          <button
-                            onClick={() => navigate(`/user/interview-results/${encodeURIComponent(row.session_id)}`)}
-                            disabled={row.report_status !== "completed" && row.report_status !== "failed"}
-                            className="bg-[#862334] text-white hover:bg-[#6e1c2a] transition-all duration-300 px-4 md:px-5 py-2 text-xs md:text-sm font-bold uppercase tracking-wider rounded disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 whitespace-nowrap font-Geist cursor-pointer"
-                          >
-                            View Report
-                          </button>
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-6 py-12 text-center font-[Inter] text-sm text-slate-400"
+                        >
+                          Loading interview history...
                         </td>
                       </tr>
-                    ))}
+                    ) : historyError ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-6 py-12 text-center font-[Inter] text-sm text-slate-400"
+                        >
+                          Unable to display interviews.
+                        </td>
+                      </tr>
+                    ) : total === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-6 py-12 text-center font-[Inter] text-sm text-slate-400"
+                        >
+                          {searchQuery.trim()
+                            ? `No interviews matching "${searchQuery}".`
+                            : "No saved interviews yet. Complete an interview to view its report here."}
+                        </td>
+                      </tr>
+                    ) : (
+                      visibleInterviews.map((row) => (
+                        <tr
+                          key={row.session_id}
+                          className="hover:bg-slate-50/70 transition-colors"
+                        >
+                          {/* Role with Status Dot */}
+                          <td className="pl-7 pr-4 py-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <p className="font-[Inter] font-semibold text-gray-700 text-sm sm:text-base truncate">
+                                {row.target_role || "Interview"}
+                              </p>
+                            </div>
+                          </td>
+
+                          {/* Date */}
+                          <td className="px-4 py-4 font-[Inter] font-mediumtext-gray-700 text-xs sm:text-sm whitespace-nowrap">
+                            {formatInterviewDate(row.started_at)}
+                          </td>
+
+                          {/* Score Only */}
+                          <td className="px-4 py-4">
+                            <span
+                              className={`font-[Inter] font-bold text-sm sm:text-base tabular-nums whitespace-nowrap ${
+                                row.overall_score == null
+                                  ? "text-gray-400 font-medium text-xs sm:text-sm"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {row.overall_score == null
+                                ? "Pending"
+                                : `${Number(row.overall_score).toFixed(0)}%`}
+                            </span>
+                          </td>
+
+                          {/* Action */}
+                          <td className="pl-4 pr-7 py-4 text-right">
+                            <button
+                              onClick={() =>
+                                navigate(
+                                  `/user/interview-results/${encodeURIComponent(
+                                    row.session_id
+                                  )}`
+                                )
+                              }
+                              disabled={
+                                row.report_status !== "completed" &&
+                                row.report_status !== "failed"
+                              }
+                              className="bg-[#862334] text-white hover:bg-[#6e1c2a] transition-all duration-200 px-4 py-2 text-xs font-[Inter] font-semibold uppercase tracking-wider rounded-md disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 whitespace-nowrap cursor-pointer shadow-2xs"
+                            >
+                              View Report
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* ── Pagination ── */}
-            <div className="mt-8 flex justify-between items-center px-1 flex-wrap gap-4">
-              <div className="flex items-center gap-4">
+            {/* Level 4: Always Directly at the Bottom of the Table (330ms) */}
+            <div
+              style={staggerStyle(3)}
+              className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-slide-in"
+            >
+              {/* Left: Chunked 3-Page + Ellipsis + First/Last Page Pagination */}
+              <nav
+                aria-label="Interview history pagination"
+                className="flex items-center gap-1.5"
+              >
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30 cursor-pointer"
+                  disabled={safePage === 1}
+                  className="h-9 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-[Inter] text-sm font-medium text-slate-700 hover:text-[#862334] hover:bg-[#862334]/5 active:scale-95 transition-all duration-150 disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-slate-700 disabled:active:scale-100 cursor-pointer"
                 >
-                  <ChevronLeft size={18} /> Previous
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Previous</span>
                 </button>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-[#862334] text-sm">{page}</span>
-                  <span className="text-gray-400 text-sm">/</span>
-                  <span className="text-gray-500 text-sm">{pages}</span>
+
+                <div className="flex items-center gap-1">
+                  {pageNumbers.map((item, idx) =>
+                    item === "..." ? (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        className="w-9 h-9 flex items-center justify-center font-[Inter] text-sm text-slate-400 select-none"
+                      >
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={item}
+                        onClick={() => setPage(item)}
+                        aria-current={safePage === item ? "page" : undefined}
+                        className={`w-9 h-9 rounded-lg font-[Inter] text-sm font-semibold tabular-nums active:scale-95 transition-all duration-200 cursor-pointer ${
+                          safePage === item
+                            ? "bg-[#862334] text-white shadow-xs animate-pill-pop"
+                            : "text-slate-700 hover:bg-[#862334]/10 hover:text-[#862334]"
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    )
+                  )}
                 </div>
+
                 <button
                   onClick={() => setPage((p) => Math.min(pages, p + 1))}
-                  disabled={page === pages}
-                  className="font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-500 hover:text-[#862334] transition-colors flex items-center gap-1 disabled:opacity-30 cursor-pointer"
+                  disabled={safePage === pages}
+                  className="h-9 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-[Inter] text-sm font-medium text-slate-700 hover:text-[#862334] hover:bg-[#862334]/5 active:scale-95 transition-all duration-150 disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-slate-700 disabled:active:scale-100 cursor-pointer"
                 >
-                  Next <ChevronRight size={18} />
+                  <span>Next</span>
+                  <ChevronRight className="w-4 h-4" />
                 </button>
+              </nav>
+
+              {/* Right: Borderless Inline Showing Text Matching Pagination Scale & Weight */}
+              <div className="h-9 flex items-center gap-1.5 font-[Inter] text-sm text-slate-500">
+                <span>Showing</span>
+                <span className="font-[Geist] font-semibold text-slate-900 tabular-nums">
+                  {total === 0 ? 0 : (safePage - 1) * PER_PAGE + 1}–
+                  {Math.min(safePage * PER_PAGE, total)}
+                </span>
+                <span>of</span>
+                <span className="font-[Geist] font-semibold text-[#862334] tabular-nums">
+                  {total}
+                </span>
+                <span>Interviews</span>
               </div>
-              <span className="hidden sm:block font-[Inter,sans-serif] text-xs uppercase tracking-widest text-gray-400">
-                Viewing {total === 0 ? 0 : (page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, total)} of {total} interviews
-              </span>
             </div>
           </div>
         </main>

@@ -4,6 +4,7 @@ import Logo from '/images/Alvin-logo.png';
 import { Link, useNavigate } from 'react-router-dom';
 import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
+import { getProfileForUser, saveStudentProfile } from "../../lib/profileService";
 
 const Icon = ({ name, filled = false, className = "" }) => (
   <span
@@ -122,6 +123,10 @@ export default function UserSettings() {
       const { data } = await supabase.auth.getUser();
       const user = data?.user;
       const metadata = user?.user_metadata ?? {};
+      const profileResult = user ? await getProfileForUser(user) : null;
+      const studentProfile = profileResult?.table === "student_profile"
+        ? profileResult.profile
+        : null;
       const nextAvatarUrl =
         metadata.avatar_url ||
         metadata.picture ||
@@ -138,11 +143,11 @@ export default function UserSettings() {
 
         setName(nextName);
         setEmail(nextEmail);
-        setAcademicYear(nextYear);
-        setCourse(nextCourse);
+        setAcademicYear(studentProfile?.year_level || nextYear);
+        setCourse(studentProfile?.program_course || nextCourse);
 
-        setEditYear(nextYear);
-        setEditCourse(nextCourse);
+        setEditYear(studentProfile?.year_level || nextYear);
+        setEditCourse(studentProfile?.program_course || nextCourse);
       }
     };
 
@@ -162,6 +167,9 @@ export default function UserSettings() {
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+
       const { error } = await supabase.auth.updateUser({
         data: {
           academic_year_level: editYear,
@@ -170,6 +178,11 @@ export default function UserSettings() {
       });
 
       if (error) throw error;
+
+      await saveStudentProfile(userData.user, {
+        program_course: editCourse,
+        year_level: editYear,
+      });
 
       setAcademicYear(editYear);
       setCourse(editCourse);
@@ -185,7 +198,8 @@ export default function UserSettings() {
       });
     } catch (err) {
       console.error("Failed to update user profile:", err);
-      alert("Failed to update profile details. Please try again.");
+      const errorDetails = [err?.code, err?.message].filter(Boolean).join(": ");
+      alert(`Failed to update profile details${errorDetails ? ` (${errorDetails})` : ""}. Please try again.`);
     } finally {
       setIsSaving(false);
     }

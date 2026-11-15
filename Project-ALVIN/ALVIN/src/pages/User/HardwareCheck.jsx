@@ -23,18 +23,32 @@ export default function HardwareCheck() {
   const [devices, setDevices] = useState({ video: [], audio: [] });
   const [selectedDevices, setSelectedDevices] = useState({ video: "", audio: "" });
 
-  // FIXED: State for avatarUrl added here
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [userName, setUserName] = useState("");
 
-  // FIXED: Fetch avatar from Supabase user metadata on mount
+  // Fetch avatar and user name from Supabase user metadata on mount
   useEffect(() => {
+    let isMounted = true;
+
     const fetchUserProfile = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          // Checks user metadata first (Google OAuth/Supabase Auth), or defaults to null
-          const url = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
-          setAvatarUrl(url);
+          const metadata = user.user_metadata ?? {};
+
+          const name =
+            metadata.full_name ||
+            metadata.name ||
+            metadata.display_name ||
+            user?.email?.split('@')[0] ||
+            "";
+
+          const url = metadata.avatar_url || metadata.picture || metadata.avatar || metadata.image || null;
+
+          if (isMounted) {
+            setUserName(name);
+            setAvatarUrl(url);
+          }
         }
       } catch (err) {
         console.error("Error fetching user profile:", err);
@@ -42,6 +56,10 @@ export default function HardwareCheck() {
     };
 
     fetchUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Preserved session check validation
@@ -241,6 +259,10 @@ export default function HardwareCheck() {
     });
   };
 
+  const staggerStyle = (index) => ({
+    animationDelay: `${index * 110}ms`,
+  });
+
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Manrope:wght@200;300;400;500;600;700;800&family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -251,6 +273,26 @@ export default function HardwareCheck() {
         }
         .mirror-mode {
           transform: scaleX(-1);
+        }
+        @keyframes hardwareFadeSlideIn {
+          0% {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-slide-in {
+          animation: hardwareFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .animate-fade-slide-in {
+            animation: none;
+            opacity: 1;
+            transform: none;
+          }
         }
       `}</style>
 
@@ -263,7 +305,7 @@ export default function HardwareCheck() {
         />
 
         {/* Main Section */}
-        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
+        <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen">
 
           {/* Top Header */}
           <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
@@ -274,6 +316,9 @@ export default function HardwareCheck() {
             </div>
 
             <div className="flex items-center gap-6">
+              <p className="text-sm text-[#4a4a4a] font-[Inter,sans-serif] font-bold text-black">
+                Hi, <span className="text-black">{userName}</span>!
+              </p>
               {avatarUrl ? (
                 <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full overflow-hidden border border-[#e5e5e5] bg-[#862334]/20 flex-shrink-0">
                   <img
@@ -294,13 +339,16 @@ export default function HardwareCheck() {
           <div className="flex-1 overflow-auto px-4 sm:px-6 md:px-8 lg:px-12 py-6 w-full flex items-center">
             <div className="max-w-[1200px] mx-auto w-full">
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
 
-                {/* Left: Webcam & Waveform */}
-                <div className="lg:col-span-7 space-y-8">
+                {/* Left: Webcam & Waveform Container (0ms) */}
+                <div
+                  style={staggerStyle(0)}
+                  className="animate-fade-slide-in lg:col-span-7 bg-white border border-[#862334]/20 rounded-xl p-6 shadow-xs space-y-6 flex flex-col justify-between"
+                >
 
                   {/* Webcam Preview */}
-                  <div className="relative h-72 md:h-96 bg-black rounded-lg overflow-hidden shadow-2xl">
+                  <div className="relative h-72 md:h-96 bg-black rounded-lg overflow-hidden shadow-2xl border border-[#862334]/20">
                     <div className="absolute inset-0 bg-slate-900" />
 
                     <video
@@ -340,7 +388,7 @@ export default function HardwareCheck() {
                   </div>
 
                   {/* Environment Warning */}
-                  <div className="bg-[#8e0f28]/10 p-4 flex gap-4 items-start border-l-4 border-[#ff989d]">
+                  <div className="bg-[#8e0f28]/10 p-4 flex gap-4 items-start border-l-4 border-[#ff989d] rounded-r-lg">
                     <Lightbulb size={24} className="text-[#ff989d] flex-shrink-0" />
                     <div className="space-y-1">
                       <h4 className="font-bold text-[#8e0f28] font-Geist">Camera &amp; Lighting Check</h4>
@@ -351,17 +399,20 @@ export default function HardwareCheck() {
                   </div>
                 </div>
 
-                {/* Right: Device Dropdowns & Action CTAs */}
-                <div className="lg:col-span-5 space-y-10">
+                {/* Right: Device Dropdowns & Action CTAs Container (110ms) */}
+                <div
+                  style={staggerStyle(1)}
+                  className="animate-fade-slide-in lg:col-span-5 bg-white border border-[#862334]/20 rounded-xl p-6 shadow-xs flex flex-col justify-between space-y-8"
+                >
 
                   <section className="space-y-6">
-                    <h3 className="text-maroon text-xl font-bold font-Geist uppercase tracking-tight flex items-center gap-3">
+                    <h3 className="text-maroon text-xl font-bold font-Geist tracking-tight flex items-center gap-3">
                       Hardware Check
                     </h3>
 
                     <div className="space-y-4">
                       {/* Video Source */}
-                      <div className="p-4 bg-slate-50 rounded-lg flex flex-col gap-4 border-b border-slate-200">
+                      <div className="p-4 bg-slate-50 rounded-lg flex flex-col gap-4 border border-slate-200/80">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 flex items-center justify-center bg-white rounded shadow-sm">
@@ -394,7 +445,7 @@ export default function HardwareCheck() {
                       </div>
 
                       {/* Audio Input */}
-                      <div className="p-4 bg-slate-50 rounded-lg flex flex-col gap-4 border-b border-slate-200">
+                      <div className="p-4 bg-slate-50 rounded-lg flex flex-col gap-4 border border-slate-200/80">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 flex items-center justify-center bg-white rounded shadow-sm">
@@ -433,17 +484,17 @@ export default function HardwareCheck() {
                     {!permissionsGranted && (
                       <button
                         onClick={requestPermissions}
-                        className="w-full bg-[#862334] text-white font-Geist font-bold py-3 px-6 flex items-center justify-center gap-3 transition-all hover:bg-[#ffb003] active:scale-[0.98] uppercase tracking-wider cursor-pointer"
+                        className="w-full bg-[#862334] text-white font-Inter font-semibold py-3 px-6 flex items-center justify-center gap-3 transition-all hover:bg-[#ffb003] active:scale-[0.98] tracking-wider cursor-pointer rounded-lg"
                       >
                         <KeyRound size={18} />
-                        ALLOW CAMERA &amp; MIC ACCESS
+                        Allow Camera &amp; Mic Access
                       </button>
                     )}
 
                     <button
                       onClick={handleProceedToInterview}
                       disabled={!permissionsGranted}
-                      className={`w-full font-Geist font-black py-3 px-6 uppercase tracking-widest text-base border transition-all
+                      className={`w-full font-Inter font-semibold py-3 px-6 tracking-wider text-base border rounded-lg transition-all
                         ${permissionsGranted
                           ? "bg-[#862334] text-white border-[#862334] hover:bg-[#ffb003] hover:border-[#ffb003] cursor-pointer active:scale-[0.98]"
                           : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"}`}
@@ -451,7 +502,7 @@ export default function HardwareCheck() {
                       Proceed to Interview
                     </button>
 
-                    <p className="text-center text-xs text-slate-400 font-[Inter,sans-serif] px-8">
+                    <p className="text-center text-xs text-slate-400 font-[Inter,sans-serif] px-4">
                       By entering, you consent to our data processing and automated evaluation. We ensure that your data is safe and secure.
                     </p>
                   </div>

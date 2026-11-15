@@ -1,15 +1,15 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
   FileBarChart,
   UserCircle,
   Mic,
   TrendingUp,
-  Clock,
   ChevronDown,
   User,
   X,
   Mail,
+  Check,
 } from "lucide-react";
 import {
   PieChart,
@@ -36,56 +36,131 @@ const navItems = [
   { id: "avatars", label: "Avatars", path: "/admin/avatars", icon: UserCircle },
 ];
 
-// Mock Data for Interview Volume (Smooth Area Chart)
-const getInterviewVolumeData = (type) => {
-  switch (type) {
-    case "Daily":
-      return Array.from({ length: 24 }, (_, i) => ({
-        label: `${i}:00`,
-        volume: Math.floor(Math.random() * 10) + 2,
-      }));
-    case "Monthly":
-      return Array.from({ length: 30 }, (_, i) => ({
-        label: `Day ${i + 1}`,
-        volume: Math.floor(Math.random() * 20) + 10,
-      }));
-    case "Weekly":
-    default:
-      return [
-        { label: "MON", volume: 8 },
-        { label: "TUE", volume: 5 },
-        { label: "WED", volume: 12 },
-        { label: "THU", volume: 7 },
-        { label: "FRI", volume: 15 },
-        { label: "SAT", volume: 9 },
-        { label: "SUN", volume: 11 },
-      ];
-  }
-};
+// Colors used for the donut segments (maroon / gold / dark / red)
+const DONUT_COLORS = ["#862334", "#FFB003", "#2D0C13", "#991B1B"];
 
-// Mock Data for Active Users (Radial Donut Chart)
-const getUserDonutData = (type) => {
-  switch (type) {
-    case "Monthly":
-      return [
-        { name: "Week 1 Active", value: 520, color: "#862334" },
-        { name: "Week 2 Active", value: 780, color: "#FFB003" },
-        { name: "Week 3 Active", value: 950, color: "#2D0C13" },
-        { name: "Week 4 Active", value: 955, color: "#991B1B" },
-      ];
-    case "Weekly":
-    default:
-      return [
-        { name: "Students", value: 2300, color: "#862334" },
-        { name: "Faculty/Staff", value: 905, color: "#FFB003" },
-      ];
-  }
-};
+// Fallback poll in case Supabase Realtime is unavailable
+const POLL_INTERVAL_MS = 30000;
+
+// ----------------------------------------------------------------------
+// CUSTOM MAROON DROPDOWN COMPONENT
+// ----------------------------------------------------------------------
+function MaroonDropdown({ value, onChange, options = ["Daily", "Weekly", "Monthly"] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`flex items-center justify-between gap-2.5 text-[11px] font-Inter font-bold py-1.5 px-3 rounded-lg border transition-all cursor-pointer uppercase tracking-wider focus:outline-none ${
+          isOpen
+            ? "bg-[#862334] text-white border-[#862334] ring-2 ring-[#862334]/20 shadow-xs"
+            : "bg-white text-[#862334] border-[#862334]/30 hover:bg-[#862334]/10"
+        }`}
+      >
+        <span>{value}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${
+            isOpen ? "rotate-180 text-white" : "text-[#862334]"
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-1.5 w-36 bg-white border border-[#862334]/25 rounded-xl shadow-lg z-50 py-1 overflow-hidden font-Inter">
+          {options.map((option) => {
+            const isSelected = value === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  onChange(option);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider flex items-center justify-between transition-colors cursor-pointer ${
+                  isSelected
+                    ? "bg-[#862334] text-white"
+                    : "text-[#862334] hover:bg-[#862334]/10"
+                }`}
+              >
+                <span>{option}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// ANIMATED COUNT-UP NUMBER HELPER COMPONENT
+// ----------------------------------------------------------------------
+function CountUpNumber({ value, duration = 1000, prefix = "", suffix = "", decimals = 0 }) {
+  const [currentValue, setCurrentValue] = useState(0);
+
+  useEffect(() => {
+    let target = 0;
+    if (typeof value === "number") {
+      target = value;
+    } else if (typeof value === "string") {
+      const parsed = parseFloat(value.replace(/[^0-9.-]/g, ""));
+      target = isNaN(parsed) ? 0 : parsed;
+    }
+
+    let startTimestamp = null;
+    const startValue = 0;
+
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const easeOutProgress = 1 - Math.pow(1 - progress, 3);
+      const val = startValue + (target - startValue) * easeOutProgress;
+
+      setCurrentValue(val);
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+
+    const animId = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(animId);
+  }, [value, duration]);
+
+  const formattedNumber =
+    decimals > 0
+      ? currentValue.toLocaleString(undefined, {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        })
+      : Math.round(currentValue).toLocaleString();
+
+  return (
+    <span>
+      {prefix}
+      {formattedNumber}
+      {suffix}
+    </span>
+  );
+}
 
 // 1. Interview Volume Area Chart
-function InterviewVolumeAreaChart({ reportType }) {
-  const data = useMemo(() => getInterviewVolumeData(reportType), [reportType]);
-
+function InterviewVolumeAreaChart({ data = [], reportType }) {
   return (
     <div className="w-full h-[320px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -105,10 +180,13 @@ function InterviewVolumeAreaChart({ reportType }) {
             tickLine={false}
             tick={{ fill: "#64748B", fontSize: reportType === "Weekly" ? 11 : 10, fontWeight: 600 }}
             dy={8}
+            interval={reportType === "Weekly" ? 0 : "preserveStartEnd"}
+            minTickGap={16}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
+            allowDecimals={false}
             tick={{ fill: "#64748B", fontSize: 11 }}
           />
 
@@ -141,9 +219,19 @@ function InterviewVolumeAreaChart({ reportType }) {
 }
 
 // 2. Active Users Donut Gauge Chart
-function RadialDonutUsersChart({ timeframe }) {
-  const data = useMemo(() => getUserDonutData(timeframe), [timeframe]);
-  const totalUsers = useMemo(() => data.reduce((acc, curr) => acc + curr.value, 0), [data]);
+function RadialDonutUsersChart({ segments = [], total, reportType }) {
+  const data = useMemo(
+    () =>
+      segments.map((segment, index) => ({
+        ...segment,
+        color: DONUT_COLORS[index % DONUT_COLORS.length],
+      })),
+    [segments]
+  );
+  const hasData = data.some((item) => item.value > 0);
+  // Empty grey ring when there is nothing to show yet
+  const chartData = hasData ? data : [{ name: "No activity", value: 1, color: "#E2E8F0" }];
+  const totalUsers = total ?? data.reduce((acc, curr) => acc + curr.value, 0);
 
   return (
     <div className="w-full h-[320px] grid grid-cols-1 md:grid-cols-2 items-center">
@@ -151,35 +239,37 @@ function RadialDonutUsersChart({ timeframe }) {
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={data}
+              data={chartData}
               innerRadius={72}
               outerRadius={96}
               paddingAngle={4}
               dataKey="value"
             >
-              {data.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} cornerRadius={6} />
               ))}
             </Pie>
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#1A090D",
-                border: "1px solid rgba(134, 35, 52, 0.4)",
-                borderRadius: "10px",
-                color: "#FFF",
-              }}
-              itemStyle={{ color: "#FFB003", fontWeight: "bold" }}
-              formatter={(val) => [`${val} Users`, "Active"]}
-            />
+            {hasData && (
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1A090D",
+                  border: "1px solid rgba(134, 35, 52, 0.4)",
+                  borderRadius: "10px",
+                  color: "#FFF",
+                }}
+                itemStyle={{ color: "#FFB003", fontWeight: "bold" }}
+                formatter={(val, name) => [`${val} Users`, name]}
+              />
+            )}
           </PieChart>
         </ResponsiveContainer>
 
         <div className="absolute flex flex-col items-center justify-center text-center">
           <span className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-            {totalUsers.toLocaleString()}
+            <CountUpNumber value={totalUsers} duration={800} />
           </span>
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            Active Users
+            {reportType} Users
           </span>
         </div>
       </div>
@@ -205,6 +295,13 @@ export default function SystemReport() {
   const [activeNav, setActiveNav] = useState("reports");
   const [interviewReportType, setInterviewReportType] = useState("Weekly");
   const [userTrendType, setUserTrendType] = useState("Weekly");
+
+  // Live report data (served by GET /api/admin/reports, computed from the database)
+  const [report, setReport] = useState(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(true);
+  const [reportError, setReportError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const isMountedRef = useRef(true);
 
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
@@ -266,6 +363,65 @@ export default function SystemReport() {
     };
   }, []);
 
+  const loadReport = useCallback(async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+      const response = await fetch(`${base}/api/admin/reports`, {
+        headers: {
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `Request failed (${response.status})`);
+      }
+      const data = await response.json();
+      if (!isMountedRef.current) return;
+      setReport(data);
+      setReportError("");
+      setLastUpdated(new Date());
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error("Unable to load system report:", error);
+      setReportError(error.message || "Unable to load system report.");
+    } finally {
+      if (isMountedRef.current) setIsLoadingReport(false);
+    }
+  }, []);
+
+  // Initial load + realtime refresh (Supabase Realtime) + polling fallback
+  useEffect(() => {
+    isMountedRef.current = true;
+    loadReport();
+
+    let debounceTimer = null;
+    const refreshSoon = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(loadReport, 700);
+    };
+
+    const channel = supabase
+      .channel("admin-system-report")
+      .on("postgres_changes", { event: "*", schema: "public", table: "interview_sessions" }, refreshSoon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "evaluation_reports" }, refreshSoon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "student_profile" }, refreshSoon)
+      .subscribe();
+
+    const pollTimer = setInterval(loadReport, POLL_INTERVAL_MS);
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(debounceTimer);
+      clearInterval(pollTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [loadReport]);
+
   useEffect(() => {
     if (location.pathname.includes("/users")) {
       setActiveNav("users");
@@ -275,6 +431,25 @@ export default function SystemReport() {
       setActiveNav("reports");
     }
   }, [location.pathname]);
+
+  const summary = report?.summary;
+  const volumeData = report?.interview_volume?.[interviewReportType.toLowerCase()] ?? [];
+
+  // Supports Daily, Weekly, and Monthly user activity in the right-side donut chart
+  const donut = useMemo(() => {
+    const key = userTrendType.toLowerCase();
+    if (report?.user_activity?.[key]) {
+      return report.user_activity[key];
+    }
+    if (key === "daily") {
+      const dailyCount = summary?.daily_users ?? 0;
+      return {
+        total: dailyCount,
+        segments: [{ name: "Active Today", value: dailyCount }],
+      };
+    }
+    return { total: 0, segments: [] };
+  }, [report, userTrendType, summary]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -441,130 +616,166 @@ export default function SystemReport() {
           <div className="flex-1 overflow-y-auto w-full">
             <div className="px-8 sm:px-12 md:px-16 lg:px-20 py-8 space-y-8 w-full">
 
-{/* Minimalist Top KPI Row (Maroon Top Accent Border) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {/* Live status bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-3xl font-black text-slate-900 tracking-tight">System Report</h1>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {lastUpdated
+                      ? `Last updated ${lastUpdated.toLocaleTimeString()}`
+                      : "Loading latest data…"}
+                  </p>
+                </div>
+              </div>
 
-                {/* Total Interviews */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
-                      Total Interviews
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
+              {reportError && (
+                <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
+                  <span>{reportError}</span>
+                  <button
+                    onClick={loadReport}
+                    className="px-3 py-1 rounded-lg border border-red-300 text-xs font-semibold hover:bg-red-100 transition-colors cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Minimalist Top KPI Row */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+                {/* 1. Total Interviews */}
+                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                        Total Interviews
+                      </span>
+                      <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                        {!report && isLoadingReport ? (
+                          "…"
+                        ) : !report ? (
+                          "—"
+                        ) : (
+                          <CountUpNumber value={summary?.total_interviews ?? 0} />
+                        )}
+                      </h3>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                       <Mic className="w-4 h-4" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    12,842
-                  </h3>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold mt-3 font-Inter">
+                    <span className="text-emerald-600 font-semibold">All-Time</span>
+                    <span className="text-gray-500 font-semibold tracking-wider text-xs">
+                      Completed Sessions
+                    </span>
+                  </div>
                 </div>
 
-                {/* Avg. Performance */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
-                      Avg. Performance
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
+                {/* 2. Avg. Performance */}
+                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                        Avg. Performance
+                      </span>
+                      <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                        {!report && isLoadingReport ? (
+                          "…"
+                        ) : summary?.average_performance == null ? (
+                          "—"
+                        ) : (
+                          <CountUpNumber
+                            value={summary.average_performance}
+                            suffix="%"
+                            decimals={Number.isInteger(summary.average_performance) ? 0 : 1}
+                          />
+                        )}
+                      </h3>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                       <FileBarChart className="w-4 h-4" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    94.8%
-                  </h3>
+                  <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
+                    <span>
+                      Target Benchmark <span className="text-emerald-600">70%+</span>
+                    </span>
+                  </div>
                 </div>
 
-                {/* Active Users */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
-                      Active Users
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
+                {/* 3. Active Users */}
+                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
+                        Active Users
+                      </span>
+                      <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
+                        {!report && isLoadingReport ? (
+                          "…"
+                        ) : !report ? (
+                          "—"
+                        ) : (
+                          <CountUpNumber value={summary?.active_users ?? 0} />
+                        )}
+                      </h3>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334]">
                       <TrendingUp className="w-4 h-4" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                    205
-                  </h3>
-                </div>
-
-                {/* Daily Users */}
-                <div className="bg-white p-5 rounded-2xl border border-[#862334]/20 border-t-4 border-t-[#862334] shadow-xs hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between min-h-[135px]">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-[14px] font-semibold text-gray-600">
-                      Daily Users
-                    </p>
-                    <div className="p-2 bg-rose-50/80 text-[#862334] rounded-xl border border-[#862334]/15">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <h3 className="text-2xl font-black text-slate-900 font-Geist tracking-tight">
-                      10
-                    </h3>
+                  <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
+                    <span>
+                      <span className="text-emerald-600">{summary?.daily_users ?? 0}</span> Active Today • Last 30 Days
+                    </span>
                   </div>
                 </div>
 
               </div>
 
-              {/* Side-by-Side Analytics Section (Static Subtle Maroon Border Containers) */}
+              {/* Side-by-Side Analytics Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
 
                 {/* CHART 1: Interview Volume (Left Container) */}
-                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] overflow-hidden flex flex-col">
-                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20">
+                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col">
+                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20 rounded-t-2xl">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#862334]" />
                       <h3 className="text-base font-bold font-[Geist,Inter] text-slate-900 tracking-tight">
                         {interviewReportType} Interview Volume
                       </h3>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="relative group">
-                        <select
-                          value={interviewReportType}
-                          onChange={(e) => setInterviewReportType(e.target.value)}
-                          className="appearance-none bg-white text-[#862334] text-[11px] font-Inter font-bold py-1.5 px-3 pr-8 rounded-lg border border-[#862334]/30 focus:outline-none focus:ring-1 focus:ring-[#862334] cursor-pointer uppercase tracking-wider transition-all hover:bg-rose-50/50"
-                        >
-                          <option value="Daily">Daily</option>
-                          <option value="Weekly">Weekly</option>
-                          <option value="Monthly">Monthly</option>
-                        </select>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#862334] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
+                    <MaroonDropdown
+                      value={interviewReportType}
+                      onChange={setInterviewReportType}
+                    />
                   </div>
                   <div className="p-6">
-                    <InterviewVolumeAreaChart reportType={interviewReportType} />
+                    <InterviewVolumeAreaChart data={volumeData} reportType={interviewReportType} />
                   </div>
                 </div>
 
-                {/* CHART 2: Active Users Donut (Right Container) */}
-                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] overflow-hidden flex flex-col">
-                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20">
+                {/* CHART 2: Users Breakdown Donut (Right Container with Daily, Weekly, Monthly) */}
+                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col">
+                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20 rounded-t-2xl">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#FFB003]" />
                       <h3 className="text-base font-bold font-[Geist,Inter] text-slate-900 tracking-tight">
                         {userTrendType} Users
                       </h3>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="relative group">
-                        <select
-                          value={userTrendType}
-                          onChange={(e) => setUserTrendType(e.target.value)}
-                          className="appearance-none bg-white text-[#862334] text-[11px] font-Inter font-bold py-1.5 px-3 pr-8 rounded-lg border border-[#862334]/30 focus:outline-none focus:ring-1 focus:ring-[#862334] cursor-pointer uppercase tracking-wider transition-all hover:bg-rose-50/50"
-                        >
-                          <option value="Weekly">Weekly</option>
-                          <option value="Monthly">Monthly</option>
-                        </select>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#862334] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
+                    <MaroonDropdown
+                      value={userTrendType}
+                      onChange={setUserTrendType}
+                    />
                   </div>
                   <div className="p-6">
-                    <RadialDonutUsersChart timeframe={userTrendType} />
+                    <RadialDonutUsersChart
+                      segments={donut?.segments}
+                      total={donut?.total}
+                      reportType={userTrendType}
+                    />
                   </div>
                 </div>
 
