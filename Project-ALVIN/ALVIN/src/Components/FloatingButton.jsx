@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 function FloatingButton({
   disabled = false,
   paused = false,
+  concluded = false,
   disabledReason = "Paused by Career Advisor",
 }) {
   const [isStarting, setIsStarting] = useState(false);
@@ -13,7 +14,8 @@ function FloatingButton({
   const tooltipId = useId();
 
   // Pause wins even if the caller passes conflicting props.
-  const isDisabled = Boolean(disabled || paused);
+  const isDisabled = Boolean(disabled || paused || concluded);
+  const disabledLabel = concluded ? "Course Concluded" : "Interviews Paused";
 
   useEffect(() => {
     if (isDisabled) setIsStarting(false);
@@ -38,7 +40,7 @@ function FloatingButton({
 
   return (
     <div
-      className="fixed bottom-8 right-8 z-50 flex items-center"
+      className="fixed bottom-8 right-8 z-30 flex items-center"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClickCapture={stopDisabledInteraction}
@@ -55,7 +57,7 @@ function FloatingButton({
                       ${isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3"}`}
         >
           <span className="font-Geist text-[15px] text-[#111111] tracking-wide">
-            {isDisabled ? "Interviews Paused" : "Start Interview"}
+            {isDisabled ? disabledLabel : "Start Interview"}
           </span>
           <span className={`text-[12px] font-Geist mt-0.5 ${
             isDisabled ? "text-gray-500 font-semibold" : "text-[#862334]"
@@ -74,7 +76,7 @@ function FloatingButton({
           onClick={handleStartInterview}
           disabled={isDisabled || isStarting}
           aria-disabled={isDisabled || isStarting}
-          aria-label={isDisabled ? "Interviews Paused" : "Start Interview"}
+          aria-label={isDisabled ? disabledLabel : "Start Interview"}
           aria-describedby={!isStarting ? tooltipId : undefined}
           title={isDisabled ? disabledReason : "Start Interview"}
           data-testid="floating-interview-button"
@@ -117,4 +119,3 @@ function FloatingButton({
 }
 
 export default FloatingButton;
-

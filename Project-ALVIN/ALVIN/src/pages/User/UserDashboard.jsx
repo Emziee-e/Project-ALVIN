@@ -155,9 +155,6 @@ export default function UserDashboard() {
     initials: "V",
   });
 
-  // Students without an active course enrollment can browse but not interview.
-  const isEnrolled = userProfile.enrollments.length > 0;
-
   const [imageError, setImageError] = useState(false);
   const [dashboard, setDashboard] = useState(null);
   const [extraFeedbackList, setExtraFeedbackList] = useState([]);
@@ -185,6 +182,28 @@ export default function UserDashboard() {
       enrollment.course_details?.is_interviews_paused,
     ].some(toBoolean);
   };
+
+  // A course concluded by the Career Advisor blocks interviews, just like a pause.
+  const enrollmentIsConcluded = (enrollment) => {
+    if (!enrollment || typeof enrollment !== "object") return false;
+    return [
+      enrollment.course_status,
+      enrollment.courseStatus,
+      enrollment.course?.course_status,
+      enrollment.courses?.course_status,
+      enrollment.course_details?.course_status,
+    ].some((status) =>
+      ["concluded", "archived"].includes(String(status ?? "").trim().toLowerCase())
+    );
+  };
+
+  // Students without an active course enrollment can browse but not interview.
+  const isEnrolled = userProfile.enrollments.length > 0;
+  // Interviews are blocked when every course the student is in has been concluded.
+  const activeEnrollments = userProfile.enrollments.filter(
+    (enrollment) => !enrollmentIsConcluded(enrollment)
+  );
+  const isCourseConcluded = isEnrolled && activeEnrollments.length === 0;
 
   const interviews = (dashboard?.history || []).slice(0, 3).map((r) => ({
     id: r.session_id,
@@ -975,13 +994,16 @@ export default function UserDashboard() {
           </div>
 
           <FloatingButton
-            disabled={!enrollmentsLoaded || !isEnrolled || isInterviewPaused}
+            disabled={!enrollmentsLoaded || !isEnrolled || isInterviewPaused || isCourseConcluded}
             paused={isInterviewPaused}
+            concluded={isCourseConcluded}
             disabledReason={
               !enrollmentsLoaded
                 ? "Checking course availability"
                 : !isEnrolled
                 ? "Enroll in a course to start an interview"
+                : isCourseConcluded
+                ? "This course has been concluded"
                 : isInterviewPaused
                 ? "Paused by Career Advisor"
                 : ""

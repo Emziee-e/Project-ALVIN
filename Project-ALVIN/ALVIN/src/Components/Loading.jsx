@@ -1,22 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
-const Loading = ({ isExiting }) => {
-    const [progress, setProgress] = useState(0);
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setProgress((prev) => {
-                if (prev >= 100) {
-                    clearInterval(timer);
-                    return 100;
-                }
-                return Math.min(prev + (Math.floor(Math.random() * 6) + 4), 100);
-            });
-        }, 80);
-
-        return () => clearInterval(timer);
-    }, []);
-
+const Loading = ({ progress = 100, isExiting }) => {
     return (
         <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-white select-none ${isExiting ? 'animate-slide-up' : ''}`}>
             {/* ── HERO GRID BACKGROUND SVG ── */}
@@ -44,7 +28,6 @@ const Loading = ({ isExiting }) => {
 
                 {/* ── SCALED MINIMALIST PROGRESS BAR ── */}
                 <div className="w-72 sm:w-[380px] space-y-2">
-                    {/* Header text with dynamic percentage */}
                     <div className="flex justify-between items-center text-sm font-semibold tracking-wide text-gray-500">
                         <span className="flex items-center gap-2 uppercase text-xs font-bold tracking-wider text-gray-600">
                             <span className="w-2 h-2 rounded-full bg-[#862334] animate-ping" />
@@ -55,7 +38,6 @@ const Loading = ({ isExiting }) => {
                         </span>
                     </div>
 
-                    {/* Transparent Minimal Track */}
                     <div className="relative h-2.5 w-full bg-gray-200/60 rounded-full overflow-hidden">
                         <div
                             className="h-full bg-gradient-to-r from-[#862334] to-[#D97706] rounded-full transition-all duration-150 ease-out"

@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   UserPlus,
   UserMinus,
+  UserCheck,
   CheckCircle2,
   TrendingUp,
   BookOpen,
@@ -93,7 +94,7 @@ export default function StaffDashboard() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [courseToDelete, setCourseToDelete] = useState(null);
 
-  // Enrollment action confirmation
+  // Enrollment action confirmation ("unenroll" | "drop" | "undrop")
   const [studentToUnenroll, setStudentToUnenroll] = useState(null);
   const [studentAction, setStudentAction] = useState("unenroll");
   const [isUnenrolling, setIsUnenrolling] = useState(false);
@@ -299,7 +300,9 @@ export default function StaffDashboard() {
         setSelectedCourse({
           ...course,
           students,
-          studentsCount: students.length,
+          studentsCount: students.filter(
+            (s) => s.status.toLowerCase() !== "dropped"
+          ).length,
         });
       } catch (error) {
         console.error("Error restoring course:", error);
@@ -413,10 +416,20 @@ export default function StaffDashboard() {
         is_interviews_paused: newPauseState,
       });
 
+      const mappedCourse = mapCourseFromDatabase(savedCourse);
+      const preservedStudents =
+        savedCourse?.students ?? courseToTogglePause.students ?? [];
+      const preservedStudentsCount =
+        savedCourse?.students_count ??
+        courseToTogglePause.studentsCount ??
+        preservedStudents.length;
+
       const updatedCourse = {
         ...courseToTogglePause,
-        ...mapCourseFromDatabase(savedCourse),
+        ...mappedCourse,
         is_interviews_paused: newPauseState,
+        students: preservedStudents,
+        studentsCount: preservedStudentsCount,
       };
 
       setPublishedCourses((prev) =>
@@ -469,11 +482,19 @@ export default function StaffDashboard() {
       });
 
       const mappedCourse = mapCourseFromDatabase(savedCourse);
+      const preservedStudents =
+        savedCourse?.students ?? courseToConclude.students ?? [];
+      const preservedStudentsCount =
+        savedCourse?.students_count ??
+        courseToConclude.studentsCount ??
+        preservedStudents.length;
 
       const concludedCourse = {
         ...courseToConclude,
         ...mappedCourse,
         status: "concluded",
+        students: preservedStudents,
+        studentsCount: preservedStudentsCount,
       };
 
       setPublishedCourses((prev) =>
@@ -550,28 +571,36 @@ export default function StaffDashboard() {
       });
 
       const mappedCourse = mapCourseFromDatabase(savedCourse);
+      const mergeCourse = (existingCourse) => {
+        const preservedStudents =
+          savedCourse?.students ?? existingCourse.students ?? [];
+        const preservedStudentsCount =
+          savedCourse?.students_count ??
+          existingCourse.studentsCount ??
+          preservedStudents.length;
+
+        return {
+          ...existingCourse,
+          ...mappedCourse,
+          students: preservedStudents,
+          studentsCount: preservedStudentsCount,
+        };
+      };
 
       setPublishedCourses((prev) =>
         prev.map((course) =>
-          course.id === mappedCourse.id
-            ? { ...course, ...mappedCourse }
-            : course
+          course.id === mappedCourse.id ? mergeCourse(course) : course
         )
       );
 
       setConcludedCourses((prev) =>
         prev.map((course) =>
-          course.id === mappedCourse.id
-            ? { ...course, ...mappedCourse }
-            : course
+          course.id === mappedCourse.id ? mergeCourse(course) : course
         )
       );
 
       if (selectedCourse?.id === mappedCourse.id) {
-        setSelectedCourse((prev) => ({
-          ...prev,
-          ...mappedCourse,
-        }));
+        setSelectedCourse((prev) => mergeCourse(prev));
       }
 
       setIsEditModalOpen(false);
@@ -660,7 +689,9 @@ export default function StaffDashboard() {
       const updatedCourse = {
         ...selectedCourse,
         students,
-        studentsCount: students.length,
+        studentsCount: students.filter(
+          (s) => s.status.toLowerCase() !== "dropped"
+        ).length,
       };
 
       setSelectedCourse(updatedCourse);
@@ -713,6 +744,13 @@ export default function StaffDashboard() {
           .eq("enrollment_id", student.id);
 
         if (error) throw error;
+      } else if (action === "undrop") {
+        const { error } = await supabase
+          .from("course_enrollments")
+          .update({ enrollment_status: "enrolled" })
+          .eq("enrollment_id", student.id);
+
+        if (error) throw error;
       } else {
         await removeEnrollment(student.id);
       }
@@ -721,6 +759,10 @@ export default function StaffDashboard() {
       if (action === "drop") {
         students = (selectedCourse.students || []).map((item) =>
           item.id === student.id ? { ...item, status: "Dropped" } : item
+        );
+      } else if (action === "undrop") {
+        students = (selectedCourse.students || []).map((item) =>
+          item.id === student.id ? { ...item, status: "Enrolled" } : item
         );
       } else {
         const enrollmentRows = await getCourseEnrollments(selectedCourse.id);
@@ -751,6 +793,8 @@ export default function StaffDashboard() {
       showToastNotification(
         action === "drop"
           ? `${student.name} marked as dropped from ${selectedCourse.code}.`
+          : action === "undrop"
+          ? `${student.name} re-enrolled in ${selectedCourse.code}.`
           : `${student.name} successfully unenrolled from ${selectedCourse.code}.`
       );
 
@@ -758,12 +802,24 @@ export default function StaffDashboard() {
       setActiveStudentMenuId(null);
     } catch (error) {
       console.error(
-        `Error ${action === "drop" ? "dropping" : "unenrolling"} student:`,
+        `Error ${
+          action === "drop"
+            ? "dropping"
+            : action === "undrop"
+            ? "re-enrolling"
+            : "unenrolling"
+        } student:`,
         error
       );
       showToastNotification(
         error.message ||
-          `Unable to ${action === "drop" ? "drop" : "unenroll"} student.`
+          `Unable to ${
+            action === "drop"
+              ? "drop"
+              : action === "undrop"
+              ? "re-enroll"
+              : "unenroll"
+          } student.`
       );
     } finally {
       setIsUnenrolling(false);
@@ -778,7 +834,9 @@ export default function StaffDashboard() {
       const courseWithStudents = {
         ...course,
         students,
-        studentsCount: students.length,
+        studentsCount: students.filter(
+          (s) => s.status.toLowerCase() !== "dropped"
+        ).length,
       };
 
       setSelectedCourse(courseWithStudents);
@@ -1190,9 +1248,22 @@ export default function StaffDashboard() {
         />
       )}
 
+      {/* Pause / Resume Interviews Modal */}
       {isPauseModalOpen && courseToTogglePause && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => {
+            if (!isTogglingPause) {
+              setIsPauseModalOpen(false);
+              setCourseToTogglePause(null);
+            }
+          }}
+        >
+          <div
+            className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-10 border-blur-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button - Overlapping */}
             <button
               type="button"
               disabled={isTogglingPause}
@@ -1200,36 +1271,40 @@ export default function StaffDashboard() {
                 setIsPauseModalOpen(false);
                 setCourseToTogglePause(null);
               }}
-              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-50"
+              className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer disabled:opacity-50"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5 text-[#862334] group-hover:rotate-90 transition-transform duration-200" />
             </button>
 
-            <div
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto ${
-                courseToTogglePause.is_interviews_paused
-                  ? "bg-emerald-50 text-emerald-600"
-                  : "bg-amber-50 text-amber-600"
-              }`}
-            >
-              {courseToTogglePause.is_interviews_paused ? (
-                <PlayCircle className="w-6 h-6" />
-              ) : (
-                <PauseCircle className="w-6 h-6" />
-              )}
+            {/* Header/Icon */}
+            <div className="pt-6 pb-2 flex flex-col items-center">
+              <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${
+                  courseToTogglePause.is_interviews_paused
+                    ? "bg-emerald-50"
+                    : "bg-amber-50"
+                }`}
+              >
+                {courseToTogglePause.is_interviews_paused ? (
+                  <PlayCircle className="w-6 h-6 text-emerald-600" />
+                ) : (
+                  <PauseCircle className="w-6 h-6 text-amber-600" />
+                )}
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 font-Geist">
+                {courseToTogglePause.is_interviews_paused
+                  ? "Resume Interviews"
+                  : "Pause Interviews"}
+              </h2>
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold font-Geist text-gray-900">
-                {courseToTogglePause.is_interviews_paused
-                  ? "Resume Interviews?"
-                  : "Pause Interviews?"}
-              </h3>
-              <p className="text-xs text-gray-500 leading-relaxed px-2">
+            {/* Content */}
+            <div className="px-6 pb-6 text-center">
+              <p className="text-sm text-gray-600 mb-6 font-Inter">
                 {courseToTogglePause.is_interviews_paused ? (
                   <>
                     Are you sure you want to resume interviews for{" "}
-                    <span className="font-semibold text-gray-800">
+                    <span className="font-semibold text-gray-900">
                       "{courseToTogglePause.title}"
                     </span>
                     ? Enrolled students will be able to start AI interviews
@@ -1238,7 +1313,7 @@ export default function StaffDashboard() {
                 ) : (
                   <>
                     Are you sure you want to pause interviews for{" "}
-                    <span className="font-semibold text-gray-800">
+                    <span className="font-semibold text-gray-900">
                       "{courseToTogglePause.title}"
                     </span>
                     ? Students enrolled in this course will temporarily be
@@ -1246,138 +1321,189 @@ export default function StaffDashboard() {
                   </>
                 )}
               </p>
-            </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                disabled={isTogglingPause}
-                onClick={() => {
-                  setIsPauseModalOpen(false);
-                  setCourseToTogglePause(null);
-                }}
-                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isTogglingPause}
-                onClick={confirmTogglePauseInterviews}
-                className={`px-5 py-2.5 text-white rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-60 ${
-                  courseToTogglePause.is_interviews_paused
-                    ? "bg-emerald-600 hover:bg-emerald-700"
-                    : "bg-amber-600 hover:bg-amber-700"
-                }`}
-              >
-                {isTogglingPause
-                  ? "Updating..."
-                  : courseToTogglePause.is_interviews_paused
-                  ? "Yes, Resume Interviews"
-                  : "Yes, Pause Interviews"}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  disabled={isTogglingPause}
+                  onClick={() => {
+                    setIsPauseModalOpen(false);
+                    setCourseToTogglePause(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isTogglingPause}
+                  onClick={confirmTogglePauseInterviews}
+                  className={`flex-1 px-4 py-2.5 rounded-2xl font-bold text-white shadow-lg transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                    courseToTogglePause.is_interviews_paused
+                      ? "bg-emerald-600 hover:bg-emerald-700 hover:shadow-emerald-600/20"
+                      : "bg-[#862334] hover:bg-[#862334]/90 hover:shadow-[#862334]/20"
+                  }`}
+                >
+                  {isTogglingPause
+                    ? "Updating..."
+                    : courseToTogglePause.is_interviews_paused
+                    ? "Resume"
+                    : "Pause"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Conclude Course Modal */}
       {isConcludeModalOpen && courseToConclude && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => {
+            setIsConcludeModalOpen(false);
+            setCourseToConclude(null);
+          }}
+        >
+          <div
+            className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-10 border-blur-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button - Overlapping */}
             <button
               type="button"
               onClick={() => {
                 setIsConcludeModalOpen(false);
                 setCourseToConclude(null);
               }}
-              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
+              className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5 text-[#862334] group-hover:rotate-90 transition-transform duration-200" />
             </button>
 
-            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
+            {/* Header/Icon */}
+            <div className="pt-6 pb-2 flex flex-col items-center">
+              <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mb-3">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 font-Geist">
+                Conclude Course
+              </h2>
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold font-Geist text-gray-900">
-                Conclude Course?
-              </h3>
-              <p className="text-xs text-gray-500 leading-relaxed px-2">
+            {/* Content */}
+            <div className="px-6 pb-6 text-center">
+              <p className="text-sm text-gray-600 mb-6 font-Inter">
                 Are you sure you want to conclude{" "}
-                <span className="font-semibold text-gray-800">
+                <span className="font-semibold text-gray-900">
                   "{courseToConclude.title}"
                 </span>
                 ? This will move it to the concluded courses list.
               </p>
-            </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsConcludeModalOpen(false);
-                  setCourseToConclude(null);
-                }}
-                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmConcludeCourse}
-                className="px-5 py-2.5 bg-[#862334] text-white rounded-full text-xs font-bold hover:bg-[#701c2b] transition-all shadow-xs cursor-pointer"
-              >
-                Yes, Conclude Course
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsConcludeModalOpen(false);
+                    setCourseToConclude(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmConcludeCourse}
+                  className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-white bg-[#862334] hover:bg-[#862334]/90 shadow-lg hover:shadow-[#862334]/20 transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  Conclude
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Unenroll / Drop / Undrop Student Modal */}
       {studentToUnenroll && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => {
+            if (!isUnenrolling) setStudentToUnenroll(null);
+          }}
+        >
+          <div
+            className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-10 border-blur-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button - Overlapping */}
             <button
               type="button"
               disabled={isUnenrolling}
               onClick={() => setStudentToUnenroll(null)}
-              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50"
+              className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer disabled:opacity-50"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5 text-[#862334] group-hover:rotate-90 transition-transform duration-200" />
             </button>
 
-            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
-              <UserMinus className="w-6 h-6" />
+            {/* Header/Icon */}
+            <div className="pt-6 pb-2 flex flex-col items-center">
+              <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${
+                  studentAction === "undrop" ? "bg-emerald-50" : "bg-red-50"
+                }`}
+              >
+                {studentAction === "undrop" ? (
+                  <UserCheck className="w-6 h-6 text-emerald-600" />
+                ) : (
+                  <UserMinus className="w-6 h-6 text-[#862334]" />
+                )}
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 font-Geist">
+                {studentAction === "drop"
+                  ? "Drop Student"
+                  : studentAction === "undrop"
+                  ? "Re-enroll Student"
+                  : "Unenroll Student"}
+              </h2>
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold font-Geist text-gray-900">
-                {studentAction === "drop"
-                  ? "Drop Student?"
-                  : "Unenroll Student?"}
-              </h3>
-              <p className="text-xs text-gray-500 leading-relaxed px-2">
+            {/* Content */}
+            <div className="px-6 pb-6 text-center">
+              <p className="text-sm text-gray-600 mb-6 font-Inter">
                 {studentAction === "drop" ? (
                   <>
-                    Mark{" "}
-                    <span className="font-semibold text-gray-800">
+                    Are you sure you want to mark{" "}
+                    <span className="font-semibold text-gray-900">
                       {studentToUnenroll.name}
                     </span>{" "}
                     as dropped from{" "}
-                    <span className="font-semibold text-gray-800">
+                    <span className="font-semibold text-gray-900">
                       {selectedCourse?.code}
                     </span>
                     ? The enrollment record will be kept for history.
                   </>
+                ) : studentAction === "undrop" ? (
+                  <>
+                    Are you sure you want to undrop{" "}
+                    <span className="font-semibold text-gray-900">
+                      {studentToUnenroll.name}
+                    </span>{" "}
+                    and restore their enrollment in{" "}
+                    <span className="font-semibold text-gray-900">
+                      {selectedCourse?.code}
+                    </span>
+                    ?
+                  </>
                 ) : (
                   <>
-                    Remove{" "}
-                    <span className="font-semibold text-gray-800">
+                    Are you sure you want to remove{" "}
+                    <span className="font-semibold text-gray-900">
                       {studentToUnenroll.name}
                     </span>{" "}
                     from{" "}
-                    <span className="font-semibold text-gray-800">
+                    <span className="font-semibold text-gray-900">
                       {selectedCourse?.code}
                     </span>
                     ? This removes only the course enrollment and does not
@@ -1385,86 +1511,108 @@ export default function StaffDashboard() {
                   </>
                 )}
               </p>
-            </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                disabled={isUnenrolling}
-                onClick={() => setStudentToUnenroll(null)}
-                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isUnenrolling}
-                onClick={confirmUnenrollStudent}
-                className="px-5 py-2.5 bg-red-600 text-white rounded-full text-xs font-bold hover:bg-red-700 transition-all shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isUnenrolling
-                  ? studentAction === "drop"
-                    ? "Dropping..."
-                    : "Unenrolling..."
-                  : studentAction === "drop"
-                  ? "Yes, Drop Student"
-                  : "Yes, Unenroll Student"}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  disabled={isUnenrolling}
+                  onClick={() => setStudentToUnenroll(null)}
+                  className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isUnenrolling}
+                  onClick={confirmUnenrollStudent}
+                  className={`flex-1 px-4 py-2.5 rounded-2xl font-bold text-white shadow-lg transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                    studentAction === "undrop"
+                      ? "bg-emerald-600 hover:bg-emerald-700 hover:shadow-emerald-600/20"
+                      : "bg-[#862334] hover:bg-[#862334]/90 hover:shadow-[#862334]/20"
+                  }`}
+                >
+                  {isUnenrolling
+                    ? studentAction === "drop"
+                      ? "Dropping..."
+                      : studentAction === "undrop"
+                      ? "Re-enrolling..."
+                      : "Unenrolling..."
+                    : studentAction === "drop"
+                    ? "Drop Student"
+                    : studentAction === "undrop"
+                    ? "Undrop"
+                    : "Unenroll"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Delete Course Modal */}
       {isDeleteModalOpen && courseToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150 relative">
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => {
+            setIsDeleteModalOpen(false);
+            setCourseToDelete(null);
+          }}
+        >
+          <div
+            className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-10 border-blur-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button - Overlapping */}
             <button
               type="button"
               onClick={() => {
                 setIsDeleteModalOpen(false);
                 setCourseToDelete(null);
               }}
-              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
+              className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5 text-[#862334] group-hover:rotate-90 transition-transform duration-200" />
             </button>
 
-            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
+            {/* Header/Icon */}
+            <div className="pt-6 pb-2 flex flex-col items-center">
+              <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-3">
+                <Trash2 className="w-6 h-6 text-[#862334]" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 font-Geist">
+                Delete Course
+              </h2>
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold font-Geist text-gray-900">
-                Delete Course?
-              </h3>
-              <p className="text-xs text-gray-500 leading-relaxed px-2">
+            {/* Content */}
+            <div className="px-6 pb-6 text-center">
+              <p className="text-sm text-gray-600 mb-6 font-Inter">
                 Are you sure you want to permanently delete{" "}
-                <span className="font-semibold text-gray-800">
+                <span className="font-semibold text-gray-900">
                   "{courseToDelete.title}"
                 </span>
                 ? This action cannot be undone.
               </p>
-            </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsDeleteModalOpen(false);
-                  setCourseToDelete(null);
-                }}
-                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={confirmDeleteCourse}
-                className="px-5 py-2.5 bg-red-600 text-white rounded-full text-xs font-bold hover:bg-red-700 transition-all shadow-xs cursor-pointer"
-              >
-                Yes, Delete Course
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDeleteModalOpen(false);
+                    setCourseToDelete(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteCourse}
+                  className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-white bg-[#862334] hover:bg-[#862334]/90 shadow-lg hover:shadow-[#862334]/20 transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1832,7 +1980,7 @@ export default function StaffDashboard() {
                   <div>
                     <div
                       style={{ animationDelay: "120ms" }}
-                      className="animate-item-in flex items-center justify-between mb-4 relative z-30"
+                      className="animate-item-in flex items-center justify-between mb-4 relative z-10"
                     >
                       <div className="flex items-center gap-2">
                         <h2 className="text-lg font-bold font-Geist text-gray-900">
@@ -1938,7 +2086,7 @@ export default function StaffDashboard() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
-                  {/* Student Roster Container matching UserManagement_2.jsx */}
+                  {/* Student Roster Container */}
                   <div
                     style={{ animationDelay: "120ms" }}
                     className="animate-item-in md:col-span-12 bg-white border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] relative z-20 overflow-visible rounded-2xl"
@@ -2005,6 +2153,10 @@ export default function StaffDashboard() {
                                 activeStudentMenuId === student.id;
                               const isEnrolled =
                                 student.status.toLowerCase() === "enrolled";
+                              const isDropped =
+                                student.status.toLowerCase() === "dropped";
+                              const canPerformAction =
+                                isEnrolled || isDropped;
                               const openUpward =
                                 i >= paginatedStudents.length - 2 &&
                                 paginatedStudents.length > 2;
@@ -2049,6 +2201,8 @@ export default function StaffDashboard() {
                                       className={`flex items-center text-[11px] font-semibold font-[Inter,sans-serif] uppercase ${
                                         isEnrolled
                                           ? "text-green-700"
+                                          : isDropped
+                                          ? "text-rose-600"
                                           : "text-gray-400"
                                       }`}
                                     >
@@ -2056,6 +2210,8 @@ export default function StaffDashboard() {
                                         className={`w-1.5 h-1.5 rounded-full mr-2 flex-shrink-0 ${
                                           isEnrolled
                                             ? "bg-green-700 animate-pulse"
+                                            : isDropped
+                                            ? "bg-rose-600"
                                             : "bg-gray-300"
                                         }`}
                                       />
@@ -2078,7 +2234,9 @@ export default function StaffDashboard() {
                                     >
                                       <button
                                         type="button"
-                                        disabled={isUnenrolling || !isEnrolled}
+                                        disabled={
+                                          isUnenrolling || !canPerformAction
+                                        }
                                         onClick={() =>
                                           setActiveStudentMenuId((prev) =>
                                             prev === student.id
@@ -2090,7 +2248,7 @@ export default function StaffDashboard() {
                                         aria-expanded={isMenuOpen}
                                         aria-label={`Enrollment actions for ${student.name}`}
                                         className={`inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors focus:outline-none ${
-                                          !isEnrolled
+                                          !canPerformAction
                                             ? "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed opacity-60"
                                             : isMenuOpen
                                             ? "border-[#862334]/40 bg-[#862334]/[0.08] text-[#862334] cursor-pointer"
@@ -2100,7 +2258,7 @@ export default function StaffDashboard() {
                                         <EllipsisVertical className="w-4 h-4" />
                                       </button>
 
-                                      {isMenuOpen && isEnrolled && (
+                                      {isMenuOpen && canPerformAction && (
                                         <div
                                           role="menu"
                                           aria-label={`Actions for ${student.name}`}
@@ -2108,34 +2266,67 @@ export default function StaffDashboard() {
                                             openUpward
                                               ? "bottom-full mb-1.5"
                                               : "top-full mt-1.5"
-                                          } w-44 rounded-xl bg-white border border-gray-200 shadow-lg py-1.5 z-30 font-Inter`}
+                                          } w-44 rounded-xl bg-white border border-gray-200 shadow-lg py-1.5 z-30 font-Inter overflow-hidden`}
                                         >
-                                          <button
-                                            type="button"
-                                            role="menuitem"
-                                            onClick={() => {
-                                              setStudentAction("unenroll");
-                                              setStudentToUnenroll(student);
-                                              setActiveStudentMenuId(null);
-                                            }}
-                                            className="w-full px-3.5 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-                                          >
-                                            <UserMinus className="w-3.5 h-3.5" />
-                                            <span>Unenroll</span>
-                                          </button>
-                                          <button
-                                            type="button"
-                                            role="menuitem"
-                                            onClick={() => {
-                                              setStudentAction("drop");
-                                              setStudentToUnenroll(student);
-                                              setActiveStudentMenuId(null);
-                                            }}
-                                            className="w-full px-3.5 py-2 text-left text-xs font-semibold text-[#862334] hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-                                          >
-                                            <UserMinus className="w-3.5 h-3.5" />
-                                            <span>Drop Student</span>
-                                          </button>
+                                          {isDropped ? (
+                                            <>
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                  setStudentAction("undrop");
+                                                  setStudentToUnenroll(student);
+                                                  setActiveStudentMenuId(null);
+                                                }}
+                                                className="w-full px-3.5 py-2 text-left text-xs font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                              >
+                                                <UserCheck className="w-3.5 h-3.5" />
+                                                <span>Undrop Student</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                  setStudentAction("unenroll");
+                                                  setStudentToUnenroll(student);
+                                                  setActiveStudentMenuId(null);
+                                                }}
+                                                className="w-full px-3.5 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-gray-100"
+                                              >
+                                                <UserMinus className="w-3.5 h-3.5" />
+                                                <span>Unenroll</span>
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                  setStudentAction("unenroll");
+                                                  setStudentToUnenroll(student);
+                                                  setActiveStudentMenuId(null);
+                                                }}
+                                                className="w-full px-3.5 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                              >
+                                                <UserMinus className="w-3.5 h-3.5" />
+                                                <span>Unenroll</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                  setStudentAction("drop");
+                                                  setStudentToUnenroll(student);
+                                                  setActiveStudentMenuId(null);
+                                                }}
+                                                className="w-full px-3.5 py-2 text-left text-xs font-semibold text-[#862334] hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-gray-100"
+                                              >
+                                                <UserMinus className="w-3.5 h-3.5" />
+                                                <span>Drop Student</span>
+                                              </button>
+                                            </>
+                                          )}
                                         </div>
                                       )}
                                     </div>
@@ -2149,7 +2340,7 @@ export default function StaffDashboard() {
                     </div>
                   </div>
 
-                  {/* Pill Pagination matching UserManagement_2.jsx */}
+                  {/* Pill Pagination */}
                   <div
                     style={{ animationDelay: "260ms" }}
                     className="animate-item-in md:col-span-12 relative z-0 mt-2 mb-4 flex justify-between items-center flex-wrap gap-4"

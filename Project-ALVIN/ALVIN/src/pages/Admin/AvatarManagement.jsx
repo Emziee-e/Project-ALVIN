@@ -47,6 +47,7 @@ export default function AvatarManagement() {
     avatar_id: "",
     avatar_image: "",
     voice: "",
+    description: "",
   });
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [avatarBeingEdited, setAvatarBeingEdited] = useState(null);
@@ -55,6 +56,7 @@ export default function AvatarManagement() {
     avatar_id: "",
     avatar_image: "",
     voice: "",
+    description: "",
   });
   const [editError, setEditError] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -182,6 +184,7 @@ export default function AvatarManagement() {
     name: avatar.avatar_name,
     image: avatar.avatar_image || DEFAULT_AVATAR_IMAGE,
     voice: avatar.voice || "",
+    description: avatar.description || "",
     selected: avatar.is_active === true,
     updated_at: avatar.updated_at,
   });
@@ -241,7 +244,13 @@ export default function AvatarManagement() {
         method: "POST",
         body: JSON.stringify(avatarForm),
       });
-      setAvatarForm({ avatar_name: "", avatar_id: "", avatar_image: "", voice: "" });
+      setAvatarForm({
+        avatar_name: "",
+        avatar_id: "",
+        avatar_image: "",
+        voice: "",
+        description: "",
+      });
       setIsAvatarFormOpen(false);
       await loadAvatars();
       showToast("Avatar Added", `Avatar "${addedName}" was added successfully.`);
@@ -338,6 +347,7 @@ export default function AvatarManagement() {
       avatar_id: model.avatar_id,
       avatar_image: "", // empty = keep the current thumbnail
       voice: model.voice || "",
+      description: model.description || "",
     });
     setAvatarBeingEdited(model);
   };
@@ -366,6 +376,10 @@ export default function AvatarManagement() {
     if (editForm.avatar_image) body.avatar_image = editForm.avatar_image;
     const newVoice = editForm.voice.trim();
     if (newVoice !== (avatarBeingEdited.voice || "")) body.voice = newVoice; // "" clears it
+    const newDescription = editForm.description.trim();
+    if (newDescription !== (avatarBeingEdited.description || "")) {
+      body.description = newDescription; // "" clears it
+    }
 
     if (Object.keys(body).length === 0) {
       setAvatarBeingEdited(null);
@@ -673,6 +687,30 @@ export default function AvatarManagement() {
                   </span>
                 </label>
 
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Description
+                  </span>
+                  <textarea
+                    value={editForm.description}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    maxLength={500}
+                    rows={3}
+                    className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="e.g. Janine is an HR Manager who values soft skills such as communication and teamwork."
+                  />
+                  <span className="block text-[11px] text-gray-400 font-Inter leading-relaxed">
+                    A short, general description shown on the avatar card. It
+                    is for display only and does not change how the avatar
+                    behaves. ({editForm.description.length}/500)
+                  </span>
+                </label>
+
                 <div className="pt-2 flex flex-col sm:flex-row gap-2">
                   <button
                     type="button"
@@ -823,6 +861,30 @@ export default function AvatarManagement() {
                   <span className="block text-[11px] text-gray-400 font-Inter leading-relaxed">
                     Enter the voice set for this avatar in the NavTalk Console so
                     it stays the same throughout the interview.
+                  </span>
+                </label>
+
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 font-Inter">
+                    Description
+                  </span>
+                  <textarea
+                    value={avatarForm.description}
+                    onChange={(event) =>
+                      setAvatarForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    maxLength={500}
+                    rows={3}
+                    className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm font-Inter outline-none transition focus:border-maroon/50 focus:bg-white focus:ring-2 focus:ring-maroon/10"
+                    placeholder="e.g. Janine is an HR Manager who values soft skills such as communication and teamwork."
+                  />
+                  <span className="block text-[11px] text-gray-400 font-Inter leading-relaxed">
+                    A short, general description shown on the avatar card. It
+                    is for display only and does not change how the avatar
+                    behaves. ({avatarForm.description.length}/500)
                   </span>
                 </label>
 
@@ -1090,6 +1152,12 @@ export default function AvatarManagement() {
                       </div>
 
                       <div className="space-y-3 p-4 md:p-5">
+                        {model.description ? (
+                          <p className="max-h-24 overflow-y-auto whitespace-pre-line break-words pr-1 text-sm leading-relaxed text-slate-600 font-Inter [scrollbar-width:thin]">
+                            {model.description}
+                          </p>
+                        ) : null}
+
                         <button
                           type="button"
                           onClick={() => setIsVoiceModalOpen(true)}
@@ -1102,9 +1170,12 @@ export default function AvatarManagement() {
                         <button
                           type="button"
                           onClick={() => selectModel(model.id)}
-                          className="flex w-full items-center justify-center rounded-xl bg-maroon px-4 py-3 text-sm font-Geist text-white shadow-[0_10px_20px_rgba(15,76,92,0.18)] transition-all duration-300 hover:bg-[#862334] hover:shadow-[0_14px_26px_rgba(134,35,52,0.25)] cursor-pointer"
+                          disabled={model.selected}
+                          aria-disabled={model.selected}
+                          className="flex w-full items-center justify-center rounded-xl bg-maroon px-4 py-3 text-sm font-Geist text-white shadow-[0_10px_20px_rgba(15,76,92,0.18)] transition-all duration-300 hover:bg-[#862334] hover:shadow-[0_14px_26px_rgba(134,35,52,0.25)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:hover:bg-maroon disabled:hover:shadow-none"
+                          title={model.selected ? "This avatar is already selected for the session" : "Select for session"}
                         >
-                          Select for Session
+                          {model.selected ? "Selected for Session" : "Select for Session"}
                         </button>
                         <div className="grid grid-cols-2 gap-3">
                           <button

@@ -5,9 +5,15 @@ const TermsOfUse = ({ isOpen, onClose, onAccept }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 ">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            onClick={onClose}
+        >
             {/* Modal Container */}
-            <div className=" bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300 ">
+            <div
+                className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300"
+                onClick={(e) => e.stopPropagation()}
+            >
 
                 {/* Header */}
                 <div className="sticky top-0 bg-maroon px-8 py-5 border-b border-gray-100 flex items-center justify-between">
@@ -18,7 +24,8 @@ const TermsOfUse = ({ isOpen, onClose, onAccept }) => {
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2"
+                        aria-label="Close modal"
+                        className="p-2 rounded-full hover:bg-white/15 active:scale-95 transition-all duration-200 cursor-pointer"
                     >
                         <X size={24} className="text-white" />
                     </button>
@@ -137,7 +144,7 @@ const TermsOfUse = ({ isOpen, onClose, onAccept }) => {
                 <div className="sticky bottom-0 bg-white px-8 py-4 border-t border-gray-100 flex gap-3 justify-end">
                     <button
                         onClick={onClose}
-                        className="px-6 py-2.5 text-white font-semibold font-Geist rounded-xl bg-maroon"
+                        className="px-6 py-2.5 text-white font-semibold font-Geist rounded-xl bg-maroon hover:bg-[#701c2b] hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer"
                     >
                         Close
                     </button>

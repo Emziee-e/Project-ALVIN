@@ -359,7 +359,28 @@ export default function InterviewResults() {
       e?.is_interviews_paused === true ||
       String(e?.is_interviews_paused).toLowerCase() === "true"
   );
-  const newSessionDisabled = !enrollmentsLoaded || isInterviewPaused;
+  // Not enrolled in any course: browsing is allowed, interviews are not.
+  const isEnrolled = userProfile.enrollments.length > 0;
+  // A course the Career Advisor concluded no longer allows interviews. The student
+  // is blocked once every course they are in has been concluded.
+  const isCourseConcluded =
+    isEnrolled &&
+    userProfile.enrollments.every((e) =>
+      ["concluded", "archived"].includes(
+        String(e?.course_status ?? "").trim().toLowerCase()
+      )
+    );
+  const newSessionDisabled =
+    !enrollmentsLoaded || !isEnrolled || isCourseConcluded || isInterviewPaused;
+  const newSessionReason = !enrollmentsLoaded
+    ? "Checking course availability"
+    : !isEnrolled
+    ? "Enroll in a course to start an interview"
+    : isCourseConcluded
+    ? "This course has been concluded"
+    : isInterviewPaused
+    ? "Paused by Career Advisor"
+    : "New Session";
 
   useEffect(() => {
     let isMounted = true;
@@ -432,7 +453,11 @@ export default function InterviewResults() {
       }
     };
     loadEnrollments();
-    return () => { active = false; };
+    const intervalId = window.setInterval(loadEnrollments, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -1569,13 +1594,7 @@ export default function InterviewResults() {
                   }}
                   disabled={newSessionDisabled}
                   aria-disabled={newSessionDisabled}
-                  title={
-                    !enrollmentsLoaded
-                      ? "Checking course availability"
-                      : isInterviewPaused
-                      ? "Paused by Career Advisor"
-                      : "New Session"
-                  }
+                  title={newSessionReason}
                   className={`inline-flex items-center gap-1.5 px-4 py-2 font-[Inter] font-semibold text-xs rounded-xl shadow-xs ${
                     newSessionDisabled
                       ? "bg-slate-200 text-slate-500 opacity-60 cursor-not-allowed"
