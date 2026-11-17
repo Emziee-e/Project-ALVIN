@@ -12,49 +12,61 @@ export default function VoiceConfigModal({ isOpen, onClose }) {
 
 	return (
 		<div
-			className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-md"
+			className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="voice-config-title"
 			onClick={onClose}
 		>
 			<div
-				className="relative w-full max-w-sm overflow-hidden rounded-[28px] bg-[#fcfcfd] shadow-[0_24px_70px_rgba(15,23,42,0.24)] ring-1 ring-black/5"
+				className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100"
 				onClick={(event) => event.stopPropagation()}
 			>
+				{/* Close Button - Overlapping (matches SignOutModal) */}
 				<button
 					type="button"
 					onClick={onClose}
-					className="absolute right-4 top-4 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
 					aria-label="Close voice configuration"
+					className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] cursor-pointer"
 				>
-					<X className="h-6 w-6" />
+					<X className="w-5 h-5 text-maroon group-hover:rotate-90 transition-transform duration-200" />
 				</button>
 
-				<div className="px-5 pb-2 pt-6">
-					<h2 className="font-[Geist,Inter] text-[1.55rem] font-bold tracking-tight text-slate-900">
+				{/* Header/Icon */}
+				<div className="pt-6 pb-2 px-6 flex flex-col items-center text-center">
+					<div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-3">
+						<Mic className="w-6 h-6 text-maroon" aria-hidden="true" />
+					</div>
+					<h2
+						id="voice-config-title"
+						className="text-xl font-bold text-gray-900 font-Geist"
+					>
 						Configure Voice
 					</h2>
 				</div>
 
-				<div className="space-y-5 px-5 pb-6 pt-4">
-					<p className="text-sm leading-6 text-slate-600">
+				{/* Content */}
+				<div className="px-6 pb-6 text-center">
+					<p className="text-sm text-gray-600 mb-6 font-Inter leading-relaxed">
 						Voice can only be configured through the NavTalk API dashboard.
 						Are you sure you want to leave this page?
 					</p>
 
-					<div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+					<div className="flex flex-col sm:flex-row gap-2">
 						<button
 							type="button"
 							onClick={onClose}
-							className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+							className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-sm text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] cursor-pointer"
 						>
 							Cancel
 						</button>
 						<button
 							type="button"
 							onClick={openNavTalkDashboard}
-							className="flex items-center justify-center rounded-2xl bg-[#9e2438] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#8d1f32]"
+							className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl font-bold text-sm text-white bg-maroon hover:bg-maroon/90 shadow-lg hover:shadow-maroon/20 transition-all active:scale-[0.98] whitespace-nowrap cursor-pointer"
 						>
-							<ExternalLink className="mr-2 h-4 w-4" />
-							Go to NavTalk Dashboard
+							<ExternalLink className="w-4 h-4 shrink-0" />
+							<span>NavTalk Dashboard</span>
 						</button>
 					</div>
 				</div>

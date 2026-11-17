@@ -3,11 +3,13 @@ import { Mail } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useInView } from '../../lib/useInView';
 import TermsOfUse from '../../Components/TermsOfUse';
+import PrivacyPolicy from '../../Components/PrivacyPolicy';
 import { supabase } from '../../lib/supabaseClient';
 
 const Login = () => {
     const [ref, isInView] = useInView();
     const [isTermsOpen, setIsTermsOpen] = useState(false);
+    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
     const navigate = useNavigate();
 
     const handleGoogleLogin = async (e) => {
@@ -105,7 +107,7 @@ const Login = () => {
                             Terms of Use
                         </span>
                         {' '} and {' '}
-                        <span className="text-[#862334] font-bold hover:underline cursor-pointer">
+                        <span onClick={() => setIsPrivacyOpen(true)} className="text-[#862334] font-bold hover:underline cursor-pointer">
                             Privacy Policy
                         </span>
                     </p>
@@ -113,6 +115,7 @@ const Login = () => {
             </div>
 
             <TermsOfUse isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} />
+            <PrivacyPolicy isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
         </div>
     );
 };

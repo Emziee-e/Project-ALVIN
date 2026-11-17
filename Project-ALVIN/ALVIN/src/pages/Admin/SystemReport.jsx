@@ -296,6 +296,7 @@ function RadialDonutUsersChart({ segments = [], total, reportType }) {
 
 export default function SystemReport() {
   const [activeNav, setActiveNav] = useState("reports");
+  const [navAnimKey, setNavAnimKey] = useState(0);
   const [interviewReportType, setInterviewReportType] = useState("Weekly");
   const [userTrendType, setUserTrendType] = useState("Weekly");
 
@@ -463,6 +464,20 @@ export default function SystemReport() {
     <>
       <style>{`
         html, body, #root { height: 100%; margin: 0; width: 100%; }
+        @keyframes itemFadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-item-in {
+          opacity: 0;
+          animation: itemFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
       `}</style>
 
       <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Geist, Inter] relative">
@@ -550,13 +565,14 @@ export default function SystemReport() {
         </div>
 
         {/* Sidebar Nav */}
-        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen">
+        <aside className="w-[100px] bg-[#FDFBF7] border-r-1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 select-none h-screen z-50 relative">
           <div className="w-full flex flex-col items-center">
             <div
               className="mb-3 px-1 flex flex-col items-center cursor-pointer"
               onClick={() => {
                 setIsAccountOpen(false);
                 setActiveNav("reports");
+                setNavAnimKey((prev) => prev + 1);
                 navigate("/admin/reports");
               }}
             >
@@ -584,6 +600,7 @@ export default function SystemReport() {
                       } else {
                         setIsAccountOpen(false);
                         setActiveNav(item.id);
+                        setNavAnimKey((prev) => prev + 1);
                         if (item.path) navigate(item.path);
                       }
                     }}
@@ -599,7 +616,7 @@ export default function SystemReport() {
                       }`}
                     />
                     <span
-                      className={`text-[11px] tracking-tight ${
+                      className={`text-xs tracking-tight ${
                         isSolidActive
                           ? "font-bold text-white"
                           : "font-medium text-[#862334]"
@@ -617,22 +634,13 @@ export default function SystemReport() {
         {/* Main Workspace Canvas */}
         <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
-            <div className="px-8 sm:px-12 md:px-16 lg:px-20 py-8 space-y-8 w-full">
-
-              {/* Live status bar */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h1 className="text-3xl font-black text-slate-900 tracking-tight">System Report</h1>
-                  <p className="text-xs text-slate-500 font-medium">
-                    {lastUpdated
-                      ? `Last updated ${lastUpdated.toLocaleTimeString()}`
-                      : "Loading latest data…"}
-                  </p>
-                </div>
-              </div>
+            <div
+              key={`${activeNav}-${navAnimKey}`}
+              className="px-8 sm:px-12 md:px-16 lg:px-20 py-8 space-y-8 w-full"
+            >
 
               {reportError && (
-                <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
+                <div className="animate-item-in flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
                   <span>{reportError}</span>
                   <button
                     onClick={loadReport}
@@ -647,7 +655,10 @@ export default function SystemReport() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
                 {/* 1. Total Interviews */}
-                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                <div
+                  style={{ animationDelay: "0ms" }}
+                  className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+                >
                   <div className="flex items-start justify-between">
                     <div>
                       <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -676,7 +687,10 @@ export default function SystemReport() {
                 </div>
 
                 {/* 2. Avg. Performance */}
-                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                <div
+                  style={{ animationDelay: "120ms" }}
+                  className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+                >
                   <div className="flex items-start justify-between">
                     <div>
                       <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -708,7 +722,10 @@ export default function SystemReport() {
                 </div>
 
                 {/* 3. Active Users */}
-                <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+                <div
+                  style={{ animationDelay: "240ms" }}
+                  className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+                >
                   <div className="flex items-start justify-between">
                     <div>
                       <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -738,10 +755,13 @@ export default function SystemReport() {
               </div>
 
               {/* Side-by-Side Analytics Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                 {/* CHART 1: Interview Volume (Left Container) */}
-                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col">
+                <div
+                  style={{ animationDelay: "360ms" }}
+                  className="animate-item-in bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col"
+                >
                   <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20 rounded-t-2xl">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#862334]" />
@@ -760,7 +780,10 @@ export default function SystemReport() {
                 </div>
 
                 {/* CHART 2: Users Breakdown Donut (Right Container with Daily, Weekly, Monthly) */}
-                <div className="bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col">
+                <div
+                  style={{ animationDelay: "480ms" }}
+                  className="animate-item-in bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] flex flex-col"
+                >
                   <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20 rounded-t-2xl">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#FFB003]" />
@@ -782,6 +805,18 @@ export default function SystemReport() {
                   </div>
                 </div>
 
+              </div>
+
+              {/* Bottom-right Last Updated status */}
+              <div
+                style={{ animationDelay: "560ms" }}
+                className="animate-item-in flex justify-end pt-1 pb-2"
+              >
+                <p className="text-xs text-slate-500 font-medium">
+                  {lastUpdated
+                    ? `Last updated ${lastUpdated.toLocaleTimeString()}`
+                    : "Loading latest data…"}
+                </p>
               </div>
 
             </div>

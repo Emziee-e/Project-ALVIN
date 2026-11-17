@@ -1,9 +1,19 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, FileText, UploadCloud, Target, Briefcase, AlertCircle, Loader2 } from 'lucide-react';
-import Logo from '/images/Alvin-logo.png';
-import { Link, useNavigate } from 'react-router-dom';
-import SignOutModal from '../../Components/SignOutModal';
-import { supabase } from '../../lib/supabaseClient';
+import {
+  FileText,
+  UploadCloud,
+  Target,
+  Briefcase,
+  AlertCircle,
+  Loader2,
+  Eye,
+  X,
+  Trash2,
+} from "lucide-react";
+import Logo from "/images/Alvin-logo.png";
+import { Link, useNavigate } from "react-router-dom";
+import SignOutModal from "../../Components/SignOutModal";
+import { supabase } from "../../lib/supabaseClient";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
@@ -11,10 +21,12 @@ const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 export default function ResumeUpload() {
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
-  
+
   const [role, setRole] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -32,7 +44,7 @@ export default function ResumeUpload() {
         metadata.full_name ||
         metadata.name ||
         metadata.display_name ||
-        user?.email?.split('@')[0] ||
+        user?.email?.split("@")[0] ||
         "";
 
       const nextAvatarUrl =
@@ -55,23 +67,102 @@ export default function ResumeUpload() {
     };
   }, []);
 
+  // Generate and clean up local object URL whenever the uploaded PDF changes
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl("");
+      setIsPreviewOpen(false);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [file]);
+
+  // Close preview modal on Escape key
+  useEffect(() => {
+    if (!isPreviewOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setIsPreviewOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPreviewOpen]);
+
+  // Interviews need an active course enrollment. Send students without one
+  // back to the dashboard instead of letting them fill in the form. The server
+  // enforces this too, so if this check itself fails we stay on the page and
+  // let the start request return the real error.
+  useEffect(() => {
+    let active = true;
+
+    const requireEnrollment = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const headers = { Authorization: `Bearer ${session.access_token}` };
+        if (APP_API_KEY) headers["X-API-Key"] = APP_API_KEY;
+
+        const response = await fetch(`${API_BASE_URL}/api/student/enrollments`, {
+          headers,
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+
+        const rows = await response.json();
+        if (active && Array.isArray(rows) && rows.length === 0) {
+          navigate("/user/dashboard", { replace: true });
+        }
+      } catch (err) {
+        console.error("Unable to verify enrollment:", err);
+      }
+    };
+
+    requireEnrollment();
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate('/');
+    navigate("/");
   };
 
   const handleFileDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
     setError("");
-    
+
     const uploadedFile = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
-    
+
     if (uploadedFile && uploadedFile.type === "application/pdf") {
+      if (uploadedFile.size > 5 * 1024 * 1024) {
+        setError("File exceeds the 5MB limit. Please upload a smaller PDF.");
+        return;
+      }
       setFile(uploadedFile);
     } else if (uploadedFile) {
       setError("Please upload a PDF file.");
     }
+  };
+
+  const handleRemoveFile = () => {
+    setFile(null);
+    setError("");
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return "";
+    const kb = bytes / 1024;
+    return kb >= 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${Math.round(kb)} KB`;
   };
 
   const handleInitialize = async () => {
@@ -88,7 +179,10 @@ export default function ResumeUpload() {
     setError("");
 
     try {
-      let { data: { session }, error: authError } = await supabase.auth.getSession();
+      let {
+        data: { session },
+        error: authError,
+      } = await supabase.auth.getSession();
       if (authError) {
         throw new Error("Unable to read your login session. Please sign in again.");
       }
@@ -102,7 +196,9 @@ export default function ResumeUpload() {
       }
 
       if (!session?.access_token) {
-        throw new Error("Missing Supabase login session. Please sign out and sign in with Google again.");
+        throw new Error(
+          "Missing Supabase login session. Please sign out and sign in with Google again."
+        );
       }
 
       const formData = new FormData();
@@ -122,13 +218,16 @@ export default function ResumeUpload() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        const detail = typeof payload?.detail === "string"
-          ? payload.detail
-          : Array.isArray(payload?.detail)
+        const detail =
+          typeof payload?.detail === "string"
+            ? payload.detail
+            : Array.isArray(payload?.detail)
             ? "Invalid interview request. Please review your resume and target role."
             : null;
         if (response.status === 401) {
-          throw new Error(detail || "Authentication failed. Please sign out and sign in with Google again.");
+          throw new Error(
+            detail || "Authentication failed. Please sign out and sign in with Google again."
+          );
         }
         throw new Error(detail || `Failed to initialize interview (HTTP ${response.status}).`);
       }
@@ -139,14 +238,13 @@ export default function ResumeUpload() {
         throw new Error("Backend did not return a valid NavTalk session configuration.");
       }
 
-      navigate('/user/hardware-check', { 
-        state: { 
-          sessionData, 
-          role, 
-          fileName: file.name 
-        } 
+      navigate("/user/hardware-check", {
+        state: {
+          sessionData,
+          role,
+          fileName: file.name,
+        },
       });
-
     } catch (err) {
       console.error("Initialization error:", err);
       setError(err.message || "Failed to initialize interview session.");
@@ -155,22 +253,126 @@ export default function ResumeUpload() {
     }
   };
 
+  const staggerStyle = (index) => ({
+    animationDelay: `${index * 110}ms`,
+  });
+
   return (
     <>
       {/* Google Fonts */}
-      <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet"
+      />
+
+      <style>{`
+        @keyframes alvinModalFade {
+          from {
+            opacity: 0;
+            transform: scale(0.97) translateY(6px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+        .animate-alvin-modal {
+          animation: alvinModalFade 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes resumeFadeSlideIn {
+          0% {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-slide-in {
+          animation: resumeFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .animate-fade-slide-in {
+            animation: none;
+            opacity: 1;
+            transform: none;
+          }
+        }
+      `}</style>
 
       <div className="flex min-h-screen bg-white text-black font-Geist">
-        {/* Modal */}
+        {/* Sign Out Modal */}
         <SignOutModal
           isOpen={isSignOutModalOpen}
           onClose={() => setIsSignOutModalOpen(false)}
           onConfirm={handleSignOut}
         />
 
-        {/* ── Main ── */}
-        <main className="flex-1 w-full bg-white overflow-hidden flex flex-col h-screen">
+        {/* Resume Preview Modal (ALVIN Design System) */}
+        {isPreviewOpen && previewUrl && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 sm:p-6 select-none"
+            onClick={() => setIsPreviewOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="resume-preview-title"
+              className="bg-white w-full max-w-4xl h-[86vh] rounded-xl border border-[#862334]/20 shadow-2xl flex flex-col overflow-hidden animate-alvin-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Warm Cream Top Header Bar */}
+              <div className="flex items-center justify-between px-6 py-4 bg-[#FDFBF7] border-b border-[#EAE5D9]">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="p-2.5 bg-rose-50 text-[#862334] rounded-lg border border-[#862334]/15 shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block font-[Inter] text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Uploaded Resume Preview
+                    </span>
+                    <h4
+                      id="resume-preview-title"
+                      className="font-Geist text-base sm:text-lg font-bold text-[#2D3B45] truncate tracking-tight"
+                    >
+                      {file?.name}
+                    </h4>
+                  </div>
+                </div>
 
+                <div className="flex items-center gap-3 shrink-0 ml-4">
+                  <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full bg-[#862334]/10 text-[#862334] font-[Inter] text-xs font-semibold">
+                    {formatFileSize(file?.size)} • PDF
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewOpen(false)}
+                    aria-label="Close resume preview"
+                    className="p-1.5 rounded-lg border border-[#862334] text-[#862334] hover:bg-[#862334]/10 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5 stroke-[2.5]" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Clean PDF Viewer Body (Toolbar Hidden) */}
+              <div className="flex-1 bg-[#F7F7F8] p-3 sm:p-4 overflow-hidden">
+                <div className="w-full h-full rounded-lg overflow-hidden border border-slate-200 bg-white shadow-xs">
+                  <iframe
+                    src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                    title="Uploaded Resume Preview"
+                    className="w-full h-full border-0"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Main ── */}
+        <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen">
           {/* Top Header */}
           <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
             <div className="flex items-center">
@@ -202,52 +404,117 @@ export default function ResumeUpload() {
           {/* ── SessionSetup Main Content ── */}
           <div className="flex-1 overflow-y-auto px-8 md:px-24 py-12 w-full">
             <div className="max-w-[1200px] mx-auto">
-
               {/* Bento Grid */}
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-
-                {/* Resume Upload */}
-                <section className="xl:col-span-7 bg-white border border-[#e5e5e5] shadow-[0_10px_30px_rgba(0,0,0,0.05)] p-6 md:p-8 rounded-[4px] relative overflow-hidden group">
+                {/* Resume Upload (0ms) */}
+                <section
+                  style={staggerStyle(0)}
+                  className="animate-fade-slide-in xl:col-span-7 bg-white border border-[#862334]/20 shadow-[0_10px_30px_rgba(0,0,0,0.05)] p-6 md:p-8 rounded-[4px] relative overflow-hidden group"
+                >
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-8">
                       <h3 className="font-Geist text-xl font-bold flex items-center gap-2 text-black">
                         <FileText size={20} className="text-[#862334]" />
                         Upload Resume
                       </h3>
-                      <span className="text-[10px] font-[Inter,sans-serif] text-[#4a4a4a] uppercase tracking-widest">Step 01 / 02</span>
+                      <span className="text-[10px] font-[Inter,sans-serif] text-[#4a4a4a] uppercase tracking-widest">
+                        Step 01 / 02
+                      </span>
                     </div>
 
                     {/* Drop zone */}
                     <div
-                      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOver(true);
+                      }}
                       onDragLeave={() => setDragOver(false)}
                       onDrop={handleFileDrop}
-                      className={`border-2 border-dashed rounded-[4px] py-16 px-6 md:px-12 flex flex-col items-center justify-center text-center cursor-pointer bg-[#f9f9f9] transition-colors duration-300
-                        ${dragOver ? "border-[#862334] bg-[#862334]/5" : "border-[#d1d1d1] hover:border-[#862334]"}`}
+                      className={`border-2 border-dashed rounded-[4px] py-14 px-6 md:px-12 flex flex-col items-center justify-center text-center bg-[#f9f9f9] transition-colors duration-300
+                        ${
+                          dragOver
+                            ? "border-[#862334] bg-[#862334]/5"
+                            : "border-[#d1d1d1] hover:border-[#862334]"
+                        }`}
                     >
-                      <div className={`mb-4 p-4 rounded-full transition-colors duration-300 ${dragOver ? "bg-[#862334]/10" : "bg-[#f0f0f0]"}`}>
-                        <UploadCloud size={40} className={`transition-colors ${dragOver ? "text-[#862334]" : "text-[#4a4a4a]"}`} />
+                      <div
+                        className={`mb-4 p-4 rounded-full transition-colors duration-300 ${
+                          dragOver ? "bg-[#862334]/10" : "bg-[#f0f0f0]"
+                        }`}
+                      >
+                        <UploadCloud
+                          size={40}
+                          className={`transition-colors ${
+                            dragOver ? "text-[#862334]" : "text-[#4a4a4a]"
+                          }`}
+                        />
                       </div>
 
                       {file ? (
                         <>
-                          <h4 className="font-[Space_Grotesk,sans-serif] text-lg font-medium mb-1 text-[#862334]">{file.name}</h4>
-                          <p className="font-[Manrope,sans-serif] text-sm text-[#4a4a4a] opacity-70">File ready for analysis</p>
+                          <h4 className="font-[Space_Grotesk,sans-serif] text-lg font-semibold mb-1 text-[#862334] break-all max-w-md">
+                            {file.name}
+                          </h4>
+                          <p className="font-[Manrope,sans-serif] text-xs text-[#4a4a4a] opacity-75">
+                            {formatFileSize(file.size)} • File ready for analysis
+                          </p>
+
+                          {/* Action Buttons: Preview, Replace, Remove */}
+                          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setIsPreviewOpen(true)}
+                              className="px-5 py-2 bg-[#862334] hover:bg-[#6e1c2a] text-white transition-all text-sm font-Geist font-bold rounded-[2px] uppercase tracking-tight inline-flex items-center gap-2 cursor-pointer"
+                            >
+                              <Eye size={16} />
+                              Preview Resume
+                            </button>
+
+                            <label className="px-5 py-2 bg-[#e5e5e5] hover:bg-[#d8d8d8] text-[#4a4a4a] transition-all text-sm font-Geist font-bold rounded-[2px] uppercase tracking-tight cursor-pointer">
+                              Replace File
+                              <input
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={handleFileDrop}
+                              />
+                            </label>
+
+                            <button
+                              type="button"
+                              onClick={handleRemoveFile}
+                              title="Remove file"
+                              aria-label="Remove uploaded file"
+                              className="p-2 bg-white border border-[#e5e5e5] hover:border-red-300 hover:text-red-600 text-[#4a4a4a] transition-colors rounded-[2px] cursor-pointer"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </>
                       ) : (
                         <>
-                          <h4 className="font-Geist text-lg font-medium mb-1 text-black">Drag and drop your PDF resume</h4>
+                          <h4 className="font-Geist text-lg font-medium mb-1 text-black">
+                            Drag and drop your PDF resume
+                          </h4>
                           <p className="font-Inter text-sm text-[#4a4a4a] opacity-70">
-                            Upload your resume to help ALVIN understand your background.<br />
-                            <span className="text-[10px] uppercase tracking-wider font-Inter font-bold opacity-60 mt-2 block">PDF Only • Max 5MB</span>
+                            Upload your resume to help ALVIN understand your background.
+                            <br />
+                            <span className="text-[11px] tracking-wider font-Inter font-semiboldopacity-60 mt-2 block">
+                              PDF Only • Max 5MB
+                            </span>
                           </p>
+
+                          <label className="mt-6 px-6 py-2 bg-[#e5e5e5] hover:bg-[#862334] hover:text-white text-[#4a4a4a] transition-all text-sm font-Geist font-bold rounded-[2px] uppercase tracking-tight cursor-pointer">
+                            Select File
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              className="hidden"
+                              onChange={handleFileDrop}
+                            />
+                          </label>
                         </>
                       )}
-
-                      <label className="mt-6 px-6 py-2 bg-[#e5e5e5] hover:bg-[#862334] hover:text-white text-[#4a4a4a] transition-all text-sm font-Geist font-bold rounded-[2px] uppercase tracking-tight cursor-pointer">
-                        Select File
-                        <input type="file" accept=".pdf" className="hidden" onChange={handleFileDrop} />
-                      </label>
                     </div>
                   </div>
                   <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-[#862334]/5 rounded-full blur-3xl group-hover:bg-[#862334]/10 transition-colors pointer-events-none" />
@@ -255,20 +522,27 @@ export default function ResumeUpload() {
 
                 {/* Right column */}
                 <div className="xl:col-span-5 flex flex-col gap-8">
-
-                  {/* Target Role */}
-                  <section className="bg-white border border-[#e5e5e5] shadow-[0_10px_30px_rgba(0,0,0,0.05)] p-6 md:p-8 rounded-[4px] flex-1">
+                  {/* Target Role (110ms) */}
+                  <section
+                    style={staggerStyle(1)}
+                    className="animate-fade-slide-in bg-white border border-[#862334]/20 shadow-[0_10px_30px_rgba(0,0,0,0.05)] p-6 md:p-8 rounded-[4px] flex-1"
+                  >
                     <div className="flex items-center justify-between mb-8">
                       <h3 className="font-Geist text-xl font-bold flex items-center gap-2 text-black">
                         <Target size={20} className="text-[#862334]" />
                         Destination
                       </h3>
-                      <span className="text-[10px] font-[Inter,sans-serif] text-[#4a4a4a] uppercase tracking-widest">Step 02 / 02</span>
+                      <span className="text-[10px] font-[Inter,sans-serif] text-[#4a4a4a] uppercase tracking-widest">
+                        Step 02 / 02
+                      </span>
                     </div>
 
                     <div className="space-y-6">
                       <div>
-                        <label htmlFor="role" className="block font-[Inter,sans-serif] text-xs text-[#4a4a4a] uppercase tracking-widest mb-3 font-bold">
+                        <label
+                          htmlFor="role"
+                          className="block font-[Inter,sans-serif] text-xs text-[#4a4a4a] uppercase tracking-widest mb-3 font-bold"
+                        >
                           Target Job Role
                         </label>
                         <div className="relative">
@@ -276,7 +550,7 @@ export default function ResumeUpload() {
                             id="role"
                             type="text"
                             value={role}
-                            onChange={e => setRole(e.target.value)}
+                            onChange={(e) => setRole(e.target.value)}
                             placeholder="e.g., Junior Software Engineer"
                             className="w-full bg-[#f9f9f9] border border-[#e5e5e5] focus:ring-1 focus:ring-[#862334] focus:outline-none py-4 px-4 text-black placeholder:text-[#d1d1d1] font-Inter transition-all rounded-[2px]"
                             disabled={isLoading}
@@ -289,15 +563,21 @@ export default function ResumeUpload() {
 
                       <div className="p-4 bg-[#862334]/5 rounded border-l-2 border-[#862334]">
                         <p className="text-xs font-[Manrope,sans-serif] leading-relaxed text-[#4a4a4a]">
-                          <strong className="text-[#862334] font-Geist uppercase text-[10px] block mb-1">Recommendation:</strong>
-                          Specify your experience level and tech stack to receive more accurate interview simulations.
+                          <strong className="text-[#862334] font-Geist uppercase text-[10px] block mb-1">
+                            Recommendation:
+                          </strong>
+                          Specify your experience level and tech stack to receive more accurate
+                          interview simulations.
                         </p>
                       </div>
                     </div>
                   </section>
 
-                  {/* CTA */}
-                  <section className="bg-[#f9f9f9] border border-[#e5e5e5] p-6 md:p-8 rounded-[4px] relative overflow-hidden">
+                  {/* CTA (220ms) */}
+                  <section
+                    style={staggerStyle(2)}
+                    className="animate-fade-slide-in bg-[#f9f9f9] border border-[#862334]/20 p-6 md:p-8 rounded-[4px] relative overflow-hidden"
+                  >
                     <div className="relative z-10">
                       {error && (
                         <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 rounded flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
@@ -326,7 +606,6 @@ export default function ResumeUpload() {
                   </section>
                 </div>
               </div>
-
             </div>
           </div>
         </main>
@@ -334,7 +613,10 @@ export default function ResumeUpload() {
         {/* Decorative glow */}
         <div
           className="fixed top-0 right-0 w-[60vw] h-[614px] pointer-events-none -z-10 opacity-10"
-          style={{ background: "radial-gradient(ellipse at top right, rgba(134,35,52,0.15) 0%, transparent 70%)" }}
+          style={{
+            background:
+              "radial-gradient(ellipse at top right, rgba(134,35,52,0.15) 0%, transparent 70%)",
+          }}
         />
       </div>
     </>

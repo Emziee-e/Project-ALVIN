@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X, Check, ChevronDown, Upload } from "lucide-react";
 
-// Preset solid color options
 const COLOR_OPTIONS = [
   { id: "maroon", label: "Maroon", value: "bg-[#862334]" },
   { id: "navy", label: "Navy Blue", value: "bg-[#1E3A8A]" },
@@ -25,7 +24,7 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Close dropdown when clicking outside
+  // Close custom dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -64,7 +63,7 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!code.trim() || !title.trim()) {
+    if (!code.trim() || !title.trim() || !section.trim()) {
       return;
     }
 
@@ -96,25 +95,32 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150 font-Inter">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900 font-Geist">Add New Course</h2>
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-lg text-gray-900 font-Geist">
+              Add New Course
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Fill in the details to create a new course
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+            className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          {/* Cover Image Upload */}
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {/* Cover Image Upload (Top) */}
           <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
               Cover Image <span className="text-gray-400 font-normal">(PNG or JPG)</span>
             </label>
 
@@ -167,98 +173,118 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
 
           {/* Course Code */}
           <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-              Course Code
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+              Course Code <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
-              placeholder="e.g. IPCR101"
+              required
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#862334] transition-colors"
-              required
+              placeholder="e.g. IPCR101"
+              className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] transition-all"
             />
           </div>
 
           {/* Course Title */}
           <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-              Course Title
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+              Course Title <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
-              placeholder="e.g. Interview Preparation and Career Readiness"
+              required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#862334] transition-colors"
-              required
+              placeholder="e.g. Interview Preparation and Career Readiness"
+              className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] transition-all"
             />
           </div>
 
-          {/* Section & Term */}
+          {/* Section & Term / AY */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                Section
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+                Section <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
-                placeholder="e.g. IT 4-2"
+                required
                 value={section}
                 onChange={(e) => setSection(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#862334] transition-colors"
+                placeholder="e.g. IT 4-2"
+                className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-[#862334] transition-all"
               />
             </div>
 
-            {/* Term Dropdown */}
+            {/* Custom Term / AY Dropdown */}
             <div className="relative" ref={dropdownRef}>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                Term
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+                Term / AY <span className="text-rose-500">*</span>
               </label>
+
               <button
                 type="button"
-                onClick={() => setIsTermOpen(!isTermOpen)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white text-left flex items-center justify-between focus:outline-none focus:border-[#862334] transition-colors cursor-pointer"
+                onClick={() => setIsTermOpen((prev) => !prev)}
+                className={`w-full px-3.5 py-2 bg-gray-50 border rounded-xl text-sm text-left flex items-center justify-between transition-all cursor-pointer ${
+                  isTermOpen
+                    ? "bg-white border-[#862334] ring-2 ring-[#862334]/10"
+                    : "border-gray-200 hover:bg-gray-100"
+                }`}
               >
-                <span>{term}</span>
-                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isTermOpen ? "rotate-180" : ""}`} />
+                <span className="truncate text-gray-800 text-xs font-medium">
+                  {term || "Select Term"}
+                </span>
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-400 transition-transform duration-150 ${
+                    isTermOpen ? "rotate-180 text-[#862334]" : ""
+                  }`}
+                />
               </button>
 
               {isTermOpen && (
-                <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden py-1">
-                  {TERM_OPTIONS.map((option) => (
-                    <div
-                      key={option}
-                      onClick={() => {
-                        setTerm(option);
-                        setIsTermOpen(false);
-                      }}
-                      className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
-                        term === option
-                          ? "bg-[#862334] text-white font-medium"
-                          : "text-gray-700 hover:bg-[#862334]/10 hover:text-[#862334]"
-                      }`}
-                    >
-                      {option}
-                    </div>
-                  ))}
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 max-h-48 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                  {TERM_OPTIONS.map((option) => {
+                    const isSelected = term === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => {
+                          setTerm(option);
+                          setIsTermOpen(false);
+                        }}
+                        className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center justify-between cursor-pointer transition-colors ${
+                          isSelected
+                            ? "bg-[#862334] text-white"
+                            : "text-gray-700 hover:bg-[#862334]/10 hover:text-[#862334]"
+                        }`}
+                      >
+                        <span className="truncate">{option}</span>
+                        {isSelected && (
+                          <Check className="w-3.5 h-3.5 text-white flex-shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Course Color Options */}
+          {/* Course Card Color */}
           <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
               Course Card Color
             </label>
+
             <div className="grid grid-cols-6 gap-2">
               {COLOR_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => setSelectedColor(opt.value)}
                   title={opt.label}
+                  onClick={() => setSelectedColor(opt.value)}
                   className={`h-9 rounded-xl ${opt.value} flex items-center justify-center cursor-pointer ${
                     selectedColor === opt.value
                       ? "ring-2 ring-offset-2 ring-[#862334]"
@@ -278,13 +304,13 @@ export default function CreateCourseModal({ isOpen, onClose, onCreateCourse }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+              className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-bold text-white bg-[#862334] hover:bg-[#701c2b] rounded-xl transition-colors shadow-xs cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-white bg-[#862334] hover:bg-[#701c2b] rounded-xl transition-all shadow-xs cursor-pointer active:scale-95"
             >
               Add Course
             </button>

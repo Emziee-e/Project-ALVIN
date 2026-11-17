@@ -17,37 +17,37 @@ export default function EditCourseModal({ isOpen, course, onClose, onSave }) {
   });
 
   const COLOR_OPTIONS = [
-  {
-    id: "maroon",
-    label: "Maroon",
-    value: "bg-[#862334]",
-  },
-  {
-    id: "navy",
-    label: "Navy Blue",
-    value: "bg-[#1E3A8A]",
-  },
-  {
-    id: "emerald",
-    label: "Emerald Green",
-    value: "bg-[#065F46]",
-  },
-  {
-    id: "purple",
-    label: "Royal Purple",
-    value: "bg-[#581C87]",
-  },
-  {
-    id: "amber",
-    label: "Amber Orange",
-    value: "bg-[#C2410C]",
-  },
-  {
-    id: "slate",
-    label: "Dark Slate",
-    value: "bg-[#1E293B]",
-  },
-];
+    {
+      id: "maroon",
+      label: "Maroon",
+      value: "bg-[#862334]",
+    },
+    {
+      id: "navy",
+      label: "Navy Blue",
+      value: "bg-[#1E3A8A]",
+    },
+    {
+      id: "emerald",
+      label: "Emerald Green",
+      value: "bg-[#065F46]",
+    },
+    {
+      id: "purple",
+      label: "Royal Purple",
+      value: "bg-[#581C87]",
+    },
+    {
+      id: "amber",
+      label: "Amber Orange",
+      value: "bg-[#C2410C]",
+    },
+    {
+      id: "slate",
+      label: "Dark Slate",
+      value: "bg-[#1E293B]",
+    },
+  ];
 
   const [imagePreview, setImagePreview] = useState("");
   const [isTermDropdownOpen, setIsTermDropdownOpen] = useState(false);
@@ -115,9 +115,21 @@ export default function EditCourseModal({ isOpen, course, onClose, onSave }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (
+      !formData.code.trim() ||
+      !formData.title.trim() ||
+      !formData.section.trim()
+    ) {
+      return;
+    }
+
     onSave({
       ...course,
       ...formData,
+      code: formData.code.trim(),
+      title: formData.title.trim(),
+      section: formData.section.trim(),
       image: formData.imageUrl, // keeps image property consistent
     });
   };
@@ -230,10 +242,11 @@ export default function EditCourseModal({ isOpen, course, onClose, onSave }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
-                Section
+                Section <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
+                required
                 value={formData.section}
                 onChange={(e) => setFormData({ ...formData, section: e.target.value })}
                 placeholder="e.g. IT 4-2"
