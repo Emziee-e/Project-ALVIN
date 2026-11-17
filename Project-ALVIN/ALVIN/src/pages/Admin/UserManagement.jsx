@@ -185,7 +185,7 @@ export default function UserManagement() {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+    const base = import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
     const response = await fetch(`${base}${path}`, {
       ...options,
       headers: {

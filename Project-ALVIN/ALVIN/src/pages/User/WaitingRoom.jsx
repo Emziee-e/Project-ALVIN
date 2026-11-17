@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Clock3, Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://project-alvin-backend-production.up.railway.app';
 const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || '';
 
 export default function WaitingRoom() {

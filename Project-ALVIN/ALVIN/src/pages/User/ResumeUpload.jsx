@@ -15,7 +15,7 @@ import { Link, useNavigate } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
 import { supabase } from "../../lib/supabaseClient";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
 const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 
 export default function ResumeUpload() {

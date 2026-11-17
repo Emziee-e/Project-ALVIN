@@ -292,7 +292,7 @@ export default function UserDashboard() {
       } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error("Please sign in again.");
 
-      const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+      const base = import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
       const headers = {
         Authorization: `Bearer ${session.access_token}`,
         "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
@@ -378,7 +378,7 @@ export default function UserDashboard() {
 
         if (!session?.access_token) return;
 
-        const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+        const base = import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
         const response = await fetch(`${base}/api/student/enrollments`, {
           headers: {
             Authorization: `Bearer ${session.access_token}`,

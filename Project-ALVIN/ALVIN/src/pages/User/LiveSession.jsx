@@ -51,7 +51,7 @@ const NavTalkMessageType = Object.freeze({
 });
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
 
 const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 // Set VITE_FIRST_MESSAGE_INCLUDES_Q01=true when the NavTalk Console First

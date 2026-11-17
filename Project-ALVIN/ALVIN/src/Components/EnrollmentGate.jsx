@@ -111,7 +111,7 @@ export default function EnrollmentGate() {
       setEmail(session.user?.email || "");
 
       const base =
-        import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+        import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
 
       const response = await fetch(`${base}/api/student/enrollments`, {
         headers: {
