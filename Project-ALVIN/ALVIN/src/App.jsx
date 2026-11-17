@@ -33,7 +33,7 @@ import SystemReport from './pages/Admin/SystemReport.jsx'
 import UserManagement from './pages/Admin/UserManagement.jsx'
 import AvatarManagement from './pages/Admin/AvatarManagement.jsx'
 
-import WaitingRoom from "./Pages/User/WaitingRoom";
+import WaitingRoom from "./pages/User/WaitingRoom";
 import EnrollmentGate from './Components/EnrollmentGate.jsx'
 
 function App() {
