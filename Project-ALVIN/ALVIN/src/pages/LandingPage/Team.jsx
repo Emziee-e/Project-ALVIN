@@ -13,7 +13,7 @@ const teamMembers = [
   },
   {
     name: "Vin Vernon Perez",
-    role: "Backend Developer & AI Specialist",
+    role: "Full-Stack Developer",
     image: "./public/images/Vin.png"
   }
 ];
