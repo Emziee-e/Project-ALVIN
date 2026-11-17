@@ -15,12 +15,14 @@ import {
   UserCheck,
   UserX,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
 import SignOutModal from "../../Components/SignOutModal";
 import AccountActionModal from "../../Components/AccountActionModal";
 import AccountActionToast from "../../Components/AccountActionToast";
+import AddCareerAdvisorModal from "../../Components/AddCareerAdvisorModal";
 import { supabase } from "../../lib/supabaseClient";
 
 const navItems = [
@@ -45,6 +47,7 @@ export default function UserManagement() {
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [accountAction, setAccountAction] = useState(null);
   const [toast, setToast] = useState(null);
+  const [isCareerAdvisorModalOpen, setIsCareerAdvisorModalOpen] = useState(false);
   const [openMenuRowKey, setOpenMenuRowKey] = useState(null);
   const menuContainerRef = useRef(null);
   const navigate = useNavigate();
@@ -247,13 +250,17 @@ export default function UserManagement() {
         await apiRequest(`/api/admin/users/${account.role}/${account.id}`, {
           method: "DELETE",
         });
-        setAccounts((previous) =>
-          previous.filter((item) => item.id !== account.id)
-        );
+        await loadAccounts();
         setToast({
           id: Date.now(),
-          title: "Account Deleted",
-          message: `${account.name} has been permanently removed.`,
+          title:
+            account.role === "career_advisor"
+              ? "Career Advisor Removed"
+              : "Account Deleted",
+          message:
+            account.role === "career_advisor"
+              ? `${account.name} has been restored as a student.`
+              : `${account.name} has been permanently removed.`,
         });
       } else {
         const accountStatus = action === "activate" ? "active" : "inactive";
@@ -283,6 +290,25 @@ export default function UserManagement() {
     }
 
     closeAccountAction();
+  };
+
+  const addCareerAdvisor = async (email) => {
+    try {
+      await apiRequest("/api/admin/users/career-advisor", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+      await loadAccounts();
+      setToast({
+        id: Date.now(),
+        title: "Career Advisor Added",
+        message: `${email} can now access the career advisor platform.`,
+      });
+      return {};
+    } catch (error) {
+      console.error("Unable to add career advisor:", error);
+      return { error: error.message || "Unable to add career advisor." };
+    }
   };
 
   return (
@@ -327,6 +353,11 @@ export default function UserManagement() {
           onConfirm={confirmAccountAction}
         />
         <AccountActionToast toast={toast} onClose={() => setToast(null)} />
+        <AddCareerAdvisorModal
+          isOpen={isCareerAdvisorModalOpen}
+          onClose={() => setIsCareerAdvisorModalOpen(false)}
+          onAddCareerAdvisor={addCareerAdvisor}
+        />
 
         {/* Slide-out Account Drawer Wrapper */}
         <div
@@ -495,6 +526,14 @@ export default function UserManagement() {
                       User Directory
                     </h3>
                     <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setIsCareerAdvisorModalOpen(true)}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#862334] text-white rounded-lg text-xs font-bold hover:bg-[#701c2b] transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Add Career Advisor
+                      </button>
                       <div className="relative group w-full sm:w-40">
                         <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 pointer-events-none" />
                         <select
@@ -702,7 +741,9 @@ export default function UserManagement() {
                                         <button
                                           type="button"
                                           role="menuitem"
-                                          onClick={() => openAccountAction("delete", acc)}
+                                          onClick={() =>
+                                            openAccountAction("delete", acc)
+                                          }
                                           className="w-full px-3.5 py-2 text-left text-xs font-semibold text-[#862334] hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                                         >
                                           <Trash2 className="w-3.5 h-3.5" />

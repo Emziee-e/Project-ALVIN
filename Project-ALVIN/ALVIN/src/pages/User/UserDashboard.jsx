@@ -8,6 +8,9 @@ import {
   Calendar,
   BookOpen,
   Users,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
@@ -35,6 +38,74 @@ function renderPerformanceSummary(summary) {
     }
     return part;
   });
+}
+
+// ----------------------------------------------------------------------
+// CONNECTED SCORE TIER HELPER (MATCHES OVERALL SCORE IN INTERVIEW RESULTS)
+// 70-100% GREEN | 40-69% YELLOW | 0-39% RED + SESSION VOLUME AWARE NOTES
+// ----------------------------------------------------------------------
+function getAccuracyTier(avgScore, sessionVolume) {
+  if (avgScore == null) {
+    return {
+      key: "pending",
+      label: "No Data",
+      textColor: "text-slate-400",
+      barFill: "bg-slate-300",
+      badgeClass: "bg-slate-100 border-slate-200 text-slate-600",
+      noteColor: "text-slate-500",
+      note: "Complete an interview to track your readiness average.",
+      Icon: AlertTriangle,
+    };
+  }
+
+  const volume = Number(sessionVolume || 0);
+
+  if (avgScore >= 70) {
+    return {
+      key: "good",
+      label: "Very Good",
+      textColor: "text-emerald-600",
+      barFill: "bg-emerald-500",
+      badgeClass: "bg-emerald-50 border-emerald-200 text-emerald-700",
+      noteColor: "text-emerald-700",
+      note:
+        volume >= 10
+          ? `Strong consistency across ${volume} sessions — meeting the 70%+ goal.`
+          : "Strong average — you are consistently hitting the 70%+ readiness goal.",
+      Icon: CheckCircle2,
+    };
+  }
+
+  if (avgScore >= 40) {
+    const gap = 70 - avgScore;
+    return {
+      key: "fair",
+      label: "Needs Improvement",
+      textColor: "text-amber-600",
+      barFill: "bg-amber-500",
+      badgeClass: "bg-amber-50 border-amber-200 text-amber-800",
+      noteColor: "text-amber-700",
+      note:
+        volume >= 10
+          ? `Fair across ${volume} sessions — ${gap}% away from the 70% goal.`
+          : `Developing average — ${gap}% more needed to reach the 70% goal.`,
+      Icon: AlertTriangle,
+    };
+  }
+
+  return {
+    key: "poor",
+    label: "Low Accuracy",
+    textColor: "text-red-600",
+    barFill: "bg-red-500",
+    badgeClass: "bg-red-50 border-red-200 text-red-700",
+    noteColor: "text-red-600",
+    note:
+      volume >= 10
+        ? `Low average despite ${volume} sessions — slow down & review AI feedback.`
+        : "Below the 70% goal — review past critiques before your next session.",
+    Icon: XCircle,
+  };
 }
 
 // ----------------------------------------------------------------------
@@ -210,7 +281,7 @@ export default function UserDashboard() {
     role: r.target_role || "Interview",
     date: r.started_at ? new Date(r.started_at).toLocaleDateString() : "—",
     score: r.overall_score == null ? "—" : `${Math.round(Number(r.overall_score))}%`,
-    high: Number(r.overall_score) >= 80,
+    high: Number(r.overall_score) >= 70,
     canView: r.report_status === "completed",
   }));
 
@@ -519,6 +590,8 @@ export default function UserDashboard() {
 
   const sessionCount = dashboard?.session_volume ?? null;
   const avgPerf = dashboard?.average_performance != null ? Math.round(dashboard.average_performance) : null;
+  const accuracyTier = getAccuracyTier(avgPerf, sessionCount);
+  const AccuracyStatusIcon = accuracyTier.Icon;
 
   const staggerStyle = (index) => ({
     animationDelay: `${index * 110}ms`,
@@ -755,7 +828,7 @@ export default function UserDashboard() {
                 {/* 1. Session Volume (110ms) */}
                 <div
                   style={staggerStyle(1)}
-                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[138px]"
+                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[146px]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-[Inter] text-sm font-semibold tracking-wider text-slate-500">
@@ -767,7 +840,7 @@ export default function UserDashboard() {
                   </div>
 
                   <div className="my-auto py-1.5 flex items-center">
-                    <h2 className="font-[Geist] text-4xl font-bold text-[#862334] tracking-tight leading-none">
+                    <h2 className="font-[Geist] text-4xl font-bold text-[#862334] tracking-tight leading-none tabular-nums">
                       {sessionCount == null ? (
                         "—"
                       ) : (
@@ -781,39 +854,63 @@ export default function UserDashboard() {
                   </p>
                 </div>
 
-                {/* 2. Avg. Accuracy (220ms) */}
+                {/* 2. Avg. Accuracy — Connected to Overall Score Tiers (220ms) */}
                 <div
                   style={staggerStyle(2)}
-                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[138px]"
+                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[146px]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-[Inter] text-sm font-semibold tracking-wider text-slate-500">
                       Avg. Accuracy
                     </span>
-                    <div className="w-8 h-8 rounded-full bg-[#862334]/10 flex items-center justify-center text-[#862334] flex-shrink-0">
-                      <LayoutDashboard className="w-4 h-4" />
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold transition-colors ${accuracyTier.badgeClass}`}
+                    >
+                      <AccuracyStatusIcon className="w-3 h-3 flex-shrink-0" />
+                      <span>{accuracyTier.label}</span>
+                    </span>
+                  </div>
+
+                  <div className="my-auto py-1.5">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h2
+                        className={`font-[Geist] text-4xl font-bold tracking-tight leading-none tabular-nums transition-colors ${accuracyTier.textColor}`}
+                      >
+                        {avgPerf == null ? (
+                          "—"
+                        ) : (
+                          <CountUpNumber value={avgPerf} suffix="%" />
+                        )}
+                      </h2>
+                      <span className="font-[Inter] text-[11px] font-medium text-slate-400 tabular-nums">
+                        Goal <strong className="text-emerald-600 font-semibold">70%+</strong>
+                      </span>
+                    </div>
+
+                    {/* Mini 3-Zone Readiness Progress Bar with 70% Target Marker */}
+                    <div className="relative h-2 w-full rounded-full bg-slate-100 mt-2.5 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ease-out ${accuracyTier.barFill}`}
+                        style={{
+                          width: `${avgPerf == null ? 0 : Math.min(100, Math.max(0, avgPerf))}%`,
+                        }}
+                      />
+                      <span
+                        title="70% Readiness Benchmark"
+                        className="absolute top-0 bottom-0 left-[70%] w-[2px] bg-slate-400/70"
+                      />
                     </div>
                   </div>
 
-                  <div className="my-auto py-1.5 flex items-center">
-                    <h2 className="font-[Geist] text-4xl font-bold text-[#862334] tracking-tight leading-none">
-                      {avgPerf == null ? (
-                        "—"
-                      ) : (
-                        <CountUpNumber value={avgPerf} suffix="%" />
-                      )}
-                    </h2>
-                  </div>
-
-                  <p className="font-[Inter] text-xs font-medium text-slate-500">
-                    Readiness Goal <span className="font-semibold text-emerald-600">70%+</span>
+                  <p className={`font-[Inter] text-[11px] font-medium leading-snug ${accuracyTier.noteColor}`}>
+                    {accuracyTier.note}
                   </p>
                 </div>
 
                 {/* 3. Peak Competency (330ms) */}
                 <div
                   style={staggerStyle(3)}
-                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[138px]"
+                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[146px]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-[Inter] text-sm font-semibold tracking-wider text-slate-500">
@@ -838,7 +935,7 @@ export default function UserDashboard() {
                 {/* 4. Priority Focus (440ms) */}
                 <div
                   style={staggerStyle(4)}
-                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[138px]"
+                  className="animate-fade-slide-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between min-h-[146px]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-[Inter] text-sm font-semibold tracking-wider text-slate-500">
@@ -914,7 +1011,7 @@ export default function UserDashboard() {
                         {row.date}
                       </div>
 
-                      <div className={`font-[Inter] text-sm font-semibold ${row.high ? "text-[#862334]" : "text-gray-700"}`}>
+                      <div className={`font-[Inter] text-sm font-semibold ${row.high ? "text-emerald-600" : "text-gray-700"}`}>
                         {row.score}
                       </div>
 
