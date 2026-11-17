@@ -29,7 +29,7 @@ const features = [
   },
   {
     icon: Shield,
-    title: "Judgment-Free Zone",
+    title: "Judgement-Free Zone",
     description:
       "Build confidence and refine your pitch in a stress-free environment before meeting actual hiring managers.",
   },

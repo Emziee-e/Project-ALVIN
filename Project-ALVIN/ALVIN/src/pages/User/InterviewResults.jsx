@@ -13,7 +13,8 @@ import {
   Plus,
   Sparkles,
   CheckCircle2,
-  Target,
+  AlertTriangle,
+  XCircle,
   FileText,
   UserCheck,
   Presentation,
@@ -63,9 +64,156 @@ function buildDynamicEvaluationTitle(results) {
 }
 
 // ----------------------------------------------------------------------
-// CLEAN, STATIC HALF-DONUT SCORE CARD (NO HOVER OR INNER GLOW)
+// SHARED RUBRIC METRICS HELPER (GUARANTEES 100% MATCH BETWEEN CARDS & NOTES)
 // ----------------------------------------------------------------------
-function MinimalHalfDonutCard({ score, available }) {
+function getRubricMetrics(rubric) {
+  const rawScore = Math.round(Number(rubric?.score || 0));
+  const maxScore = Math.round(Number(rubric?.max_score || 25)) || 25;
+  const pct = Math.min(100, Math.max(0, Math.round((rawScore / maxScore) * 100)));
+  return {
+    label: String(rubric?.label || "").trim(),
+    rawScore,
+    maxScore,
+    pct,
+  };
+}
+
+// ----------------------------------------------------------------------
+// HELPER: EXTRACT STRONGEST & WEAKEST RUBRICS FOR REALISTIC NOTES
+// ----------------------------------------------------------------------
+function analyzeRubricPerformance(rubrics = []) {
+  if (!Array.isArray(rubrics) || rubrics.length === 0) {
+    return { strongest: null, weakest: null };
+  }
+
+  const normalized = rubrics
+    .filter((r) => r && r.label)
+    .map((r) => getRubricMetrics(r));
+
+  if (normalized.length === 0) return { strongest: null, weakest: null };
+
+  const sorted = [...normalized].sort((a, b) => b.pct - a.pct);
+  const strongest = sorted[0];
+  const weakest = sorted[sorted.length - 1];
+
+  return {
+    strongest,
+    weakest: strongest.label !== weakest.label ? weakest : null,
+  };
+}
+
+// ----------------------------------------------------------------------
+// SCORE TIER METADATA HELPER (70-100 GREEN, 40-69 YELLOW, 0-39 RED)
+// ----------------------------------------------------------------------
+function getScoreTier(score, available, rubrics = []) {
+  if (!available) {
+    return {
+      key: "pending",
+      label: "Evaluation Pending",
+      note: "Your responses are currently being evaluated. Check back shortly for your score breakdown.",
+      trackColor: "#E2E8F0",
+      gradStart: "#94A3B8",
+      gradEnd: "#64748B",
+      percentColor: "text-slate-400",
+      badgeBg: "bg-slate-100 border-slate-200 text-slate-600",
+      noteBoxBg: "bg-slate-50/80 border-slate-200/80 text-slate-600",
+      dotColor: "bg-slate-400",
+      pdfBg: "#F1F5F9",
+      pdfColor: "#475569",
+      Icon: AlertTriangle,
+    };
+  }
+
+  const { strongest, weakest } = analyzeRubricPerformance(rubrics);
+
+  // 70% - 100%: Green (Very Good)
+  if (score >= 70) {
+    let note;
+    if (score >= 90) {
+      note = strongest
+        ? `Outstanding interview performance, led by ${strongest.label} (${strongest.pct}%). Your answers were clear, well-structured, and ready for real hiring panels.`
+        : "Outstanding interview performance. Your answers were clear, well-structured, and ready for real hiring panels.";
+    } else if (strongest && weakest && weakest.pct < 75) {
+      note = `Solid job passing the 70% readiness mark, with strong results in ${strongest.label} (${strongest.pct}%). Tightening up ${weakest.label} (${weakest.pct}%) will make you even more competitive.`;
+    } else if (strongest) {
+      note = `Good work meeting the 70% readiness benchmark. You showed strong command in ${strongest.label} (${strongest.pct}%)—keep using concrete examples to push toward 90%+.`;
+    } else {
+      note =
+        "Good work meeting the 70% readiness benchmark. Your answers demonstrated clear communication and solid role alignment.";
+    }
+
+    return {
+      key: "good",
+      label: "Very Good",
+      note,
+      trackColor: "#DCFCE7",
+      gradStart: "#10B981",
+      gradEnd: "#059669",
+      percentColor: "text-emerald-600",
+      badgeBg: "bg-emerald-50 border-emerald-200 text-emerald-700",
+      noteBoxBg: "bg-emerald-50/60 border-emerald-200/80 text-emerald-900",
+      dotColor: "bg-emerald-500",
+      pdfBg: "#ECFDF5",
+      pdfColor: "#047857",
+      Icon: CheckCircle2,
+    };
+  }
+
+  // 40% - 69%: Yellow (Needs Improvement)
+  if (score >= 40) {
+    const gap = 70 - score;
+    let note;
+    if (strongest && weakest) {
+      note = `You showed potential in ${strongest.label} (${strongest.pct}%), but ${weakest.label} (${weakest.pct}%) held your score back. Focus on adding specific examples to close the ${gap}% gap to 70%.`;
+    } else if (weakest) {
+      note = `You have a workable baseline, though ${weakest.label} (${weakest.pct}%) needs sharper structure and detail. Aim for ${gap}% more to pass the 70% readiness benchmark.`;
+    } else {
+      note = `You have a decent baseline, but several answers lacked depth or clear structure. Review the AI feedback below to bridge the ${gap}% gap to 70%.`;
+    }
+
+    return {
+      key: "fair",
+      label: "Needs Improvement",
+      note,
+      trackColor: "#FEF3C7",
+      gradStart: "#F59E0B",
+      gradEnd: "#D97706",
+      percentColor: "text-amber-600",
+      badgeBg: "bg-amber-50 border-amber-200 text-amber-800",
+      noteBoxBg: "bg-amber-50/70 border-amber-200/80 text-amber-950",
+      dotColor: "bg-amber-500",
+      pdfBg: "#FFFBEB",
+      pdfColor: "#B45309",
+      Icon: AlertTriangle,
+    };
+  }
+
+  // 0% - 39%: Red (Needs Major Work / Bad)
+  const note = weakest
+    ? `Your responses were too brief or off-target—especially in ${weakest.label} (${weakest.pct}%). Study the sample critiques in the transcript below and practice answering with clear examples before retrying.`
+    : "Your responses were too brief or lacked clear structure to meet interview standards. Review the feedback in your transcript below and try another practice session.";
+
+  return {
+    key: "poor",
+    label: "Needs Major Work",
+    note,
+    trackColor: "#FEE2E2",
+    gradStart: "#EF4444",
+    gradEnd: "#DC2626",
+    percentColor: "text-red-600",
+    badgeBg: "bg-red-50 border-red-200 text-red-700",
+    noteBoxBg: "bg-red-50/65 border-red-200/80 text-red-950",
+    dotColor: "bg-red-500",
+    pdfBg: "#FEF2F2",
+    pdfColor: "#B91C1C",
+    Icon: XCircle,
+  };
+}
+
+// ----------------------------------------------------------------------
+// SHADCN-INSPIRED HALF-DONUT OVERALL SCORE CARD WITH DYNAMIC RANGE NOTES
+// ----------------------------------------------------------------------
+function MinimalHalfDonutCard({ score, available, rubrics }) {
   const [animatedScore, setAnimatedScore] = useState(0);
 
   useEffect(() => {
@@ -86,81 +234,111 @@ function MinimalHalfDonutCard({ score, available }) {
   }, [score, available]);
 
   const pct = available ? Math.min(100, Math.max(0, animatedScore)) : 0;
-  const radius = 92;
+  const radius = 88;
   const strokeWidth = 13;
   const semiCircumference = Math.PI * radius;
   const dashOffset = semiCircumference * (1 - pct / 100);
 
-  const isReady = available && score >= 70;
+  // Sync progress bar color smoothly with the animated score as it counts up
+  const activeTier = getScoreTier(available ? animatedScore : 0, available, rubrics);
+  const finalTier = getScoreTier(score, available, rubrics);
+  const StatusIcon = finalTier.Icon;
+  const gradientId = `overallArcGrad-${activeTier.key}`;
 
   return (
-    <div className="bg-white border border-[#862334]/25 border-t-4 border-t-[#862334] rounded-2xl p-6 shadow-xs flex flex-col items-center justify-between h-full">
-      {/* Large Space-Filling Half-Donut Arc */}
-      <div className="relative w-full max-w-[248px] h-[132px] flex items-end justify-center my-auto pt-1">
-        <svg viewBox="0 0 220 118" className="w-full h-full overflow-visible">
-          <defs>
-            <linearGradient id="cherryArcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#681826" />
-              <stop offset="55%" stopColor="#862334" />
-              <stop offset="100%" stopColor="#B6354B" />
-            </linearGradient>
-          </defs>
+    <div className="bg-white border border-[#862334]/25 border-t-4 border-t-[#862334] rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col justify-between h-full">
+      {/* Top Header Row: Title + Dynamic Range Status Pill */}
+      <div className="flex items-center justify-between gap-2 w-full">
+        <span className="font-[Inter] text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+          Overall Score
+        </span>
 
-          {/* Track */}
-          <path
-            d="M 18 110 A 92 92 0 0 1 202 110"
-            fill="none"
-            stroke="#F2E4E7"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-          />
+        <span
+          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold transition-colors duration-300 ${finalTier.badgeBg}`}
+        >
+          <StatusIcon className="w-3 h-3 flex-shrink-0" />
+          <span>{finalTier.label}</span>
+        </span>
+      </div>
 
-          {/* Active Gradient Progress Arc */}
-          <path
-            d="M 18 110 A 92 92 0 0 1 202 110"
-            fill="none"
-            stroke="url(#cherryArcGrad)"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            strokeDasharray={semiCircumference}
-            strokeDashoffset={dashOffset}
-            className="transition-all duration-300 ease-out"
-          />
-        </svg>
+      {/* Center Half-Donut Gauge + Scale Ticks */}
+      <div className="flex flex-col items-center my-auto py-2">
+        <div className="relative w-full max-w-[236px] h-[124px] flex items-end justify-center">
+          <svg viewBox="0 0 220 116" className="w-full h-full overflow-visible">
+            <defs>
+              <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor={activeTier.gradStart} />
+                <stop offset="100%" stopColor={activeTier.gradEnd} />
+              </linearGradient>
+            </defs>
 
-        {/* Center Hero Score Readout */}
-        <div className="absolute bottom-0 flex flex-col items-center leading-none">
-          <div className="flex items-baseline tabular-nums">
-            <span className="font-[Geist] text-5xl sm:text-[56px] font-bold tracking-tight text-slate-950">
-              {available ? animatedScore : "N/A"}
-            </span>
-            {available && (
-              <span className="font-[Geist] text-2xl font-bold text-[#862334] ml-0.5">
-                %
+            {/* Background Track */}
+            <path
+              d="M 22 108 A 88 88 0 0 1 198 108"
+              fill="none"
+              stroke={activeTier.trackColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              className="transition-colors duration-300"
+            />
+
+            {/* Dynamic Color Progress Arc */}
+            <path
+              d="M 22 108 A 88 88 0 0 1 198 108"
+              fill="none"
+              stroke={`url(#${gradientId})`}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeDasharray={semiCircumference}
+              strokeDashoffset={dashOffset}
+              className="transition-all duration-300 ease-out"
+            />
+          </svg>
+
+          {/* Hero Score Readout */}
+          <div className="absolute bottom-0.5 flex flex-col items-center leading-none">
+            <div className="flex items-baseline tabular-nums">
+              <span className="font-[Geist] text-5xl sm:text-[54px] font-bold tracking-tight text-slate-950">
+                {available ? animatedScore : "N/A"}
               </span>
-            )}
+              {available && (
+                <span
+                  className={`font-[Geist] text-2xl font-bold ml-0.5 transition-colors duration-300 ${activeTier.percentColor}`}
+                >
+                  %
+                </span>
+              )}
+            </div>
           </div>
-          <span className="font-[Inter] text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 mt-1.5">
-            Overall Score
+        </div>
+
+        {/* Minimalist Benchmark Legend (0-39 Red | 40-69 Yellow | 70-100 Green) */}
+        <div className="w-full max-w-[236px] flex items-center justify-between text-[10px] font-medium text-slate-400 mt-1.5 px-1 tabular-nums">
+          <span className="inline-flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            0–39%
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            40–69%
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            70–100%
           </span>
         </div>
       </div>
 
-      {/* Goal Pill Footer */}
-      <div className="mt-4 pt-3 border-t border-[#862334]/15 w-full flex items-center justify-center">
-        {!available ? (
-          <span className="text-xs font-medium text-slate-400">Evaluation Pending</span>
-        ) : isReady ? (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-semibold">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Readiness Goal Met (70%+)
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#862334]/[0.07] border border-[#862334]/20 text-[#862334] text-xs font-semibold">
-            <Target className="w-3.5 h-3.5" />
-            {70 - score}% away from 70% goal
-          </span>
-        )}
+      {/* Bottom Specific Range Note Callout (Shadcn Alert-Style) */}
+      <div
+        className={`w-full rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 text-left transition-colors duration-300 ${finalTier.noteBoxBg}`}
+      >
+        <span
+          className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${finalTier.dotColor}`}
+        />
+        <p className="font-[Inter] text-xs font-medium leading-relaxed">
+          {finalTier.note}
+        </p>
       </div>
     </div>
   );
@@ -170,11 +348,7 @@ function MinimalHalfDonutCard({ score, available }) {
 // ANIMATED RUBRIC CARD (SMOOTH COUNT-UP & PROGRESS BAR SYNC)
 // ----------------------------------------------------------------------
 function AnimatedRubricCard({ rubric, index, available, style }) {
-  const rawScore = Math.round(rubric.score || 0);
-  const maxScore = Math.round(rubric.max_score || 25);
-  const targetPercent = available
-    ? Math.min(100, Math.round((rawScore / maxScore) * 100))
-    : 0;
+  const { rawScore, maxScore, pct: targetPercent } = getRubricMetrics(rubric);
 
   const [animatedRaw, setAnimatedRaw] = useState(0);
   const [animatedPercent, setAnimatedPercent] = useState(0);
@@ -615,31 +789,15 @@ export default function InterviewResults() {
             day: "numeric",
           });
 
-      const isReady = evaluationAvailable && overallScore >= 70;
-      const statusLabel = !evaluationAvailable
-        ? "Evaluation Pending"
-        : isReady
-        ? "Readiness Goal Met (70%+)"
-        : `${70 - overallScore}% Away From 70% Readiness Goal`;
-
-      const statusBg = !evaluationAvailable
-        ? "#F1F5F9"
-        : isReady
-        ? "#ECFDF5"
-        : "#FDF2F4";
-      const statusColor = !evaluationAvailable
-        ? "#475569"
-        : isReady
-        ? "#047857"
-        : "#862334";
+      const scoreTier = getScoreTier(overallScore, evaluationAvailable, rubrics);
+      const statusLabel = `${scoreTier.label}: ${scoreTier.note}`;
+      const statusBg = scoreTier.pdfBg;
+      const statusColor = scoreTier.pdfColor;
 
       const rubricsHtml = rubrics
         .map((r, idx) => {
-          const rawScore = Math.round(r.score || 0);
-          const maxScore = Math.round(r.max_score || 25);
-          const percent = evaluationAvailable
-            ? Math.min(100, Math.round((rawScore / maxScore) * 100))
-            : 0;
+          const { rawScore, maxScore, pct } = getRubricMetrics(r);
+          const percent = evaluationAvailable ? pct : 0;
 
           return `
             <div class="rubric-card">
@@ -813,7 +971,7 @@ export default function InterviewResults() {
 
     .score-section {
       display: grid;
-      grid-template-columns: 34% 66%;
+      grid-template-columns: 36% 64%;
       gap: 14px;
       margin-bottom: 20px;
       break-inside: avoid;
@@ -823,7 +981,7 @@ export default function InterviewResults() {
       border: 1px solid rgba(134, 35, 52, 0.28);
       border-top: 4px solid #862334;
       border-radius: 12px;
-      padding: 16px 14px;
+      padding: 14px 12px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -834,14 +992,14 @@ export default function InterviewResults() {
 
     .overall-num {
       font-family: 'Geist', sans-serif;
-      font-size: 34pt;
+      font-size: 32pt;
       font-weight: 700;
       color: #090D16;
       line-height: 1;
     }
 
     .overall-num span {
-      font-size: 16pt;
+      font-size: 15pt;
       color: #862334;
     }
 
@@ -852,15 +1010,17 @@ export default function InterviewResults() {
       text-transform: uppercase;
       color: #64748B;
       margin-top: 6px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .status-pill {
       display: inline-block;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 8pt;
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 7.6pt;
       font-weight: 600;
+      line-height: 1.38;
+      text-align: left;
       background: ${statusBg};
       color: ${statusColor};
     }
@@ -1484,7 +1644,7 @@ export default function InterviewResults() {
         </aside>
 
         {/* Left Navigation Sidebar */}
-        <aside className="w-[100px] bg-[#FDFBF7] border-r1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen relative">
+        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen relative">
           <div className="w-full flex flex-col items-center">
             <div
               className="mb-3 px-1 flex flex-col items-center cursor-pointer"
@@ -1614,6 +1774,7 @@ export default function InterviewResults() {
                 <MinimalHalfDonutCard
                   score={overallScore}
                   available={evaluationAvailable}
+                  rubrics={rubrics}
                 />
               </div>
 

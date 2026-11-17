@@ -82,7 +82,7 @@ const Login = () => {
                 {/* Header Section */}
                 <div className={`pt-10 pb-4 flex flex-col items-center transition-all duration-1000 ${isInView ? 'animate-smooth-fade-in-up' : 'animate-smooth-fade-out-down'}`}>
                     <Link to="/" className="w-20 h-20 flex items-center justify-center mb-1 hover:scale-105 transition-transform cursor-pointer">
-                        <img src="../images/Alvin-logo.png" alt="Logo" className="w-16 h-16 object-contain" />
+                        <img src="../images/Alvin-logo.png" alt="Logo" className="w-25 h-25 object-contain" />
                     </Link>
                     <p className="text-gray-500 mt-1 text-sm font-Inter">Access your account</p>
                 </div>

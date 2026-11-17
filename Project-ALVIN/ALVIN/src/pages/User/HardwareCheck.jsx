@@ -311,7 +311,7 @@ export default function HardwareCheck() {
           <header className="sticky top-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-md flex justify-between items-center px-8 md:px-24 py-4 border-b border-[#e5e5e5]">
             <div className="flex items-center">
               <Link to="/user/dashboard" className="inline-flex items-center gap-0">
-                <img src={Logo} alt="Alvin logo" className="h-14 w-auto flex-shrink-0 block" />
+                <img src={Logo} alt="Alvin logo" className="h-16 w-auto flex-shrink-0 block" />
               </Link>
             </div>
 

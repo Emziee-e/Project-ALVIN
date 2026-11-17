@@ -41,6 +41,38 @@ const DONUT_COLORS = ["#862334", "#FFB003", "#2D0C13", "#991B1B"];
 
 // Fallback poll in case Supabase Realtime is unavailable
 const POLL_INTERVAL_MS = 30000;
+const PROFILE_CACHE_KEY = "alvin_admin_profile_cache";
+
+const buildProfileFromUser = (user) => {
+  const metadata = user.user_metadata || {};
+  const fullName =
+    metadata.full_name ||
+    metadata.name ||
+    `${metadata.first_name || ""} ${metadata.last_name || ""}`.trim() ||
+    user.email?.split("@")[0] ||
+    "User Account";
+
+  const emailAddress = user.email || metadata.email || "N/A";
+  const avatar =
+    metadata.avatar_url ||
+    metadata.picture ||
+    user.identities?.[0]?.identity_data?.avatar_url ||
+    user.identities?.[0]?.identity_data?.picture ||
+    null;
+
+  const nameParts = fullName.split(" ").filter(Boolean);
+  const initials =
+    nameParts.length >= 2
+      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+      : fullName.slice(0, 2).toUpperCase();
+
+  return {
+    name: fullName,
+    email: emailAddress,
+    avatarUrl: avatar,
+    initials,
+  };
+};
 
 // ----------------------------------------------------------------------
 // CUSTOM MAROON DROPDOWN COMPONENT
@@ -312,51 +344,52 @@ export default function SystemReport() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [userProfile, setUserProfile] = useState({
-    name: "User",
-    email: "",
-    avatarUrl: null,
-    initials: "U",
+  const [userProfile, setUserProfile] = useState(() => {
+    try {
+      const cached = localStorage.getItem(PROFILE_CACHE_KEY);
+      if (cached) return JSON.parse(cached);
+    } catch {
+      // Ignore storage errors
+    }
+    return {
+      name: "User",
+      email: "",
+      avatarUrl: null,
+      initials: "U",
+    };
   });
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
+    const applyUser = (user) => {
+      if (!user || !isMounted) return;
+      const nextProfile = buildProfileFromUser(user);
+      setUserProfile(nextProfile);
+      setImageError(false);
+      try {
+        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(nextProfile));
+      } catch {
+        // Ignore storage errors
+      }
+    };
+
     const loadUserData = async () => {
+      // 1. Instant local session read (no network round-trip)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        applyUser(session.user);
+      }
+
+      // 2. Background refresh for latest metadata
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
-      if (user && isMounted) {
-        const metadata = user.user_metadata || {};
-        const fullName =
-          metadata.full_name ||
-          metadata.name ||
-          `${metadata.first_name || ""} ${metadata.last_name || ""}`.trim() ||
-          user.email?.split("@")[0] ||
-          "User Account";
-
-        const emailAddress = user.email || metadata.email || "N/A";
-        const avatar =
-          metadata.avatar_url ||
-          metadata.picture ||
-          user.identities?.[0]?.identity_data?.avatar_url ||
-          user.identities?.[0]?.identity_data?.picture ||
-          null;
-
-        const nameParts = fullName.split(" ").filter(Boolean);
-        const initials =
-          nameParts.length >= 2
-            ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
-            : fullName.slice(0, 2).toUpperCase();
-
-        setUserProfile({
-          name: fullName,
-          email: emailAddress,
-          avatarUrl: avatar,
-          initials: initials,
-        });
+      if (user) {
+        applyUser(user);
       }
     };
 
@@ -456,6 +489,11 @@ export default function SystemReport() {
   }, [report, userTrendType, summary]);
 
   const handleSignOut = async () => {
+    try {
+      localStorage.removeItem(PROFILE_CACHE_KEY);
+    } catch {
+      // Ignore storage errors
+    }
     await supabase.auth.signOut();
     navigate("/");
   };
@@ -490,17 +528,17 @@ export default function SystemReport() {
 
         {/* Slide-out Account Drawer Wrapper */}
         <div
-          className={`fixed inset-0 z-40 flex transition-opacity duration-300 ${
+          className={`fixed inset-0 z-40 flex transition-opacity duration-150 ${
             isAccountOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
           }`}
         >
           <div
-            className="fixed inset-0 bg-black/10 transition-opacity duration-300"
+            className="fixed inset-0 bg-black/10 transition-opacity duration-150"
             onClick={() => setIsAccountOpen(false)}
           />
 
           <aside
-            className={`relative left-[100px] w-[340px] h-full bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col overflow-y-auto select-none font-sans text-[#2D3B45] transition-transform duration-300 ease-in-out ${
+            className={`relative left-[100px] w-[340px] h-full bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col overflow-y-auto select-none font-sans text-[#2D3B45] transition-transform duration-150 ease-out ${
               isAccountOpen ? "translate-x-0" : "-translate-x-full"
             }`}
           >
@@ -518,6 +556,8 @@ export default function SystemReport() {
                 <img
                   src={userProfile.avatarUrl}
                   alt={userProfile.name}
+                  loading="eager"
+                  decoding="async"
                   onError={() => setImageError(true)}
                   className="w-20 h-20 rounded-full object-cover border-2 border-[#862334] shadow-sm mb-3"
                 />

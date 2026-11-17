@@ -41,7 +41,7 @@ import {
   getMyCourses,
   updateCourse,
   deleteCourse,
-  findStudentByEmail,
+  getAvailableStudents,
   enrollStudents,
   getCourseEnrollments,
   removeEnrollment,
@@ -72,6 +72,9 @@ export default function StaffDashboard() {
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
+  const [allStudents, setAllStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentsLoadError, setStudentsLoadError] = useState("");
 
   // Toast Notification State
   const [toast, setToast] = useState({ show: false, message: "", key: 0 });
@@ -625,62 +628,96 @@ export default function StaffDashboard() {
     }
   };
 
-  const handleEnrollStudent = async (studentEmail) => {
+  // Load every student profile whenever the enroll modal opens
+  useEffect(() => {
+    if (!isEnrollModalOpen) return;
+
+    let cancelled = false;
+
+    const loadStudents = async () => {
+      setStudentsLoading(true);
+      setStudentsLoadError("");
+
+      try {
+        const data = await getAvailableStudents();
+        if (cancelled) return;
+        setAllStudents(data);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Error loading students:", error);
+        setStudentsLoadError("Unable to load students. Please try again.");
+        setAllStudents([]);
+      } finally {
+        if (!cancelled) setStudentsLoading(false);
+      }
+    };
+
+    loadStudents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEnrollModalOpen]);
+
+  const handleEnrollStudents = async (selectedStudents) => {
     if (!selectedCourse) {
       return { error: "No course selected." };
     }
 
-    try {
-      const student = await findStudentByEmail(studentEmail);
+    if (!selectedStudents?.length) {
+      return { error: "Select at least one student." };
+    }
 
-      const alreadyEnrolled = selectedCourse.students?.some(
-        (enrolledStudent) => enrolledStudent.studentId === student.student_id
+    try {
+      // Skip anyone who already has a row in this course (enrolled or dropped)
+      const existingIds = new Set(
+        (selectedCourse.students || []).map((s) => s.studentId)
+      );
+      const toEnroll = selectedStudents.filter(
+        (student) => !existingIds.has(student.student_id)
       );
 
-      if (alreadyEnrolled) {
+      if (toEnroll.length === 0) {
         return {
-          error: "This student is already enrolled in this course.",
+          error: "The selected students are already in this course.",
         };
       }
 
-      await enrollStudents(selectedCourse.id, [student]);
+      await enrollStudents(selectedCourse.id, toEnroll);
 
-      let emailNotificationSent = true;
+      // Send notification emails one at a time so the mail server isn't flooded
+      const API_BASE_URL =
+        import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+      const API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 
-      try {
-        const API_BASE_URL =
-          import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-
-        const API_KEY = import.meta.env.VITE_APP_API_KEY || "";
-
-        const emailResponse = await fetch(
-          `${API_BASE_URL}/api/email/enrollment`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": API_KEY,
-            },
-            body: JSON.stringify({
-              student_email: student.ub_mail,
-              student_name: student.display_name || "Student",
-              course_title: selectedCourse.title,
-              course_code: selectedCourse.code,
-              section: selectedCourse.section || "",
-              academic_term: selectedCourse.term || "",
-            }),
-          }
-        );
-
-        if (!emailResponse.ok) {
-          emailNotificationSent = false;
+      let emailsSent = 0;
+      for (const student of toEnroll) {
+        try {
+          const emailResponse = await fetch(
+            `${API_BASE_URL}/api/email/enrollment`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": API_KEY,
+              },
+              body: JSON.stringify({
+                student_email: student.ub_mail,
+                student_name: student.display_name || "Student",
+                course_title: selectedCourse.title,
+                course_code: selectedCourse.code,
+                section: selectedCourse.section || "",
+                academic_term: selectedCourse.term || "",
+              }),
+            }
+          );
+          if (emailResponse.ok) emailsSent += 1;
+        } catch (emailError) {
+          console.error(
+            "Enrollment saved, but email notification failed:",
+            emailError
+          );
         }
-      } catch (emailError) {
-        emailNotificationSent = false;
-        console.error(
-          "Enrollment saved, but email notification failed:",
-          emailError
-        );
       }
 
       const enrollmentRows = await getCourseEnrollments(selectedCourse.id);
@@ -702,28 +739,36 @@ export default function StaffDashboard() {
         )
       );
 
+      const label =
+        toEnroll.length === 1
+          ? toEnroll[0].display_name || "Student"
+          : `${toEnroll.length} students`;
+
       showToastNotification(
-        emailNotificationSent
-          ? `${student.display_name} successfully enrolled! Email notification sent.`
-          : `${student.display_name} successfully enrolled, but the email notification could not be sent.`
+        emailsSent === toEnroll.length
+          ? `${label} successfully enrolled! Email notification${
+              toEnroll.length === 1 ? "" : "s"
+            } sent.`
+          : `${label} successfully enrolled, but ${
+              toEnroll.length - emailsSent
+            } email notification${
+              toEnroll.length - emailsSent === 1 ? "" : "s"
+            } could not be sent.`
       );
 
-      return {
-        success: true,
-        student,
-        emailNotificationSent,
-      };
+      return { success: true, enrolledCount: toEnroll.length, emailsSent };
     } catch (error) {
-      console.error("Error enrolling student:", error);
+      console.error("Error enrolling students:", error);
 
       if (error.code === "23505") {
         return {
-          error: "This student is already enrolled in this course.",
+          error:
+            "One or more selected students are already enrolled in this course.",
         };
       }
 
       return {
-        error: error.message || "Unable to enroll student.",
+        error: error.message || "Unable to enroll students.",
       };
     }
   };
@@ -1233,7 +1278,15 @@ export default function StaffDashboard() {
       <EnrollStudentModal
         isOpen={isEnrollModalOpen}
         onClose={() => setIsEnrollModalOpen(false)}
-        onEnroll={handleEnrollStudent}
+        onEnroll={handleEnrollStudents}
+        students={allStudents}
+        isLoading={studentsLoading}
+        loadError={studentsLoadError}
+        existingEnrollments={Object.fromEntries(
+          (selectedCourse?.students || [])
+            .filter((s) => s.studentId)
+            .map((s) => [s.studentId, s.status])
+        )}
       />
 
       {isEditModalOpen && editingCourse && (
