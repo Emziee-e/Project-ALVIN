@@ -34,6 +34,7 @@ const PER_PAGE = 5;
 
 export default function UserManagement() {
   const [activeNav, setActiveNav] = useState("users");
+  const [navAnimKey, setNavAnimKey] = useState(0);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
@@ -214,9 +215,9 @@ export default function UserManagement() {
       return [
         1,
         "...",
-        totalFilteredPages - 3,
-        totalFilteredPages - 2,
-        totalFilteredPages - 1,
+        totalFilteredPAGES - 3,
+        totalFilteredPAGES - 2,
+        totalFilteredPAGES - 1,
         totalFilteredPAGES,
       ];
     }
@@ -290,6 +291,20 @@ export default function UserManagement() {
         html, body, #root { height: 100%; margin: 0; width: 100%; }
         @keyframes toast-fade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes toast-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+        @keyframes itemFadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: none;
+          }
+        }
+        .animate-item-in {
+          opacity: 0;
+          animation: itemFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
       `}</style>
 
       <div className="flex h-screen w-full overflow-hidden bg-white text-black font-[Geist, Inter] relative">
@@ -392,13 +407,14 @@ export default function UserManagement() {
         </div>
 
         {/* Sidebar */}
-        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen">
+        <aside className="w-[100px] bg-[#FDFBF7] border-r-1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 select-none h-screen z-50 relative">
           <div className="w-full flex flex-col items-center">
             <div
               className="mb-3 px-1 flex flex-col items-center cursor-pointer"
               onClick={() => {
                 setIsAccountOpen(false);
                 setActiveNav("users");
+                setNavAnimKey((prev) => prev + 1);
                 navigate("/admin/users");
               }}
             >
@@ -429,6 +445,7 @@ export default function UserManagement() {
                       } else {
                         setIsAccountOpen(false);
                         setActiveNav(item.id);
+                        setNavAnimKey((prev) => prev + 1);
                         if (item.path) navigate(item.path);
                       }
                     }}
@@ -462,11 +479,17 @@ export default function UserManagement() {
         {/* Main Section */}
         <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-y-auto w-full">
-            <section className="px-8 sm:px-12 md:px-16 lg:px-24 py-8 flex-1">
+            <section
+              key={`${activeNav}-${navAnimKey}`}
+              className="px-8 sm:px-12 md:px-16 lg:px-24 py-8 flex-1"
+            >
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
 
                 {/* User Directory Container with Subtle Maroon Border */}
-                <div className="md:col-span-12 bg-white border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] relative overflow-visible rounded-2xl">
+                <div
+                  style={{ animationDelay: "0ms" }}
+                  className="animate-item-in md:col-span-12 bg-white border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)] relative overflow-visible rounded-2xl"
+                >
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-6 md:px-8 py-5 gap-4 border-b border-[#862334]/15 bg-rose-50/20 rounded-t-2xl">
                     <h3 className="font-Geist text-lg font-bold text-black tracking-tight">
                       User Directory
@@ -524,7 +547,10 @@ export default function UserManagement() {
                           )}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody
+                        key={`page-${displayedPage}-${roleFilter}-${search}`}
+                        className="divide-y divide-gray-100"
+                      >
                         {isLoadingAccounts ? (
                           <tr>
                             <td colSpan={5} className="px-6 py-10 text-center text-gray-400 text-sm">
@@ -556,7 +582,10 @@ export default function UserManagement() {
                             return (
                               <tr
                                 key={rowKey}
-                                className="transition-colors group"
+                                style={{ animationDelay: `${Math.min((i + 1) * 80, 500)}ms` }}
+                                className={`animate-item-in transition-colors group relative ${
+                                  isMenuOpen ? "z-30" : "z-0"
+                                }`}
                               >
                                 <td className="px-6 md:px-8 py-4 md:py-5">
                                   <div className="flex items-center gap-3 md:gap-4">
@@ -693,7 +722,10 @@ export default function UserManagement() {
                 </div>
 
                 {/* Interview-Style Pill Pagination */}
-                <div className="md:col-span-12 mt-2 mb-4 flex justify-between items-center flex-wrap gap-4">
+                <div
+                  style={{ animationDelay: "260ms" }}
+                  className="animate-item-in md:col-span-12 mt-2 mb-4 flex justify-between items-center flex-wrap gap-4"
+                >
                   <div className="flex items-center gap-1">
                     <button
                       type="button"

@@ -22,6 +22,7 @@ import {
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
 import SignOutModal from "../../Components/SignOutModal";
+import AccountActionToast from "../../Components/AccountActionToast";
 import { supabase } from "../../lib/supabaseClient";
 
 const navItems = [
@@ -336,6 +337,8 @@ export default function InterviewResults() {
   const [resultsError, setResultsError] = useState("");
   const [selectedQuestionIdx, setSelectedQuestionIdx] = useState("all");
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const [toast, setToast] = useState(null); // { id, title, message } | null
 
   const [activeNav, setActiveNav] = useState("interviews");
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
@@ -356,7 +359,28 @@ export default function InterviewResults() {
       e?.is_interviews_paused === true ||
       String(e?.is_interviews_paused).toLowerCase() === "true"
   );
-  const newSessionDisabled = !enrollmentsLoaded || isInterviewPaused;
+  // Not enrolled in any course: browsing is allowed, interviews are not.
+  const isEnrolled = userProfile.enrollments.length > 0;
+  // A course the Career Advisor concluded no longer allows interviews. The student
+  // is blocked once every course they are in has been concluded.
+  const isCourseConcluded =
+    isEnrolled &&
+    userProfile.enrollments.every((e) =>
+      ["concluded", "archived"].includes(
+        String(e?.course_status ?? "").trim().toLowerCase()
+      )
+    );
+  const newSessionDisabled =
+    !enrollmentsLoaded || !isEnrolled || isCourseConcluded || isInterviewPaused;
+  const newSessionReason = !enrollmentsLoaded
+    ? "Checking course availability"
+    : !isEnrolled
+    ? "Enroll in a course to start an interview"
+    : isCourseConcluded
+    ? "This course has been concluded"
+    : isInterviewPaused
+    ? "Paused by Career Advisor"
+    : "New Session";
 
   useEffect(() => {
     let isMounted = true;
@@ -429,7 +453,11 @@ export default function InterviewResults() {
       }
     };
     loadEnrollments();
-    return () => { active = false; };
+    const intervalId = window.setInterval(loadEnrollments, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -566,9 +594,11 @@ export default function InterviewResults() {
   // ----------------------------------------------------------------------
   // READY-TO-DOWNLOAD EXECUTIVE PDF REPORT GENERATOR (HIDDEN IFRAME - NO EXTRA WINDOW)
   // ----------------------------------------------------------------------
-  const handleExportPdf = () => {
+  // Requires: npm install html2canvas-pro jspdf
+  const handleExportPdf = async () => {
     if (exportingPdf) return;
     setExportingPdf(true);
+    setPdfError("");
 
     try {
       const logoUrl = `${window.location.origin}/images/Alvin-logo.png`;
@@ -1038,7 +1068,7 @@ export default function InterviewResults() {
       color: #334155;
       line-height: 1.45;
       overflow-wrap: anywhere;
-      word-break: break-all;
+      word-break: normal;
     }
 
     .footer {
@@ -1125,46 +1155,165 @@ export default function InterviewResults() {
 </body>
 </html>`;
 
+      // Render the report in an off-screen frame (keeps its styles isolated from
+      // the app), then turn it into a PDF and download it directly.
       const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
       iframe.setAttribute("aria-hidden", "true");
+      iframe.style.cssText =
+        "position:fixed;left:-10000px;top:0;width:780px;height:1200px;border:0;pointer-events:none;";
       document.body.appendChild(iframe);
 
-      const doc = iframe.contentWindow?.document;
-      if (!doc) {
-        document.body.removeChild(iframe);
-        setExportingPdf(false);
-        return;
-      }
+      try {
+        const doc = iframe.contentWindow?.document;
+        if (!doc) throw new Error("Report frame unavailable.");
 
-      const originalTitle = document.title;
-      document.title = safeFileTitle || "Interview_Evaluation";
+        doc.open();
+        doc.write(reportHtml);
+        doc.close();
 
-      doc.open();
-      doc.write(reportHtml);
-      doc.close();
+        // Wait for the frame, its images (logo) and fonts before capturing.
+        await new Promise((resolve) => {
+          if (doc.readyState === "complete") {
+            setTimeout(resolve, 0);
+          } else {
+            iframe.addEventListener("load", resolve, { once: true });
+            setTimeout(resolve, 4000);
+          }
+        });
+        await Promise.all(
+          Array.from(doc.images).map((img) =>
+            img.complete
+              ? null
+              : new Promise((resolve) => {
+                  img.onload = resolve;
+                  img.onerror = resolve;
+                })
+          )
+        );
+        try {
+          await Promise.race([doc.fonts?.ready, new Promise((r) => setTimeout(r, 2500))]);
+        } catch {
+          // Fonts are cosmetic; continue with fallbacks.
+        }
+        iframe.style.height = `${doc.documentElement.scrollHeight}px`;
 
-      iframe.onload = () => {
-        setTimeout(() => {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-          document.title = originalTitle;
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+          import("html2canvas-pro"),
+          import("jspdf"),
+        ]);
 
-          setTimeout(() => {
-            if (document.body.contains(iframe)) {
-              document.body.removeChild(iframe);
+        const SCALE = 2;
+
+        // Measure the blocks so pages can break between them, never through one.
+        // A section heading stays attached to the block that follows it.
+        const bodyTop = doc.body.getBoundingClientRect().top;
+        const blocks = [];
+        let pendingTop = null;
+        doc
+          .querySelectorAll(
+            ".header, .candidate-strip, .score-section, .section-heading, .rec-container, .qa-block, .empty-note, .footer"
+          )
+          .forEach((el) => {
+            if (el.parentElement.closest(".rec-container, .qa-block")) return;
+            const rect = el.getBoundingClientRect();
+            const top = (rect.top - bodyTop) * SCALE;
+            const bottom = (rect.bottom - bodyTop) * SCALE;
+            if (el.classList.contains("section-heading")) {
+              pendingTop = top;
+              return;
             }
-            setExportingPdf(false);
-          }, 1000);
-        }, 300);
-      };
+            blocks.push({ top: pendingTop ?? top, bottom });
+            pendingTop = null;
+          });
+        // Inner pieces, used only to split a block that is taller than one page.
+        const items = Array.from(
+          doc.querySelectorAll(".rec-item, .q-header, .ans-box, .critique-box")
+        ).map((el) => (el.getBoundingClientRect().bottom - bodyTop) * SCALE);
+
+        const canvas = await html2canvas(doc.body, {
+          scale: SCALE,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          logging: false,
+        });
+
+        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        const margin = 12;
+        const contentW = pageW - margin * 2;
+        const contentH = pageH - margin - 14; // extra room at the bottom for page numbers
+        const pxPerMm = canvas.width / contentW;
+        const pageHeightPx = Math.floor(contentH * pxPerMm);
+
+        const PAD = 4 * SCALE;
+        const queue = blocks.length
+          ? blocks.map((b) => ({ ...b }))
+          : [{ top: 0, bottom: canvas.height }];
+        const pages = [];
+        let i = 0;
+        while (i < queue.length) {
+          const first = queue[i];
+          const start = Math.max(0, Math.floor(first.cont ? first.top : first.top - PAD));
+          let j = i;
+          while (j + 1 < queue.length && queue[j + 1].bottom + PAD - start <= pageHeightPx) j += 1;
+          const end = Math.min(canvas.height, Math.ceil(queue[j].bottom + PAD));
+
+          if (end - start > pageHeightPx && j === i) {
+            const limit = start + pageHeightPx;
+            const cuts = items.filter((b) => b > start + pageHeightPx * 0.3 && b + PAD <= limit);
+            const cut = Math.floor(cuts.length ? Math.max(...cuts) + PAD : limit);
+            pages.push({ start, end: cut });
+            queue[i] = { top: cut, bottom: first.bottom, cont: true };
+          } else {
+            pages.push({ start, end });
+            i = j + 1;
+          }
+        }
+
+        pages.forEach(({ start, end }, pageIndex) => {
+          const slice = document.createElement("canvas");
+          slice.width = canvas.width;
+          slice.height = end - start;
+          const ctx = slice.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, slice.width, slice.height);
+          ctx.drawImage(canvas, 0, start, canvas.width, end - start, 0, 0, canvas.width, end - start);
+
+          if (pageIndex > 0) pdf.addPage();
+          pdf.addImage(
+            slice.toDataURL("image/jpeg", 0.95),
+            "JPEG",
+            margin,
+            margin,
+            contentW,
+            (end - start) / pxPerMm
+          );
+        });
+
+        const totalPages = pdf.getNumberOfPages();
+        pdf.setFontSize(9);
+        pdf.setTextColor(120);
+        for (let n = 1; n <= totalPages; n += 1) {
+          pdf.setPage(n);
+          pdf.text(`Page ${n} of ${totalPages}`, pageW / 2, pageH - 7, { align: "center" });
+        }
+
+        const fileName = (safeFileTitle || "Interview_Evaluation").replace(/\s+/g, "_");
+        pdf.save(`${fileName}.pdf`);
+
+        setToast({
+          id: Date.now(),
+          title: "PDF downloaded",
+          message: "Your interview report was saved to your device.",
+        });
+      } finally {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      }
     } catch (err) {
       console.error("Failed to generate PDF report:", err);
+      setPdfError("Could not generate the PDF. Please try again.");
+    } finally {
       setExportingPdf(false);
     }
   };
@@ -1203,6 +1352,7 @@ export default function InterviewResults() {
 
       <div className="flex h-screen w-full overflow-hidden bg-white text-slate-950 font-[Inter] relative">
         {/* Sign Out Confirmation Modal */}
+        <AccountActionToast toast={toast} onClose={() => setToast(null)} />
         <SignOutModal
           isOpen={isSignOutModalOpen}
           onClose={() => setIsSignOutModalOpen(false)}
@@ -1334,7 +1484,7 @@ export default function InterviewResults() {
         </aside>
 
         {/* Left Navigation Sidebar */}
-        <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen relative">
+        <aside className="w-[100px] bg-[#FDFBF7] border-r1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-50 select-none h-screen relative">
           <div className="w-full flex flex-col items-center">
             <div
               className="mb-3 px-1 flex flex-col items-center cursor-pointer"
@@ -1382,7 +1532,7 @@ export default function InterviewResults() {
                       }`}
                     />
                     <span
-                      className={`text-[11px] tracking-tight ${
+                      className={`text-xs tracking-tight ${
                         isSolidActive
                           ? "font-semibold text-white"
                           : "font-medium text-[#862334]"
@@ -1432,6 +1582,11 @@ export default function InterviewResults() {
                   <Download className="w-3.5 h-3.5 text-[#862334]" />
                   <span>{exportingPdf ? "Preparing PDF..." : "Export PDF"}</span>
                 </button>
+                {pdfError && (
+                  <span role="alert" className="font-[Inter] text-xs text-red-700">
+                    {pdfError}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1439,13 +1594,7 @@ export default function InterviewResults() {
                   }}
                   disabled={newSessionDisabled}
                   aria-disabled={newSessionDisabled}
-                  title={
-                    !enrollmentsLoaded
-                      ? "Checking course availability"
-                      : isInterviewPaused
-                      ? "Paused by Career Advisor"
-                      : "New Session"
-                  }
+                  title={newSessionReason}
                   className={`inline-flex items-center gap-1.5 px-4 py-2 font-[Inter] font-semibold text-xs rounded-xl shadow-xs ${
                     newSessionDisabled
                       ? "bg-slate-200 text-slate-500 opacity-60 cursor-not-allowed"
@@ -1554,7 +1703,7 @@ export default function InterviewResults() {
                           <span className="block text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">
                             Your Response
                           </span>
-                          <p className="text-sm text-slate-700 leading-relaxed break-all whitespace-pre-wrap">
+                          <p className="text-sm text-slate-700 leading-relaxed break-words whitespace-pre-wrap">
                             {q.answer || "No response recorded."}
                           </p>
                         </div>

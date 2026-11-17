@@ -5,7 +5,6 @@ import {
   BarChart3,
   X,
   Mail,
-  Bot,
   Search,
   Download,
   CheckCircle2,
@@ -26,6 +25,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
+import AccountActionToast from "../../Components/AccountActionToast";
 import { supabase } from "../../lib/supabaseClient";
 
 // Recharts imports
@@ -97,11 +97,11 @@ function StudentLineChart({ data = [] }) {
   const latestScore = safeData.length > 0 ? (safeData[safeData.length - 1]?.score ?? 0) : 0;
 
   return (
-    <div className="flex flex-col justify-between h-full min-h-[280px] w-full min-w-0">
-      <div className="h-[220px] w-full min-w-0 overflow-hidden">
+    <div className="flex flex-col justify-between h-full min-h-[340px] w-full min-w-0">
+      <div className="h-[280px] w-full min-w-0 overflow-hidden">
         {safeData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={safeData} margin={{ top: 15, right: 10, left: -20, bottom: 5 }}>
+            <AreaChart data={safeData} margin={{ top: 15, right: 14, left: -10, bottom: 5 }}>
               <defs>
                 <linearGradient id="studentLineGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#862334" stopOpacity={0.25} />
@@ -113,7 +113,7 @@ function StudentLineChart({ data = [] }) {
 
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 11, fill: "#6B7280", fontFamily: "Inter" }}
+                tick={{ fontSize: 13, fill: "#6B7280", fontFamily: "Inter" }}
                 axisLine={false}
                 tickLine={false}
                 dy={5}
@@ -123,7 +123,7 @@ function StudentLineChart({ data = [] }) {
                 domain={[0, 100]}
                 ticks={[0, 25, 50, 75, 100]}
                 tickFormatter={(v) => `${v}%`}
-                tick={{ fontSize: 11, fill: "#6B7280", fontFamily: "Geist" }}
+                tick={{ fontSize: 13, fill: "#6B7280", fontFamily: "Geist" }}
                 axisLine={false}
                 tickLine={false}
               />
@@ -164,8 +164,8 @@ function StudentLineChart({ data = [] }) {
       </div>
 
       <div className="pt-3 border-t border-gray-100 flex items-center justify-between font-Inter">
-        <span className="text-xs text-gray-500 font-normal">
-          Latest Score: <strong className="text-gray-900 font-bold font-Geist text-xs">{Number(latestScore).toFixed(1)}%</strong>
+        <span className="text-sm text-gray-500 font-normal">
+          Latest Score: <strong className="text-gray-900 font-bold font-Geist text-sm">{Number(latestScore).toFixed(1)}%</strong>
         </span>
       </div>
     </div>
@@ -189,19 +189,19 @@ function RadarChartComponent({ data = [] }) {
   const competencyGap = (latestAvgScore - targetMinimum).toFixed(1);
 
   return (
-    <div className="flex flex-col justify-between h-full min-h-[280px] w-full min-w-0">
+    <div className="flex flex-col justify-between h-full min-h-[340px] w-full min-w-0">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center flex-1">
 
         {/* Left Expanded Container for Radar Visual (7 cols) */}
-        <div className="md:col-span-7 h-[250px] w-full flex items-center justify-center min-w-0 overflow-hidden">
+        <div className="md:col-span-7 h-[440px] w-full flex items-center justify-center min-w-0 overflow-hidden">
           {safeData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart
                 cx="50%"
                 cy="50%"
-                outerRadius="58%"
+                outerRadius="70%"
                 data={safeData}
-                margin={{ top: 20, right: 15, bottom: 20, left: 15 }}
+                margin={{ top: 30, right: 60, bottom: 30, left: 60 }}
               >
                 <PolarGrid stroke="#EAE5D9" />
                 <PolarAngleAxis
@@ -211,7 +211,7 @@ function RadarChartComponent({ data = [] }) {
 
                     if (val.includes("Delivery")) {
                       return (
-                        <text x={x} y={y} textAnchor="end" fill="#4B5563" fontSize={10} fontWeight={600} fontFamily="Inter">
+                        <text x={x} y={y} textAnchor="end" fill="#4B5563" fontSize={13} fontWeight={600} fontFamily="Inter">
                           <tspan x={x - 10} dy="-2">Delivery &</tspan>
                           <tspan x={x - 10} dy="12">Language</tspan>
                         </text>
@@ -220,7 +220,7 @@ function RadarChartComponent({ data = [] }) {
 
                     if (val.includes("Appearance")) {
                       return (
-                        <text x={x} y={y} textAnchor="start" fill="#4B5563" fontSize={10} fontWeight={600} fontFamily="Inter">
+                        <text x={x} y={y} textAnchor="start" fill="#4B5563" fontSize={13} fontWeight={600} fontFamily="Inter">
                           <tspan x={x + 10} dy="-2">Appearance &</tspan>
                           <tspan x={x + 10} dy="12">Poise</tspan>
                         </text>
@@ -235,7 +235,7 @@ function RadarChartComponent({ data = [] }) {
                     }
 
                     return (
-                      <text x={x} y={y} dy={dy} textAnchor="middle" fill="#4B5563" fontSize={10} fontWeight={600} fontFamily="Inter">
+                      <text x={x} y={y} dy={dy} textAnchor="middle" fill="#4B5563" fontSize={13} fontWeight={600} fontFamily="Inter">
                         {val}
                       </text>
                     );
@@ -253,12 +253,12 @@ function RadarChartComponent({ data = [] }) {
               </RadarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-gray-400 text-xs font-Inter">No skill metrics recorded for latest attempt</div>
+            <div className="text-gray-400 text-sm font-Inter">No skill metrics recorded for latest attempt</div>
           )}
         </div>
 
         {/* Side Narrower Itemized Progress Bars (5 cols) */}
-        <div className="md:col-span-5 space-y-2.5 font-Inter pl-0 md:pl-1 select-none pointer-events-none">
+        <div className="md:col-span-5 space-y-4 font-Inter pl-0 md:pl-1 select-none pointer-events-none">
           {safeData.length > 0 ? (
             safeData.map((item) => {
               const scoreVal = Number(item.score ?? 0).toFixed(1);
@@ -268,14 +268,14 @@ function RadarChartComponent({ data = [] }) {
 
               return (
                 <div key={item.subject || Math.random()} className="space-y-1">
-                  <div className="flex items-center justify-between text-[11px] font-medium">
+                  <div className="flex items-center justify-between text-sm font-medium">
                     <span className="text-gray-700 flex-1 pr-1 leading-tight whitespace-nowrap">{item.subject || "Skill"}</span>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <span className="font-bold text-gray-900 font-Geist">{scoreVal}%</span>
                     </div>
                   </div>
 
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
                         isTop
@@ -291,7 +291,7 @@ function RadarChartComponent({ data = [] }) {
               );
             })
           ) : (
-            <div className="text-xs text-gray-400 font-Inter text-center py-4">
+            <div className="text-sm text-gray-400 font-Inter text-center py-4">
               Latest skill breakdown unavailable
             </div>
           )}
@@ -299,13 +299,13 @@ function RadarChartComponent({ data = [] }) {
       </div>
 
       {/* Target Minimum & Competency Gap Footer */}
-      <div className="pt-3 border-t border-gray-100 flex items-center justify-between font-Inter text-xs">
+      <div className="pt-3 border-t border-gray-100 flex items-center justify-between font-Inter text-sm">
         <span className="text-gray-500 font-normal">
           Target Benchmark: <strong className="text-gray-800 font-bold font-Geist">{targetMinimum}%</strong>
         </span>
 
         <div
-          className={`px-3 py-1 rounded-lg text-xs font-bold font-Geist border ${
+          className={`px-3 py-1 rounded-lg text-sm font-bold font-Geist border ${
             competencyGap >= 0
               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
               : "bg-rose-50 text-[#862334] border-rose-200"
@@ -366,6 +366,7 @@ export default function StaffStatistics() {
   const commentTimerRef = useRef(null);
 
   const [activeNav, setActiveNav] = useState("statistics");
+  const [navAnimKey, setNavAnimKey] = useState(0);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
 
@@ -392,6 +393,9 @@ export default function StaffStatistics() {
   // Delete Confirmation Modal State
   const [commentToDelete, setCommentToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [toast, setToast] = useState(null); // { id, title, message } | null
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState("");
 
   const [userProfile, setUserProfile] = useState({
     name: "User",
@@ -622,9 +626,28 @@ export default function StaffStatistics() {
     };
   }, [selectedSection]);
 
-  const filteredStudents = students.filter((student) =>
-    (student?.name || "").toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Student number = the part of the UB mail before "@ub.edu.ph".
+  const getStudentNumber = (student) => {
+    if (student?.student_number) return String(student.student_number);
+    const mail = String(student?.email || "");
+    return mail.toLowerCase().endsWith("@ub.edu.ph") ? mail.split("@")[0] : "";
+  };
+
+  // Ignore case, dashes and spaces so "2021-12345" finds "202112345" and vice versa.
+  const compact = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const matchesSearch = (student, query) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const qCompact = compact(q);
+    return (
+      (student?.name || "").toLowerCase().includes(q) ||
+      (student?.email || "").toLowerCase().includes(q) ||
+      (qCompact !== "" && compact(getStudentNumber(student)).includes(qCompact))
+    );
+  };
+
+  const filteredStudents = students.filter((student) => matchesSearch(student, searchQuery));
 
   const handleSelectStudent = (student) => {
     if (!student) return;
@@ -700,6 +723,11 @@ export default function StaffStatistics() {
       );
       setEditingCommentId(null);
       setEditingText("");
+      setToast({
+        id: Date.now(),
+        title: "Comment updated",
+        message: `Your note for ${selectedStudent.name} was saved.`,
+      });
     } catch (err) {
       setCommentError(err.message);
     }
@@ -716,6 +744,11 @@ export default function StaffStatistics() {
         list.filter((c) => c.message_id !== commentToDelete.message_id)
       );
       setCommentToDelete(null);
+      setToast({
+        id: Date.now(),
+        title: "Comment deleted",
+        message: `Your note for ${selectedStudent.name} was permanently removed.`,
+      });
     } catch (err) {
       setCommentError(err.message);
     } finally {
@@ -723,11 +756,246 @@ export default function StaffStatistics() {
     }
   };
 
-  const handleDownloadPDF = () => {
-    const originalTitle = document.title;
-    document.title = `${selectedStudent?.name || "Student"}_Performance_Report`;
-    window.print();
-    document.title = originalTitle;
+  // Builds the student's detailed report as a PDF and downloads it directly
+  // (no print dialog). Requires: npm install html2canvas-pro jspdf
+  const handleDownloadPDF = async () => {
+    const node = printRef.current || document.getElementById("student-report-section");
+    if (!node || !selectedStudent || isGeneratingPdf) return;
+
+    setIsGeneratingPdf(true);
+    setPdfError("");
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
+
+      // Cross-origin photos (Google) can't be drawn into the PDF canvas, so load
+      // the picture through our API and hand it over as a data URL.
+      let avatarDataUrl = null;
+      if (selectedStudent.avatarUrl && !studentImageError) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const avatarResponse = await fetch(
+            `${API_BASE_URL}/api/staff/students/${encodeURIComponent(selectedStudent.id)}/avatar`,
+            {
+              headers: {
+                "X-API-Key": APP_API_KEY,
+                Authorization: `Bearer ${session?.access_token || ""}`,
+              },
+            }
+          );
+          if (avatarResponse.ok) {
+            const blob = await avatarResponse.blob();
+            avatarDataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          }
+        } catch (avatarErr) {
+          console.warn("Profile picture could not be added to the PDF:", avatarErr);
+        }
+      }
+
+      // ALVIN logo for the report header (loaded as a data URL so it always renders).
+      let logoDataUrl = null;
+      try {
+        const logoResponse = await fetch("/images/Alvin-logo.png");
+        if (logoResponse.ok) {
+          const logoBlob = await logoResponse.blob();
+          logoDataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoBlob);
+          });
+        }
+      } catch (logoErr) {
+        console.warn("Logo could not be added to the PDF:", logoErr);
+      }
+      const reportDate = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      const SCALE = 2;
+      let cards = []; // top-level report cards as { top, bottom } in canvas px
+      let items = []; // bottoms of smaller blocks (e.g. each comment), used only to split an oversized card
+
+      const canvas = await html2canvas(node, {
+        scale: SCALE,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false,
+        onclone: (clonedDoc) => {
+          const root = clonedDoc.getElementById("student-report-section");
+          if (!root) return;
+          // Same as the print stylesheet: hide controls, skip entry animations.
+          clonedDoc.querySelectorAll(".no-print").forEach((el) => {
+            el.style.display = "none";
+          });
+          clonedDoc.querySelectorAll(".animate-item-in").forEach((el) => {
+            el.style.animation = "none";
+            el.style.opacity = "1";
+            el.style.transform = "none";
+          });
+          // Drop the outer frame so page breaks never cut through a border; each
+          // card is placed on the page on its own.
+          root.style.boxShadow = "none";
+          root.style.border = "none";
+          root.style.borderRadius = "0";
+          root.style.padding = "0";
+          const clonedAvatar = root.querySelector("img[data-pdf-avatar]");
+          if (clonedAvatar) {
+            if (avatarDataUrl) {
+              clonedAvatar.removeAttribute("crossorigin");
+              clonedAvatar.src = avatarDataUrl;
+            } else {
+              clonedAvatar.style.display = "none"; // no picture available; avoid a blank circle
+            }
+          }
+          // The on-screen title/search row is replaced by the branded header below.
+          clonedDoc.querySelectorAll("[data-pdf-hide]").forEach((el) => el.remove());
+
+          // Branded header (same look as the interview results report).
+          const header = clonedDoc.createElement("div");
+          header.className = "print-card font-Inter";
+          header.style.cssText =
+            "display:flex;align-items:center;justify-content:space-between;gap:16px;" +
+            "padding-bottom:14px;margin-bottom:12px;border-bottom:2px solid #862334;background:#ffffff;";
+
+          const brand = clonedDoc.createElement("div");
+          brand.style.cssText = "display:flex;align-items:center;gap:12px;";
+          if (logoDataUrl) {
+            const logo = clonedDoc.createElement("img");
+            logo.src = logoDataUrl;
+            logo.alt = "ALVIN logo";
+            logo.width = 46;
+            logo.height = 46;
+            logo.style.cssText = "width:46px;height:46px;object-fit:contain;";
+            brand.appendChild(logo);
+          }
+          const brandText = clonedDoc.createElement("div");
+          const eyebrow = clonedDoc.createElement("div");
+          eyebrow.textContent = "ALVIN AI CAREER READINESS";
+          eyebrow.style.cssText =
+            "font-size:11px;font-weight:700;letter-spacing:0.14em;color:#862334;margin-bottom:2px;";
+          const headerTitle = clonedDoc.createElement("div");
+          headerTitle.textContent = "Student Detailed Analytics";
+          headerTitle.className = "font-Geist";
+          headerTitle.style.cssText = "font-size:24px;font-weight:700;color:#090D16;line-height:1.15;";
+          brandText.appendChild(eyebrow);
+          brandText.appendChild(headerTitle);
+          brand.appendChild(brandText);
+
+          const meta = clonedDoc.createElement("div");
+          meta.style.cssText = "text-align:right;font-size:12px;color:#475569;line-height:1.5;";
+          const dateLine = clonedDoc.createElement("div");
+          dateLine.textContent = `Date: ${reportDate}`;
+          const studentLine = clonedDoc.createElement("div");
+          meta.appendChild(dateLine);
+          meta.appendChild(studentLine);
+
+          header.appendChild(brand);
+          header.appendChild(meta);
+          root.insertBefore(header, root.firstChild);
+
+          // Measure after hiding so the break points match what gets drawn.
+          const rootTop = root.getBoundingClientRect().top;
+          cards = Array.from(root.querySelectorAll(".print-card"))
+            .filter((el) => !el.parentElement.closest(".print-card"))
+            .map((el) => {
+              const rect = el.getBoundingClientRect();
+              return { top: (rect.top - rootTop) * SCALE, bottom: (rect.bottom - rootTop) * SCALE };
+            });
+          items = Array.from(root.querySelectorAll(".print-item")).map(
+            (el) => (el.getBoundingClientRect().bottom - rootTop) * SCALE
+          );
+        },
+      });
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const contentW = pageW - margin * 2;
+      const contentH = pageH - margin * 2;
+      const pxPerMm = canvas.width / contentW;
+      const pageHeightPx = Math.floor(contentH * pxPerMm);
+
+      // Lay whole cards onto pages (never cutting through one). A card taller than
+      // a page is split, preferring the gap between its inner items.
+      const PAD = 4 * SCALE;
+      const blocks = cards.length ? cards.map((c) => ({ ...c })) : [{ top: 0, bottom: canvas.height }];
+      const pages = [];
+      let i = 0;
+      while (i < blocks.length) {
+        const first = blocks[i];
+        const start = Math.max(0, Math.floor(first.cont ? first.top : first.top - PAD));
+        let j = i;
+        while (j + 1 < blocks.length && blocks[j + 1].bottom + PAD - start <= pageHeightPx) j += 1;
+        const end = Math.min(canvas.height, Math.ceil(blocks[j].bottom + PAD));
+
+        if (end - start > pageHeightPx && j === i) {
+          const limit = start + pageHeightPx;
+          const cuts = items.filter((b) => b > start + pageHeightPx * 0.3 && b + PAD <= limit);
+          const cut = Math.floor(cuts.length ? Math.max(...cuts) + PAD : limit);
+          pages.push({ start, end: cut });
+          blocks[i] = { top: cut, bottom: first.bottom, cont: true };
+        } else {
+          pages.push({ start, end });
+          i = j + 1;
+        }
+      }
+
+      pages.forEach(({ start, end }, pageIndex) => {
+        const slice = document.createElement("canvas");
+        slice.width = canvas.width;
+        slice.height = end - start;
+        const ctx = slice.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, slice.width, slice.height);
+        ctx.drawImage(canvas, 0, start, canvas.width, end - start, 0, 0, canvas.width, end - start);
+
+        if (pageIndex > 0) pdf.addPage();
+        pdf.addImage(
+          slice.toDataURL("image/jpeg", 0.95),
+          "JPEG",
+          margin,
+          margin,
+          contentW,
+          (end - start) / pxPerMm
+        );
+      });
+
+      // Page numbers
+      const totalPages = pdf.getNumberOfPages();
+      pdf.setFontSize(9);
+      pdf.setTextColor(120);
+      for (let n = 1; n <= totalPages; n += 1) {
+        pdf.setPage(n);
+        pdf.text(`Page ${n} of ${totalPages}`, pageW / 2, pageH - 5, { align: "center" });
+      }
+
+      const safeName = String(selectedStudent.name || "Student")
+        .trim()
+        .replace(/[^\w\-]+/g, "_");
+      pdf.save(`${safeName}_Performance_Report.pdf`);
+
+      setToast({
+        id: Date.now(),
+        title: "PDF downloaded",
+        message: `${selectedStudent.name}'s detailed report was saved to your device.`,
+      });
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      setPdfError("Could not generate the PDF. Please try again.");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const currentSectionLabel =
@@ -745,6 +1013,21 @@ export default function StaffStatistics() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white font-Inter relative">
       <style>{`
+        @keyframes itemFadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-item-in {
+          opacity: 0;
+          animation: itemFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
         @media print {
           @page {
             size: A4 portrait;
@@ -759,6 +1042,12 @@ export default function StaffStatistics() {
             overflow: visible !important;
             height: auto !important;
             background: #FFFFFF !important;
+          }
+
+          .animate-item-in {
+            opacity: 1 !important;
+            transform: none !important;
+            animation: none !important;
           }
 
           #student-report-section, #student-report-section * {
@@ -820,6 +1109,8 @@ export default function StaffStatistics() {
         onClose={() => setIsSignOutModalOpen(false)}
         onConfirm={handleSignOut}
       />
+
+      <AccountActionToast toast={toast} onClose={() => setToast(null)} />
 
       {/* Delete Comment Confirmation Modal */}
       {commentToDelete && (
@@ -948,7 +1239,7 @@ export default function StaffStatistics() {
       </div>
 
       {/* Sidebar Navigation */}
-      <aside className="w-[100px] bg-[#FDFBF7] border-r border-[#EAE5D9] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 z-40 select-none h-screen no-print">
+      <aside className="w-[100px] bg-[#FDFBF7] border-r-1 border-[#862334] flex flex-col justify-between items-center pt-2 pb-4 flex-shrink-0 select-none h-screen z-50 relative">
         <div className="w-full flex flex-col items-center">
           <div
             className="mb-3 px-1 flex flex-col items-center cursor-pointer"
@@ -987,6 +1278,7 @@ export default function StaffStatistics() {
                     } else {
                       setIsAccountOpen(false);
                       setActiveNav(item.id);
+                      setNavAnimKey((prev) => prev + 1);
                       if (item.path) navigate(item.path);
                     }
                   }}
@@ -1019,10 +1311,16 @@ export default function StaffStatistics() {
 
       {/* Main Container */}
       <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen font-Inter">
-        <div className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8">
+        <div
+          key={`${activeNav}-${selectedSection}-${navAnimKey}`}
+          className="flex-1 overflow-y-auto px-6 sm:px-10 md:px-16 lg:px-24 w-full py-10 space-y-8"
+        >
 
           {/* Section Header & Custom Dropdown */}
-          <div className="bg-white border border-[#EAE5D9] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
+          <div
+            style={{ animationDelay: "0ms" }}
+            className="animate-item-in bg-white border border-[#EAE5D9] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print"
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#862334]/10 text-[#862334] flex items-center justify-center flex-shrink-0">
                 <BookOpen className="w-5 h-5" />
@@ -1101,7 +1399,10 @@ export default function StaffStatistics() {
 
           {/* KPI Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "120ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1125,7 +1426,10 @@ export default function StaffStatistics() {
               </div>
             </div>
 
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "230ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1148,7 +1452,10 @@ export default function StaffStatistics() {
               </div>
             </div>
 
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "340ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1175,7 +1482,10 @@ export default function StaffStatistics() {
               </div>
             </div>
 
-            <div className="bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+            <div
+              style={{ animationDelay: "450ms" }}
+              className="animate-item-in bg-white border border-[#862334]/20 border-t-4 border-t-[#862334] rounded-2xl p-5 shadow-xs flex flex-col justify-between min-h-[135px]"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
@@ -1200,7 +1510,10 @@ export default function StaffStatistics() {
           </div>
 
           {/* Cohort Line Trend Graph */}
-          <div className="no-print">
+          <div
+            style={{ animationDelay: "540ms" }}
+            className="animate-item-in no-print"
+          >
             <div className="bg-white rounded-2xl border border-[#862334]/20 p-6 md:p-8 shadow-xs transition-all">
               <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EAE5D9] pb-5">
                 <div>
@@ -1334,7 +1647,10 @@ export default function StaffStatistics() {
           </div>
 
           {/* Detailed Printable Student Report */}
-          <div className="mb-12 font-Inter">
+          <div
+            style={{ animationDelay: "660ms" }}
+            className="animate-item-in mb-12 font-Inter"
+          >
             <div
               id="student-report-section"
               ref={printRef}
@@ -1342,7 +1658,11 @@ export default function StaffStatistics() {
             >
               {/* Header & Top Right Search Bar */}
               <div className="print-card">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                {/* Title/search row: left out of the PDF (its title moves into the PDF header). The student banner below stays. */}
+                <div
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6"
+                  data-pdf-hide="true"
+                >
                   <div className="flex items-center gap-3">
                     <div>
                       <h2 className="font-Geist text-2xl font-bold tracking-tight text-gray-900 mb-0.5">
@@ -1363,7 +1683,7 @@ export default function StaffStatistics() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onFocus={() => setIsSearchFocused(true)}
-                        placeholder="Search Students"
+                        placeholder="Search by name or student number"
                         className="w-full bg-[#FDFBF7] border border-[#EAE5D9] text-gray-900 pl-10 pr-4 py-2 text-xs font-Inter rounded-xl outline-none focus:border-[#862334] focus:ring-1 focus:ring-[#862334] transition-all shadow-2xs"
                       />
                       {searchQuery && (
@@ -1392,6 +1712,7 @@ export default function StaffStatistics() {
                                   <img
                                     src={student.avatarUrl}
                                     alt={student.name}
+                                    referrerPolicy="no-referrer"
                                     className="w-8 h-8 rounded-full object-cover border border-gray-200"
                                   />
                                 ) : (
@@ -1401,6 +1722,11 @@ export default function StaffStatistics() {
                                 )}
                                 <div>
                                   <p className="text-xs font-bold text-gray-900 font-Geist">{student.name}</p>
+                                  {getStudentNumber(student) && (
+                                    <p className="text-xs font-semibold text-[#862334] font-Inter">
+                                      {getStudentNumber(student)}
+                                    </p>
+                                  )}
                                   <p className="text-xs text-gray-500 font-Inter font-normal">
                                     {(Array.isArray(student.enrollments) ? student.enrollments : [])
                                       .map((e) => e.course_code || e.course_title || e.section)
@@ -1430,7 +1756,9 @@ export default function StaffStatistics() {
                             <img
                               src={selectedStudent.avatarUrl}
                               alt={selectedStudent.name}
+                              data-pdf-avatar="true"
                               onError={() => setStudentImageError(true)}
+                              referrerPolicy="no-referrer"
                               className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-xs"
                             />
                           ) : (
@@ -1445,6 +1773,11 @@ export default function StaffStatistics() {
                             <h3 className="font-Geist text-2xl font-bold text-gray-900 tracking-tight">
                               {selectedStudent.name}
                             </h3>
+                            {getStudentNumber(selectedStudent) && (
+                              <span className="px-2.5 py-1 rounded-full bg-[#862334]/10 text-[#862334] text-xs font-semibold font-Inter">
+                                {getStudentNumber(selectedStudent)}
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-4 mt-2">
@@ -1513,11 +1846,17 @@ export default function StaffStatistics() {
 
                         <button
                           onClick={handleDownloadPDF}
-                          className="no-print flex items-center gap-2 px-5 py-2.5 bg-[#862334] text-white font-bold text-xs rounded-xl hover:bg-[#a12a3f] active:scale-[0.99] transition-all shadow-md shadow-[#862334]/20 cursor-pointer font-Inter"
+                          disabled={isGeneratingPdf}
+                          className="no-print flex items-center gap-2 px-5 py-2.5 bg-[#862334] text-white font-bold text-xs rounded-xl hover:bg-[#a12a3f] active:scale-[0.99] transition-all shadow-md shadow-[#862334]/20 cursor-pointer font-Inter disabled:opacity-60 disabled:cursor-wait"
                         >
                           <Download className="w-3.5 h-3.5" />
-                          Download PDF
+                          {isGeneratingPdf ? "Generating PDF..." : "Download PDF"}
                         </button>
+                        {pdfError && (
+                          <p role="alert" className="no-print text-xs text-red-700 font-Inter">
+                            {pdfError}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1530,14 +1869,20 @@ export default function StaffStatistics() {
 
               {/* Student Analytics Charts Section */}
               {selectedStudent && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print-card">
+                <div
+                  key={`charts-${selectedStudent.id}`}
+                  className="flex flex-col gap-6"
+                >
                   {/* Historical Line Chart */}
-                  <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0">
+                  <div
+                    style={{ animationDelay: "0ms" }}
+                    className="animate-item-in print-card bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0"
+                  >
                     <div className="mb-4">
-                      <h3 className="font-Geist text-base font-bold tracking-tight text-gray-900">
+                      <h3 className="font-Geist text-lg font-bold tracking-tight text-gray-900">
                         Performance Growth ({selectedStudent.name})
                       </h3>
-                      <p className="text-xs text-gray-500 font-Inter font-normal">
+                      <p className="text-sm text-gray-500 font-Inter font-normal">
                         Historical score progression across all completed attempts
                       </p>
                     </div>
@@ -1545,13 +1890,16 @@ export default function StaffStatistics() {
                   </div>
 
                   {/* Skills Assessment Radar Chart */}
-                  <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0">
+                  <div
+                    style={{ animationDelay: "120ms" }}
+                    className="animate-item-in print-card bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 shadow-2xs flex flex-col justify-between overflow-hidden min-w-0"
+                  >
                     <div className="mb-4 flex items-center justify-between">
                       <div>
-                        <h3 className="font-Geist text-base font-bold tracking-tight text-gray-900">
+                        <h3 className="font-Geist text-lg font-bold tracking-tight text-gray-900">
                           Skills Assessment ({selectedStudent.name})
                         </h3>
-                        <p className="text-xs text-gray-500 font-Inter font-normal">
+                        <p className="text-sm text-gray-500 font-Inter font-normal">
                           Competency score breakdown for the student's most recent attempt
                         </p>
                       </div>
@@ -1561,26 +1909,13 @@ export default function StaffStatistics() {
                 </div>
               )}
 
-              {/* AI Feedback Analysis */}
-              {selectedStudent && (
-                <div className="bg-gradient-to-r from-[#862334]/5 via-[#FDFBF7] to-[#ffb003]/5 rounded-2xl border border-[#862334]/20 p-6 print-card shadow-2xs">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#862334] text-white shadow-xs">
-                      <Bot className="w-4 h-4" />
-                    </div>
-                    <h3 className="text-[#862334] font-Geist font-bold text-md">
-                      AI Feedback Analysis for {selectedStudent.name}
-                    </h3>
-                  </div>
-                  <p className="text-black/90 font-Inter text-sm leading-relaxed">
-                    {selectedStudent.aiCritique || "No AI feedback report available for this student yet."}
-                  </p>
-                </div>
-              )}
-
               {/* Observations & Feedback Section */}
               {selectedStudent && (
-                <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 print-card font-Inter shadow-2xs">
+                <div
+                  key={`obs-${selectedStudent.id}`}
+                  style={{ animationDelay: "220ms" }}
+                  className="animate-item-in bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/15 p-6 print-card font-Inter shadow-2xs"
+                >
                   <div className="flex items-center justify-between mb-5">
                     <h3 className="font-Geist text-lg font-bold text-gray-900 tracking-tight">
                       Your Observations for {selectedStudent.name}
@@ -1615,7 +1950,7 @@ export default function StaffStatistics() {
                         return (
                           <div
                             key={comment.message_id || Math.random()}
-                            className="bg-white border border-[#862334]/15 p-5 rounded-xl text-sm font-Inter text-gray-800 transition-all shadow-2xs"
+                            className="print-item bg-white border border-[#862334]/15 p-5 rounded-xl text-sm font-Inter text-gray-800 transition-all shadow-2xs"
                           >
                             {editingCommentId === comment.message_id ? (
                               <div className="space-y-3 no-print">

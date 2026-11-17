@@ -14,10 +14,13 @@ import {
   Users,
   Search,
   RefreshCw,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Logo from "/images/Alvin-logo.png";
 import SignOutModal from "../../Components/SignOutModal";
+import AccountActionToast from "../../Components/AccountActionToast";
 import { supabase } from "../../lib/supabaseClient";
 
 const navItems = [
@@ -87,6 +90,10 @@ export default function Interview() {
   const [sortBy, setSortBy] = useState("recent"); // "recent" | "score"
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null); // interview row awaiting confirmation
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [toast, setToast] = useState(null); // { id, title, message } | null
 
   const sortDropdownRef = useRef(null);
   const navigate = useNavigate();
@@ -301,6 +308,61 @@ export default function Interview() {
     return () => controller.abort();
   }, [refreshKey]);
 
+  const closeDeleteModal = () => {
+    if (isDeleting) return;
+    setDeleteTarget(null);
+    setDeleteError("");
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Please sign in again to delete this report.");
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/interview/results/${encodeURIComponent(deleteTarget.session_id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "X-API-Key": APP_API_KEY,
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof body.detail === "string"
+            ? body.detail
+            : `Failed to delete report (${response.status}).`
+        );
+      }
+
+      const deletedId = deleteTarget.session_id;
+      const deletedLabel = `${deleteTarget.target_role || "Interview"} report from ${formatInterviewDate(
+        deleteTarget.started_at
+      )}`;
+      setInterviews((prev) => prev.filter((row) => row.session_id !== deletedId));
+      setDeleteTarget(null);
+      setToast({
+        id: Date.now(),
+        title: "Report deleted",
+        message: `Your ${deletedLabel} was permanently deleted.`,
+      });
+    } catch (error) {
+      setDeleteError(error.message || "Unable to delete this report.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -362,6 +424,75 @@ export default function Interview() {
           onClose={() => setIsSignOutModalOpen(false)}
           onConfirm={handleSignOut}
         />
+
+        <AccountActionToast toast={toast} onClose={() => setToast(null)} />
+
+        {/* Delete Report Confirmation (matches SignOutModal) */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-report-title"
+              aria-describedby="delete-report-desc"
+              className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-10 border-blur-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close Button - Overlapping */}
+              <button
+                onClick={closeDeleteModal}
+                disabled={isDeleting}
+                aria-label="Close"
+                className="absolute -top-4 -right-4 p-2.5 rounded-full bg-white shadow-xl group hover:scale-110 transition-all border border-gray-100 z-[1001] disabled:opacity-60 disabled:hover:scale-100"
+              >
+                <X className="w-5 h-5 text-maroon group-hover:rotate-90 transition-transform duration-200" />
+              </button>
+
+              {/* Header/Icon */}
+              <div className="pt-6 pb-2 flex flex-col items-center">
+                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-3">
+                  <Trash2 className="w-6 h-6 text-maroon" />
+                </div>
+                <h2 id="delete-report-title" className="text-xl font-bold text-gray-900 font-Geist">
+                  Delete Report
+                </h2>
+              </div>
+
+              {/* Content */}
+              <div className="px-6 pb-6 text-center">
+                <p id="delete-report-desc" className="text-sm text-gray-600 mb-6 font-Inter">
+                  Are you sure you want to delete your {deleteTarget.target_role || "Interview"}{" "}
+                  report from {formatInterviewDate(deleteTarget.started_at)}? Its score, feedback
+                  and answers will be permanently removed.
+                </p>
+
+                {deleteError && (
+                  <p role="alert" className="text-sm text-red-700 mb-4 font-Inter">
+                    {deleteError}
+                  </p>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={closeDeleteModal}
+                    disabled={isDeleting}
+                    className="flex-1 px-4 py-2.5 rounded-2xl font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 transition-all active:scale-[0.98] disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    disabled={isDeleting}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-white bg-maroon hover:bg-maroon/90 shadow-lg hover:shadow-maroon/20 transition-all active:scale-[0.98] disabled:opacity-60"
+                  >
+                    {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isDeleting ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Slide-out Account Drawer */}
         <div
@@ -548,7 +679,7 @@ export default function Interview() {
                       }`}
                     />
                     <span
-                      className={`font-[Inter] text-[11px] tracking-tight ${
+                      className={`font-[Inter] text-xs tracking-tight ${
                         isSolidActive
                           ? "font-semibold text-white"
                           : "font-medium text-[#862334]"
@@ -687,10 +818,10 @@ export default function Interview() {
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed text-left border-collapse min-w-[640px]">
                   <colgroup>
-                    <col className="w-[34%]" />
+                    <col className="w-[28%]" />
+                    <col className="w-[18%]" />
                     <col className="w-[20%]" />
-                    <col className="w-[22%]" />
-                    <col className="w-[24%]" />
+                    <col className="w-[34%]" />
                   </colgroup>
                   <thead>
                     <tr className="bg-slate-50/70 border-b border-slate-100">
@@ -775,6 +906,7 @@ export default function Interview() {
 
                           {/* Action */}
                           <td className="pl-4 pr-7 py-4 text-right">
+                            <div className="inline-flex items-center gap-2">
                             <button
                               onClick={() =>
                                 navigate(
@@ -791,6 +923,23 @@ export default function Interview() {
                             >
                               View Report
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteError("");
+                                setDeleteTarget(row);
+                              }}
+                              disabled={
+                                row.report_status !== "completed" &&
+                                row.report_status !== "failed"
+                              }
+                              aria-label={`Delete ${row.target_role || "interview"} report`}
+                              title="Delete report"
+                              className="p-2 rounded-md border border-slate-200 text-slate-500 hover:text-[#862334] hover:border-[#862334]/40 hover:bg-[#862334]/5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                            </div>
                           </td>
                         </tr>
                       ))

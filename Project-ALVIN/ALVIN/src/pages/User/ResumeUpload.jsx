@@ -93,6 +93,44 @@ export default function ResumeUpload() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isPreviewOpen]);
 
+  // Interviews need an active course enrollment. Send students without one
+  // back to the dashboard instead of letting them fill in the form. The server
+  // enforces this too, so if this check itself fails we stay on the page and
+  // let the start request return the real error.
+  useEffect(() => {
+    let active = true;
+
+    const requireEnrollment = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const headers = { Authorization: `Bearer ${session.access_token}` };
+        if (APP_API_KEY) headers["X-API-Key"] = APP_API_KEY;
+
+        const response = await fetch(`${API_BASE_URL}/api/student/enrollments`, {
+          headers,
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+
+        const rows = await response.json();
+        if (active && Array.isArray(rows) && rows.length === 0) {
+          navigate("/user/dashboard", { replace: true });
+        }
+      } catch (err) {
+        console.error("Unable to verify enrollment:", err);
+      }
+    };
+
+    requireEnrollment();
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/");

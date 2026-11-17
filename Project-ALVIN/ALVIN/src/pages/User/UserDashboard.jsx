@@ -183,6 +183,28 @@ export default function UserDashboard() {
     ].some(toBoolean);
   };
 
+  // A course concluded by the Career Advisor blocks interviews, just like a pause.
+  const enrollmentIsConcluded = (enrollment) => {
+    if (!enrollment || typeof enrollment !== "object") return false;
+    return [
+      enrollment.course_status,
+      enrollment.courseStatus,
+      enrollment.course?.course_status,
+      enrollment.courses?.course_status,
+      enrollment.course_details?.course_status,
+    ].some((status) =>
+      ["concluded", "archived"].includes(String(status ?? "").trim().toLowerCase())
+    );
+  };
+
+  // Students without an active course enrollment can browse but not interview.
+  const isEnrolled = userProfile.enrollments.length > 0;
+  // Interviews are blocked when every course the student is in has been concluded.
+  const activeEnrollments = userProfile.enrollments.filter(
+    (enrollment) => !enrollmentIsConcluded(enrollment)
+  );
+  const isCourseConcluded = isEnrolled && activeEnrollments.length === 0;
+
   const interviews = (dashboard?.history || []).slice(0, 3).map((r) => ({
     id: r.session_id,
     role: r.target_role || "Interview",
@@ -328,10 +350,11 @@ export default function UserDashboard() {
 
   // Dynamically normalize, merge, and preserve all Career Advisor comments
   const advisorComments = (() => {
-    const rawItems = [
-      ...extractAllFeedbackRecords(dashboard),
-      ...extraFeedbackList,
-    ];
+    // /api/student/feedback returns the full history. The dashboard payload only
+    // carries the latest comment, so it is just a fallback until history loads.
+    const rawItems = extraFeedbackList.length
+      ? extraFeedbackList
+      : extractAllFeedbackRecords(dashboard);
 
     const normalizeItem = (item, idx) => {
       const message =
@@ -380,34 +403,7 @@ export default function UserDashboard() {
       .map(normalizeItem)
       .filter((c) => c.message.length > 0);
 
-    // If backend returns a list (>1), use backend list directly; if backend only returns
-    // a single overwritten row, merge with stored history for this student so prior notes stay visible.
-    let combined = normalizedFromBackend;
-    if (userProfile.id && normalizedFromBackend.length > 0) {
-      const storageKey = `alvin_advisor_comments_${userProfile.id}`;
-      try {
-        const cachedRaw = window.localStorage.getItem(storageKey);
-        const cachedList = cachedRaw ? JSON.parse(cachedRaw) : [];
-
-        if (normalizedFromBackend.length > 1) {
-          combined = normalizedFromBackend;
-        } else if (Array.isArray(cachedList) && cachedList.length > 0) {
-          combined = [...normalizedFromBackend, ...cachedList];
-        }
-
-        // Deduplicate and persist updated list
-        const seenCache = new Set();
-        const dedupedForStorage = combined.filter((c) => {
-          if (seenCache.has(c.dedupeKey)) return false;
-          seenCache.add(c.dedupeKey);
-          return true;
-        });
-        window.localStorage.setItem(storageKey, JSON.stringify(dedupedForStorage));
-        combined = dedupedForStorage;
-      } catch {
-        // Ignore storage errors
-      }
-    }
+    const combined = normalizedFromBackend;
 
     const seen = new Set();
     return combined
@@ -719,7 +715,7 @@ export default function UserDashboard() {
                     }`}
                   >
                     <Icon className={`w-6 h-6 mb-1 ${isSolidActive ? "text-white" : "text-[#862334]"}`} />
-                    <span className={`text-[11px] tracking-tight ${isSolidActive ? "font-semibold text-white" : "font-medium text-[#862334]"}`}>
+                    <span className={`text-xs tracking-tight ${isSolidActive ? "font-semibold text-white" : "font-medium text-[#862334]"}`}>
                       {item.label}
                     </span>
                   </button>
@@ -998,11 +994,16 @@ export default function UserDashboard() {
           </div>
 
           <FloatingButton
-            disabled={!enrollmentsLoaded || isInterviewPaused}
+            disabled={!enrollmentsLoaded || !isEnrolled || isInterviewPaused || isCourseConcluded}
             paused={isInterviewPaused}
+            concluded={isCourseConcluded}
             disabledReason={
               !enrollmentsLoaded
                 ? "Checking course availability"
+                : !isEnrolled
+                ? "Enroll in a course to start an interview"
+                : isCourseConcluded
+                ? "This course has been concluded"
                 : isInterviewPaused
                 ? "Paused by Career Advisor"
                 : ""

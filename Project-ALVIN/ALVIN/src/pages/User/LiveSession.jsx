@@ -76,6 +76,11 @@ const DEFAULT_OPENING_GREETING =
 const CV_ANALYSIS_ENABLED =
   import.meta.env.VITE_ENABLE_CV_ANALYSIS === "true";
 
+// The avatar connects after Start. The interview screen is revealed as soon as this
+// countdown is done AND the avatar is connected (it used to be a fixed 5 s followed
+// by a spinner while WebRTC finished connecting).
+const START_COUNTDOWN_SECONDS = 3;
+
 const CANDIDATE_FINALIZATION_GRACE_MS = 150;
 const CANDIDATE_LOCAL_SILENCE_MS = 900;
 const CANDIDATE_TRANSCRIPT_SETTLE_MS = 1800;
@@ -159,7 +164,9 @@ const Q01_FAILSAFE_AFTER_READY_MS = 20000;
 const Q01_AVATAR_WAIT_MS = 4000;
 const AVATAR_POST_DONE_MIN_WAIT_MS = 350;
 const AVATAR_PLAYBACK_CHECK_MS = 100;
-const AVATAR_ESTIMATED_CHARS_PER_SECOND = 15;
+// Measured: the avatar speaks about 19-20 characters per second. A lower value made the
+// answer window open several seconds AFTER the avatar had finished.
+const AVATAR_ESTIMATED_CHARS_PER_SECOND = 19;
 const AVATAR_MIN_TURN_MS = 1200;
 const CLOSING_GRACE_MS = 4000;
 
@@ -606,6 +613,25 @@ function findClosestGeminiQuestion(spokenQuestion, roadmap) {
   return best;
 }
 
+// ALVIN's fixed closing line (see "Ending the Interview" in the backend prompt).
+const CLOSING_LINE =
+  "That concludes our interview. Thank you for your time, and best of luck.";
+
+// True when what ALVIN has said so far this turn (`spoken`) is clearly the start of the text
+// we expect him to say (`expected`), or a short lead-in followed by the start of it. This lets
+// the subtitle show the complete line at once instead of building it up word by word.
+function spokenMatchesExpected(spoken, expected) {
+  const said = compactForMatch(spoken);
+  const planned = compactForMatch(expected);
+  if (said.length < 12 || planned.length < 12) return false;
+
+  const at = said.indexOf(planned.slice(0, 12));
+  if (at < 0) return false;
+
+  const rest = said.slice(at);
+  return planned.startsWith(rest) || rest.startsWith(planned);
+}
+
 const CLOSING_REGEX =
   /(that concludes|this concludes|concludes (our|the) interview|end of (our|the) interview|interview is (now )?(complete|over|finished)|thank you for (your time|joining|coming)|best of luck|good luck)/i;
 
@@ -943,6 +969,8 @@ export default function LiveSession() {
     "";
 
   const navtalkVideoRef = useRef(null);
+  // Real aspect ratio of the avatar stream, so the frame matches it and nothing is cropped.
+  const [avatarAspect, setAvatarAspect] = useState(16 / 9);
   const localVideoRef = useRef(null);
   const cvCanvasRef = useRef(null);
   const cvRequestInFlightRef = useRef(false);
@@ -1081,6 +1109,10 @@ export default function LiveSession() {
   const [connectionInitiated, setConnectionInitiated] =
     useState(false);
 
+  // The greeting / Q01 may only start once the interview screen is revealed, so the
+  // avatar is never heard before it can be seen.
+  const interviewStartGateRef = useRef(false);
+
   const [sessionStarted, setSessionStarted] =
     useState(false);
 
@@ -1158,6 +1190,11 @@ export default function LiveSession() {
     [avatarSubtitle]
   );
   const subtitleScrollRef = useRef(null);
+  // The full line ALVIN is expected to say this turn (known before he finishes saying it),
+  // whether it has been shown yet, and a line that must be shown for the very next turn.
+  const expectedSubtitleRef = useRef("");
+  const subtitleLockedRef = useRef(false);
+  const nextTurnSubtitleRef = useRef("");
   useEffect(() => {
     const el = subtitleScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -1649,6 +1686,11 @@ Do not add thanks, praise, commentary, or another greeting.`;
         return false;
       }
 
+      if (!interviewStartGateRef.current) {
+        console.log(`[Q01] Held until the interview screen is shown (${reason}).`);
+        return false;
+      }
+
       consoleGreetingFinishedRef.current = true;
 
       if (!realtimePromptReadyRef.current) {
@@ -1714,6 +1756,18 @@ Do not add thanks, praise, commentary, or another greeting.`;
   useEffect(() => {
     triggerFirstQuestionRef.current = triggerFirstQuestion;
   }, [triggerFirstQuestion]);
+
+  // Interview screen revealed: let ALVIN greet and ask Q01 (if NavTalk is READY yet;
+  // otherwise the READY handler starts it the moment it arrives).
+  useEffect(() => {
+    if (!sessionStarted) return;
+
+    interviewStartGateRef.current = true;
+
+    if (!q01TriggeredRef.current) {
+      triggerFirstQuestionRef.current?.("interview screen shown");
+    }
+  }, [sessionStarted]);
 
   const sendOpeningMessage = useCallback(() => {
     if (openingSentRef.current) return;
@@ -1951,6 +2005,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
         const spoken = `No problem, take your time. Let me put that a little more simply. ${simplified.replace(/"/g, "'")}`;
+        nextTurnSubtitleRef.current = spoken;
 
         ws.send(
           JSON.stringify({
@@ -2025,7 +2080,7 @@ After saying it, stop and wait for the candidate's answer.`,
 
     retryCountRef.current = 0;
 
-    setCountdown(5);
+    setCountdown(START_COUNTDOWN_SECONDS);
 
     setConnectionInitiated(true);
   };
@@ -2044,16 +2099,19 @@ After saying it, stop and wait for the candidate's answer.`,
       }, 1000);
     }
 
-    if (countdown === 0) {
-      setSessionStarted(true);
-    }
-
     return () => {
       if (timer) {
         clearTimeout(timer);
       }
     };
   }, [countdown]);
+
+  // Separate effect so the avatar connecting never restarts the countdown tick.
+  useEffect(() => {
+    if (countdown === 0 && avatarConnected) {
+      setSessionStarted(true);
+    }
+  }, [countdown, avatarConnected]);
 
   useEffect(() => {
     if (!connectionInitiated) {
@@ -2239,6 +2297,37 @@ After saying it, stop and wait for the candidate's answer.`,
           }
         };
 
+        // Pre-roll: while the answer gate is closed, keep the last ~2 s of mic audio
+        // captured AFTER the avatar went quiet. When the gate opens it is sent first,
+        // so a candidate who starts talking right as the avatar finishes does not
+        // lose the beginning of the answer (greeting / name).
+        const preRoll = [];
+        // The answer window opens ~2-3 s after the avatar stops, so the buffer has to
+        // cover at least that long or the first words (greeting / name) fall off the end.
+        const PREROLL_MAX_CHUNKS = 18; // 18 x ~341 ms = ~6 s
+        const PREROLL_MAX_AGE_MS = 8000;
+        let preRollDiscarded = 0; // chunks lost to the size limit since the last flush
+        // The avatar must have been silent this long (a chunk is ~341 ms, so this keeps
+        // chunks that start ~110 ms after it stopped). 700 used to cut off a candidate
+        // who started speaking right after the question.
+        const PREROLL_AVATAR_QUIET_MS = 450;
+        let lastMicDropLogAt = 0; // throttle for [MIC DROPPED] diagnostics
+
+        // Send a Float32 block to NavTalk as base64 PCM16 (same format as live audio).
+        const sendPcmFloat = (socket, floatData) => {
+          const pcm = floatTo16BitPCM(floatData);
+          const base64 = base64EncodeAudio(new Uint8Array(pcm));
+
+          for (let i = 0; i < base64.length; i += 4096) {
+            socket.send(
+              JSON.stringify({
+                type: NavTalkMessageType.INPUT_AUDIO_BUFFER_APPEND,
+                data: { audio: base64.slice(i, i + 4096) },
+              })
+            );
+          }
+        };
+
         const processor =
           audioContext.createScriptProcessor(
             8192,
@@ -2254,6 +2343,59 @@ After saying it, stop and wait for the candidate's answer.`,
               avatarSpeakingGateRef.current ||
               !candidateAnswerEnabledRef.current
             ) {
+              if (micActiveRef.current && !interviewEndedRef.current) {
+                const gatedNow = performance.now();
+                const lastAvatarAudioAt = avatarLastAudioAtRef.current;
+                const avatarQuietFor =
+                  lastAvatarAudioAt > 0 ? gatedNow - lastAvatarAudioAt : 0;
+
+                if (
+                  lastAvatarAudioAt > 0 &&
+                  avatarQuietFor >= PREROLL_AVATAR_QUIET_MS
+                ) {
+                  // Avatar is silent: keep this audio so it can be sent once the
+                  // gate opens (never keeps audio captured while the avatar talks).
+                  preRoll.push({
+                    data: new Float32Array(event.inputBuffer.getChannelData(0)),
+                    at: gatedNow,
+                  });
+                  while (preRoll.length > PREROLL_MAX_CHUNKS) {
+                    preRoll.shift();
+                    preRollDiscarded += 1;
+                  }
+                } else {
+                  // Avatar audio is (or may still be) playing: discard, and drop any
+                  // older buffered audio so nothing stale is replayed later.
+                  preRoll.length = 0;
+                  preRollDiscarded = 0;
+
+                  // DIAGNOSTIC: speech-level audio discarded here (throttled).
+                  if (gatedNow - lastMicDropLogAt > 300) {
+                    const droppedData = event.inputBuffer.getChannelData(0);
+                    let droppedSum = 0;
+                    for (let i = 0; i < droppedData.length; i += 1) {
+                      droppedSum += droppedData[i] * droppedData[i];
+                    }
+                    const droppedRms = Math.sqrt(
+                      droppedSum / Math.max(1, droppedData.length)
+                    );
+                    if (droppedRms >= CANDIDATE_SPEECH_RMS_THRESHOLD) {
+                      lastMicDropLogAt = gatedNow;
+                      console.warn(
+                        "[MIC DROPPED] speech-level audio discarded by gate",
+                        {
+                          rms: droppedRms.toFixed(4),
+                          avatarGate: avatarSpeakingGateRef.current,
+                          answerEnabled: candidateAnswerEnabledRef.current,
+                          avatarQuietForMs: Math.round(avatarQuietFor),
+                        }
+                      );
+                    }
+                  }
+                }
+              } else {
+                preRoll.length = 0;
+              }
               return;
             }
 
@@ -2266,6 +2408,55 @@ After saying it, stop and wait for the candidate's answer.`,
                 WebSocket.OPEN
             ) {
               return;
+            }
+
+            // Gate is open: first send any audio captured just before it opened.
+            if (preRoll.length > 0) {
+              const flushNow = performance.now();
+              const buffered = preRoll.splice(0, preRoll.length);
+              const pending = buffered.filter(
+                (item) => flushNow - item.at <= PREROLL_MAX_AGE_MS
+              );
+              const tooOld = buffered.length - pending.length;
+              if (preRollDiscarded > 0 || tooOld > 0) {
+                console.warn(
+                  `[PRE-ROLL] ${preRollDiscarded + tooOld} older chunk(s) were discarded ` +
+                    "(buffer full or too old); the very start of the answer may be missing."
+                );
+              }
+              preRollDiscarded = 0;
+
+              if (pending.length > 0) {
+                try {
+                  for (const item of pending) {
+                    let chunkData = item.data;
+                    if (noiseSuppressor) {
+                      try {
+                        chunkData = noiseSuppressor.process(item.data);
+                      } catch {
+                        chunkData = item.data;
+                      }
+                    }
+                    sendPcmFloat(ws, chunkData);
+                  }
+                  // Per-chunk microphone level, so you can see where your speech starts.
+                  const levels = pending.map((item) => {
+                    let sum = 0;
+                    for (let i = 0; i < item.data.length; i += 1) {
+                      sum += item.data[i] * item.data[i];
+                    }
+                    return Math.sqrt(sum / Math.max(1, item.data.length)).toFixed(3);
+                  });
+                  console.log(
+                    `[PRE-ROLL] sent ${pending.length} buffered chunk(s) ` +
+                      `(~${Math.round((pending.length * 8192 * 1000) / 24000)} ms) ` +
+                      "captured just before the answer window opened. " +
+                      `Levels (oldest first): ${levels.join(" ")}`
+                  );
+                } catch (error) {
+                  console.warn("[PRE-ROLL] Could not send buffered audio:", error);
+                }
+              }
             }
 
             const rawInput =
@@ -3635,6 +3826,7 @@ After saying it, stop and wait for the candidate's answer.`,
               // The Console greeting is not a question and requires no response.
               // Also reject late/background transcripts once ALVIN starts another turn
               // or the interview is closing/finished.
+              console.log("[STT RAW] transcription completed:", JSON.stringify(message));
               const transcriptWasOwed = transcriptOwedRef.current > 0;
               if (transcriptOwedRef.current > 0) transcriptOwedRef.current -= 1;
 
@@ -3778,6 +3970,8 @@ After saying it, stop and wait for the candidate's answer.`,
             }
 
             case NavTalkMessageType.RESPONSE_AUDIO_TRANSCRIPT_DELTA: {
+              const isOpeningTurn =
+                q01TriggeredRef.current && !q01SpeechStartedRef.current;
               if (q01TriggeredRef.current && !q01SpeechStartedRef.current) {
                 q01SpeechStartedRef.current = true;
                 console.log("[Q01] ALVIN started speaking (transcript delta received).");
@@ -3800,6 +3994,32 @@ After saying it, stop and wait for the candidate's answer.`,
                     ...lastAlvinTurnRef.current,
                     finalized: false,
                   };
+
+                  // Work out the full line ALVIN is about to say so the subtitle can show
+                  // it at once: a line we told him to say, the opening greeting + Q01, or
+                  // the next roadmap question (or the fixed closing after the last one).
+                  subtitleLockedRef.current = false;
+                  let expectedLine = nextTurnSubtitleRef.current;
+                  nextTurnSubtitleRef.current = "";
+                  if (!expectedLine && isOpeningTurn) {
+                    expectedLine = q01SpeechTextRef.current;
+                  }
+                  if (!expectedLine) {
+                    const roadmap = parseGeminiRoadmap(navtalkAiPrompt);
+                    const current = compactForMatch(currentQuestionRef.current);
+                    const index = current
+                      ? roadmap.findIndex(
+                          (item) => compactForMatch(item.question) === current
+                        )
+                      : -1;
+                    if (index >= 0) {
+                      expectedLine =
+                        index + 1 < roadmap.length
+                          ? roadmap[index + 1].question
+                          : CLOSING_LINE;
+                    }
+                  }
+                  expectedSubtitleRef.current = expectedLine || "";
                 }
 
                 responseDeltasRef.current.push(deltaText);
@@ -3810,7 +4030,24 @@ After saying it, stop and wait for the candidate's answer.`,
                 responseTranscriptTextRef.current =
                   joinTranscriptDeltas(responseDeltasRef.current);
 
-                setAvatarSubtitle(responseTranscriptTextRef.current);
+                // Never type the subtitle out word by word.
+                const spokenSoFar = responseTranscriptTextRef.current;
+                const expectedLine = expectedSubtitleRef.current;
+                if (expectedLine && spokenMatchesExpected(spokenSoFar, expectedLine)) {
+                  // ALVIN is saying the planned line: show all of it immediately.
+                  if (!subtitleLockedRef.current) {
+                    subtitleLockedRef.current = true;
+                    setAvatarSubtitle(expectedLine);
+                  }
+                } else {
+                  subtitleLockedRef.current = false;
+                  const stillMightBeLeadIn =
+                    expectedLine && compactForMatch(spokenSoFar).length < 60;
+                  // Off-script or unplanned speech: update one finished sentence at a time.
+                  if (!stillMightBeLeadIn && /[.!?]["')\]]?\s*$/.test(spokenSoFar.trim())) {
+                    setAvatarSubtitle(spokenSoFar);
+                  }
+                }
               }
 
               break;
@@ -4002,6 +4239,8 @@ After saying it, stop and wait for the candidate's answer.`,
 
               responseTranscriptLengthRef.current = 0;
               responseTranscriptTextRef.current = "";
+              expectedSubtitleRef.current = "";
+              subtitleLockedRef.current = false;
 
               avatarSpeakingGateRef.current = true;
               waitForActualAvatarPlaybackEnd();
@@ -4621,7 +4860,7 @@ After saying it, stop and wait for the candidate's answer.`,
                       </h2>
 
                       <div className="text-9xl font-black text-[#862334] animate-pulse">
-                        {countdown}
+                        {countdown > 0 ? countdown : "…"}
                       </div>
 
                       <p className="text-xs text-gray-400 uppercase font-semibold">
@@ -4651,8 +4890,8 @@ After saying it, stop and wait for the candidate's answer.`,
                     </div>
                   )}
 
-                {/* Avatar stage: the largest 16:9 frame that fits the available
-                    space, centered. Nothing is cropped or stretched; any spare
+                {/* Avatar stage: the largest frame (matching the stream's real
+                    aspect ratio) that fits the available space, centered. Nothing is cropped or stretched; any spare
                     space is the dark page background. */}
                 <div
                   className={`relative w-full h-full ${
@@ -4665,15 +4904,23 @@ After saying it, stop and wait for the candidate's answer.`,
                   <div
                     className="relative w-full max-h-full overflow-hidden bg-black"
                     style={{
-                      aspectRatio: "16 / 9",
-                      width: "min(100cqw, calc(100cqh * 16 / 9))",
+                      aspectRatio: `${avatarAspect}`,
+                      width: `min(100cqw, calc(100cqh * ${avatarAspect}))`,
                     }}
                   >
                     <video
                       ref={navtalkVideoRef}
                       autoPlay
                       playsInline
-                      className="absolute inset-0 w-full h-full object-cover"
+                      onLoadedMetadata={(e) => {
+                        const { videoWidth: w, videoHeight: h } = e.currentTarget;
+                        if (w && h) setAvatarAspect(w / h);
+                      }}
+                      onResize={(e) => {
+                        const { videoWidth: w, videoHeight: h } = e.currentTarget;
+                        if (w && h) setAvatarAspect(w / h);
+                      }}
+                      className="absolute inset-0 w-full h-full object-contain"
                     />
 
                     {!avatarConnected && (

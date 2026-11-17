@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   BrowserRouter,
   Route,
@@ -42,6 +42,12 @@ function App() {
   const [role, setRole] = useState(null)
   const [roleLoading, setRoleLoading] = useState(false)
 
+  // Unified Loading Screen State
+  const [loadProgress, setLoadProgress] = useState(0)
+  const [showLoader, setShowLoader] = useState(true)
+  const [isLoaderExiting, setIsLoaderExiting] = useState(false)
+  const hasCompletedInitialBoot = useRef(false)
+
   // =========================================================
   // SUPABASE SESSION
   // =========================================================
@@ -65,6 +71,10 @@ function App() {
 
         if (isMounted) {
           setSession(initialSession)
+          // If a session exists, mark roleLoading true immediately so there is no gap
+          if (initialSession?.user?.id) {
+            setRoleLoading(true)
+          }
         }
       } catch (error) {
         console.error(
@@ -72,11 +82,9 @@ function App() {
           error
         )
       } finally {
-        setTimeout(() => {
-          if (isMounted) {
-            setIsLoading(false)
-          }
-        }, 2000)
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
 
@@ -128,7 +136,7 @@ function App() {
     const loadProfile = async () => {
       try {
         const profileResult = await getProfileForUser(session.user)
-        const resolvedRole = profileResult?.role || 'student'
+        const resolvedRole = profileResult?.role || null
 
         if (isMounted) {
           setRole(resolvedRole)
@@ -136,7 +144,7 @@ function App() {
       } catch (error) {
         console.error('Error loading profile:', error)
         if (isMounted) {
-          setRole('student')
+          setRole(null)
         }
       } finally {
         if (isMounted) {
@@ -159,148 +167,203 @@ function App() {
   }, [session?.user?.id, session?.user?.email])
 
   // =========================================================
-  // INITIAL LOADING
+  // UNIFIED PROGRESS TRACKER (SESSION + ROLE + ROUTE READY)
   // =========================================================
 
-  if (isLoading || (session && roleLoading && !role)) {
-    return <Loading />
-  }
+  const isAppStillLoading = isLoading || (Boolean(session) && roleLoading && !role)
+
+  useEffect(() => {
+    if (hasCompletedInitialBoot.current) return
+
+    // Determine target ceiling based on current stage:
+    // Stage 1: Checking session -> up to 55%
+    // Stage 2: Fetching user role -> up to 90%
+    // Stage 3: Everything ready -> 100%
+    const targetProgress = isLoading
+      ? 55
+      : session && roleLoading && !role
+      ? 90
+      : 100
+
+    const interval = setInterval(() => {
+      setLoadProgress((prev) => {
+        if (prev >= targetProgress) {
+          clearInterval(interval)
+          return prev
+        }
+        const remaining = targetProgress - prev
+        const step = targetProgress === 100
+          ? Math.max(4, Math.ceil(remaining * 0.35))
+          : Math.max(1, Math.ceil(remaining * 0.15))
+        return Math.min(prev + step, targetProgress)
+      })
+    }, 60)
+
+    return () => clearInterval(interval)
+  }, [isLoading, session, roleLoading, role])
+
+  // Trigger smooth slide-up exit only after reaching 100% and app is ready
+  useEffect(() => {
+    if (!isAppStillLoading && loadProgress === 100 && !hasCompletedInitialBoot.current) {
+      hasCompletedInitialBoot.current = true
+
+      const exitStartTimer = setTimeout(() => {
+        setIsLoaderExiting(true)
+
+        const unmountTimer = setTimeout(() => {
+          setShowLoader(false)
+        }, 500) // Matches animate-slide-up duration
+
+        return () => clearTimeout(unmountTimer)
+      }, 250)
+
+      return () => clearTimeout(exitStartTimer)
+    }
+  }, [isAppStillLoading, loadProgress])
 
   // =========================================================
   // ROUTES
   // =========================================================
 
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* PUBLIC ROUTES */}
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/about" element={<About />} />
+    <>
+      {showLoader && (
+        <Loading progress={loadProgress} isExiting={isLoaderExiting} />
+      )}
 
-        {/* AUTHENTICATION ROUTES */}
-        <Route path="/login" element={<Navigate to="/login/users" replace />} />
-        <Route path="/login/staff" element={<Navigate to="/login/users" replace />} />
+      {!isAppStillLoading && (
+        <BrowserRouter>
+          <Routes>
+            {/* PUBLIC ROUTES */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/about" element={<About />} />
 
-        {/* User Login */}
-        <Route
-          path="/login/users"
-          element={
-            session && role === 'admin' ? (
-              <Navigate to="/admin/reports" replace />
-            ) : session && role === 'career_advisor' ? (
-              <Navigate to="/staff/dashboard" replace />
-            ) : session && (role === 'user' || role === 'student') ? (
-              <Navigate to="/user/dashboard" replace />
-            ) : (
-              <UserLogin />
-            )
-          }
-        />
+            {/* AUTHENTICATION ROUTES */}
+            <Route path="/login" element={<Navigate to="/login/users" replace />} />
+            <Route path="/login/staff" element={<Navigate to="/login/users" replace />} />
 
-        {/* PROTECTED STUDENT ROUTES */}
-        <Route
-          element={
-            session && (role === 'user' || role === 'student') ? (
-              <EnrollmentGate />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        >
-          <Route path="/user/dashboard" element={<UserDashboard />} />
-          <Route path="/user/interviews" element={<InterviewHistory />} />
-          <Route path="/user/interview-results/:sessionId" element={<InterviewResults />} />
-          <Route path="/user/interview-results" element={<InterviewResults />} />
-          <Route path="/user/waiting-room" element={<WaitingRoom />} />
-          <Route path="/user/settings" element={<UserSettings />} />
-          <Route path="/user/resume-upload" element={<ResumeUpload />} />
-          <Route path="/user/hardware-check" element={<HardwareCheck />} />
-          <Route path="/user/live-session" element={<LiveSession />} />
-        </Route>
+            {/* User Login */}
+            <Route
+              path="/login/users"
+              element={
+                session && role === 'admin' ? (
+                  <Navigate to="/admin/reports" replace />
+                ) : session && role === 'career_advisor' ? (
+                  <Navigate to="/staff/dashboard" replace />
+                ) : session && (role === 'user' || role === 'student') ? (
+                  <Navigate to="/user/dashboard" replace />
+                ) : (
+                  <UserLogin />
+                )
+              }
+            />
 
-        {/* PROTECTED CAREER ADVISOR ROUTES */}
-        <Route
-          path="/staff/dashboard"
-          element={
-            session && role === 'career_advisor' ? (
-              <StaffDashboard />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+            {/* PROTECTED STUDENT ROUTES */}
+            <Route
+              element={
+                session && (role === 'user' || role === 'student') ? (
+                  <EnrollmentGate />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            >
+              <Route path="/user/dashboard" element={<UserDashboard />} />
+              <Route path="/user/interviews" element={<InterviewHistory />} />
+              <Route path="/user/interview-results/:sessionId" element={<InterviewResults />} />
+              <Route path="/user/interview-results" element={<InterviewResults />} />
+              <Route path="/user/waiting-room" element={<WaitingRoom />} />
+              <Route path="/user/settings" element={<UserSettings />} />
+              <Route path="/user/resume-upload" element={<ResumeUpload />} />
+              <Route path="/user/hardware-check" element={<HardwareCheck />} />
+              <Route path="/user/live-session" element={<LiveSession />} />
+            </Route>
 
-        <Route
-          path="/staff/dashboard/course/:courseId"
-          element={
-            session && role === "career_advisor" ? (
-              <StaffDashboard />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+            {/* PROTECTED CAREER ADVISOR ROUTES */}
+            <Route
+              path="/staff/dashboard"
+              element={
+                session && role === 'career_advisor' ? (
+                  <StaffDashboard />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-        <Route
-          path="/staff/statistics"
-          element={
-            session && role === 'career_advisor' ? (
-              <StaffStatistics />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+            <Route
+              path="/staff/dashboard/course/:courseId"
+              element={
+                session && role === "career_advisor" ? (
+                  <StaffDashboard />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-        <Route
-          path="/staff/settings"
-          element={
-            session && role === 'career_advisor' ? (
-              <StaffSettings />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+            <Route
+              path="/staff/statistics"
+              element={
+                session && role === 'career_advisor' ? (
+                  <StaffStatistics />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-        {/* PROTECTED ADMIN ROUTES */}
-        <Route
-          path="/admin/reports"
-          element={
-            session && role === 'admin' ? (
-              <SystemReport />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+            <Route
+              path="/staff/settings"
+              element={
+                session && role === 'career_advisor' ? (
+                  <StaffSettings />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-        <Route
-          path="/admin/users"
-          element={
-            session && role === 'admin' ? (
-              <UserManagement />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+            {/* PROTECTED ADMIN ROUTES */}
+            <Route
+              path="/admin/reports"
+              element={
+                session && role === 'admin' ? (
+                  <SystemReport />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-        <Route
-          path="/admin/avatars"
-          element={
-            session && role === 'admin' ? (
-              <AvatarManagement />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+            <Route
+              path="/admin/users"
+              element={
+                session && role === 'admin' ? (
+                  <UserManagement />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-        {/* FALLBACK */}
-        <Route path="*" element={<Error404 />} />
-      </Routes>
-    </BrowserRouter>
+            <Route
+              path="/admin/avatars"
+              element={
+                session && role === 'admin' ? (
+                  <AvatarManagement />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+
+            {/* FALLBACK */}
+            <Route path="*" element={<Error404 />} />
+          </Routes>
+        </BrowserRouter>
+      )}
+    </>
   )
 }
 
