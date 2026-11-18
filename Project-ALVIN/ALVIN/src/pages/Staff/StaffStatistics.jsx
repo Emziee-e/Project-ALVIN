@@ -95,7 +95,9 @@ function CountUpNumber({ value, duration = 1000, prefix = "", suffix = "" }) {
 // 1. STUDENT LINE CHART COMPONENT (Historical Growth Trend)
 // ----------------------------------------------------------------------
 function StudentLineChart({ data = [], expanded = false, onToggleExpand }) {
-  const safeData = Array.isArray(data) ? data : [];
+  // Attempts can share the same date, which breaks Recharts hover matching.
+  // Give every point a unique index to use as the X key.
+  const safeData = (Array.isArray(data) ? data : []).map((d, i) => ({ ...d, idx: i }));
   const latestScore = safeData.length > 0 ? (safeData[safeData.length - 1]?.score ?? 0) : 0;
 
   return (
@@ -116,7 +118,9 @@ function StudentLineChart({ data = [], expanded = false, onToggleExpand }) {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
 
               <XAxis
-                dataKey="date"
+                dataKey="idx"
+                tickFormatter={(i) => safeData[i]?.date ?? ""}
+                interval={0}
                 tick={{ fontSize: 13, fill: "#6B7280", fontFamily: "Inter" }}
                 axisLine={false}
                 tickLine={false}
@@ -133,9 +137,11 @@ function StudentLineChart({ data = [], expanded = false, onToggleExpand }) {
               />
 
               <Tooltip
-                content={({ active, payload, label }) => {
+                wrapperStyle={{ zIndex: 50, pointerEvents: "none" }}
+                content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     const val = payload[0].value ?? 0;
+                    const label = payload[0].payload?.date;
                     return (
                       <div className="bg-[#FDFBF7] border border-[#EAE5D9] p-2.5 rounded-xl shadow-md text-xs font-Inter">
                         <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">{label || "Date"}</p>
