@@ -1319,7 +1319,7 @@ export default function StaffStatistics() {
           {/* Section Header & Custom Dropdown */}
           <div
             style={{ animationDelay: "0ms" }}
-            className="animate-item-in bg-white border border-[#EAE5D9] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print"
+            className="animate-item-in relative z-30 bg-white border border-[#EAE5D9] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print"
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#862334]/10 text-[#862334] flex items-center justify-center flex-shrink-0">
