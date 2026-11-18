@@ -23,8 +23,8 @@ import {
   AlertTriangle,
   Trash2,
   Maximize2,
+  Minimize2,
 } from "lucide-react";
-import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
 import AccountActionToast from "../../Components/AccountActionToast";
@@ -94,18 +94,18 @@ function CountUpNumber({ value, duration = 1000, prefix = "", suffix = "" }) {
 // ----------------------------------------------------------------------
 // 1. STUDENT LINE CHART COMPONENT (Historical Growth Trend)
 // ----------------------------------------------------------------------
-function StudentLineChart({ data = [], pxPerPoint = 0, chartHeightClass = "h-[280px]", onExpand }) {
+function StudentLineChart({ data = [], expanded = false, onToggleExpand }) {
   const safeData = Array.isArray(data) ? data : [];
   const latestScore = safeData.length > 0 ? (safeData[safeData.length - 1]?.score ?? 0) : 0;
 
   return (
     <div className="flex flex-col justify-between h-full min-h-[340px] w-full min-w-0">
-      <div className={`${chartHeightClass} w-full min-w-0 overflow-hidden`}>
+      <div className={`${expanded ? "h-[440px]" : "h-[280px]"} w-full min-w-0 overflow-hidden transition-all duration-300`}>
         {safeData.length > 0 ? (
           <div className="h-full w-full overflow-x-auto overflow-y-hidden">
-          <div style={{ minWidth: pxPerPoint ? safeData.length * pxPerPoint : undefined, height: "100%" }}>
+          <div style={{ minWidth: expanded ? safeData.length * 110 : undefined, height: "100%" }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={safeData} margin={{ top: 30, right: 24, left: -10, bottom: 5 }}>
+            <AreaChart data={safeData} margin={{ top: 15, right: 14, left: -10, bottom: 5 }}>
               <defs>
                 <linearGradient id="studentLineGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#862334" stopOpacity={0.25} />
@@ -157,7 +157,6 @@ function StudentLineChart({ data = [], pxPerPoint = 0, chartHeightClass = "h-[28
                 fill="url(#studentLineGrad)"
                 dot={{ r: 4, fill: "#FFFFFF", stroke: "#862334", strokeWidth: 2 }}
                 activeDot={{ r: 6, fill: "#862334", stroke: "#FFFFFF", strokeWidth: 2 }}
-                label={(props) => <CustomDataLabel {...props} value={props.value == null ? props.value : Number(props.value).toFixed(1)} />}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -174,14 +173,14 @@ function StudentLineChart({ data = [], pxPerPoint = 0, chartHeightClass = "h-[28
         <span className="text-sm text-gray-500 font-normal">
           Latest Score: <strong className="text-gray-900 font-bold font-Geist text-sm">{Number(latestScore).toFixed(1)}%</strong>
         </span>
-        {onExpand && safeData.length > 0 && (
+        {onToggleExpand && safeData.length > 0 && (
           <button
             type="button"
-            onClick={onExpand}
+            onClick={onToggleExpand}
             className="no-print flex items-center gap-1.5 bg-[#862334] text-white rounded-lg px-3 py-1.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#6d1c2a] transition-colors cursor-pointer"
           >
-            <Maximize2 className="w-3.5 h-3.5" />
-            Expand
+            {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            {expanded ? "Unexpand" : "Expand"}
           </button>
         )}
       </div>
@@ -336,45 +335,13 @@ function RadarChartComponent({ data = [] }) {
 }
 
 // Custom Data Label for Cohort Area Line Graph
-const CustomDataLabel = (props) => {
-  const { x, y, value } = props;
-  if (value === undefined || value === null) return null;
-  return (
-    <g transform={`translate(${x},${y - 14})`}>
-      <rect
-        x="-18"
-        y="-12"
-        width="36"
-        height="18"
-        rx="9"
-        fill="#FFFFFF"
-        stroke="#FCE7F3"
-        strokeWidth="1"
-      />
-      <text
-        x="0"
-        y="0"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fill="#862334"
-        fontSize="10"
-        fontWeight="700"
-        className="font-Geist"
-      >
-        {`${value}%`}
-      </text>
-    </g>
-  );
-};
-
 // ----------------------------------------------------------------------
-// COHORT TREND CHART (scrolls horizontally so every dot + score stays readable)
+// COHORT TREND CHART (pxPerPoint = 0 fits the card; > 0 spreads the dots out and scrolls sideways)
 // ----------------------------------------------------------------------
-function CohortTrendChart({ data = [], pxPerPoint = 60 }) {
-  const minWidth = data.length * pxPerPoint;
+function CohortTrendChart({ data = [], pxPerPoint = 0 }) {
   return (
     <div className="h-full w-full overflow-x-auto overflow-y-hidden">
-      <div style={{ minWidth, height: "100%" }}>
+      <div style={{ minWidth: pxPerPoint ? data.length * pxPerPoint : undefined, height: "100%" }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 25, right: 20, left: -10, bottom: 10 }}>
             <defs>
@@ -451,7 +418,6 @@ function CohortTrendChart({ data = [], pxPerPoint = 60 }) {
               fill="url(#maroonGradient)"
               dot={{ r: 5, fill: "#FFFFFF", stroke: "#862334", strokeWidth: 2.5 }}
               activeDot={{ r: 7, fill: "#FFB003", stroke: "#862334", strokeWidth: 3 }}
-              label={<CustomDataLabel />}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -508,24 +474,6 @@ export default function StaffStatistics() {
   const [pdfError, setPdfError] = useState("");
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
   const [isStudentChartExpanded, setIsStudentChartExpanded] = useState(false);
-
-  // Close the expanded chart with Escape and stop the page scrolling behind it.
-  useEffect(() => {
-    if (!isTrendExpanded && !isStudentChartExpanded) return undefined;
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        setIsTrendExpanded(false);
-        setIsStudentChartExpanded(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [isTrendExpanded, isStudentChartExpanded]);
 
   const [userProfile, setUserProfile] = useState({
     name: "User",
@@ -893,6 +841,7 @@ export default function StaffStatistics() {
     if (!node || !selectedStudent || isGeneratingPdf) return;
 
     setIsGeneratingPdf(true);
+    setIsStudentChartExpanded(false);
     setPdfError("");
     try {
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -1127,11 +1076,6 @@ export default function StaffStatistics() {
       setIsGeneratingPdf(false);
     }
   };
-
-  const cohortAverageLabel =
-    Array.isArray(overview?.trend) && overview.trend.length
-      ? `${Math.round(overview.trend.reduce((acc, curr) => acc + (curr.average || 0), 0) / overview.trend.length)}%`
-      : "—";
 
   const currentSectionLabel =
     selectedSection === "ALL"
@@ -1680,12 +1624,12 @@ export default function StaffStatistics() {
 
                   <button
                     type="button"
-                    onClick={() => setIsTrendExpanded(true)}
+                    onClick={() => setIsTrendExpanded((v) => !v)}
                     disabled={!(Array.isArray(overview?.trend) && overview.trend.length)}
                     className="flex items-center gap-2 bg-[#862334] text-white rounded-xl px-3.5 py-1.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#6d1c2a] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                    Expand
+                    {isTrendExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                    {isTrendExpanded ? "Unexpand" : "Expand"}
                   </button>
                 </div>
               </div>
@@ -1696,13 +1640,13 @@ export default function StaffStatistics() {
                 </div>
               )}
 
-              <div className="h-[360px] w-full pt-2">
+              <div className={`${isTrendExpanded ? "h-[520px]" : "h-[360px]"} w-full pt-2 transition-all duration-300`}>
                 {overviewLoading ? (
                   <div className="h-full flex items-center justify-center text-gray-400 text-sm font-Inter">
                     Loading section statistics…
                   </div>
                 ) : Array.isArray(overview?.trend) && overview.trend.length ? (
-                  <CohortTrendChart data={overview.trend} pxPerPoint={60} />
+                  <CohortTrendChart data={overview.trend} pxPerPoint={isTrendExpanded ? 90 : 0} />
                 ) : (
                   <div className="h-full flex items-center justify-center text-gray-400 text-sm font-Inter">
                     No evaluation data available for {currentSectionLabel} yet.
@@ -1711,93 +1655,6 @@ export default function StaffStatistics() {
               </div>
             </div>
           </div>
-
-          {isStudentChartExpanded && selectedStudent &&
-            createPortal(
-              <div
-                className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-3 md:p-6"
-                onClick={() => setIsStudentChartExpanded(false)}
-              >
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label={`Performance Growth (${selectedStudent.name})`}
-                  className="bg-white rounded-2xl border border-[#862334]/20 shadow-2xl w-full max-w-[96vw] max-h-[92vh] flex flex-col p-5 md:p-8"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-start justify-between gap-4 border-b border-[#EAE5D9] pb-4 mb-4">
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900 font-Geist tracking-tight">
-                        Performance Growth ({selectedStudent.name})
-                      </h2>
-                      <p className="text-sm text-gray-500 font-Inter">
-                        Historical score progression across all completed attempts
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsStudentChartExpanded(false)}
-                      aria-label="Close expanded chart"
-                      className="w-9 h-9 shrink-0 rounded-full bg-[#862334]/10 text-[#862334] flex items-center justify-center hover:bg-[#862334]/20 transition-colors cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <StudentLineChart
-                    data={selectedStudent.lineData || []}
-                    pxPerPoint={110}
-                    chartHeightClass="h-[60vh]"
-                  />
-                </div>
-              </div>,
-              document.body
-            )}
-
-          {isTrendExpanded &&
-            createPortal(
-              <div
-                className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-3 md:p-6"
-                onClick={() => setIsTrendExpanded(false)}
-              >
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label={dynamicChartTitle}
-                  className="bg-white rounded-2xl border border-[#862334]/20 shadow-2xl w-full max-w-[96vw] max-h-[92vh] flex flex-col p-5 md:p-8"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EAE5D9] pb-4 mb-4">
-                    <h2 className="text-xl font-bold text-gray-900 font-Geist tracking-tight">
-                      {dynamicChartTitle}
-                    </h2>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl px-3.5 py-1.5 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-[#862334]" />
-                        <span className="text-xs font-bold text-gray-500 font-Inter tracking-wider">Cohort Average:</span>
-                        <span className="text-sm font-bold text-[#862334] font-Geist">{cohortAverageLabel}</span>
-                      </div>
-                      <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl px-3.5 py-1.5 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-500" />
-                        <span className="text-xs font-bold text-gray-500 font-Inter tracking-wider">Benchmark:</span>
-                        <span className="text-sm font-bold text-gray-800 font-Geist">70% Target</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsTrendExpanded(false)}
-                        aria-label="Close expanded chart"
-                        className="w-9 h-9 rounded-full bg-[#862334]/10 text-[#862334] flex items-center justify-center hover:bg-[#862334]/20 transition-colors cursor-pointer"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="h-[70vh] w-full">
-                    <CohortTrendChart data={overview?.trend || []} pxPerPoint={90} />
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
 
           {/* Detailed Printable Student Report */}
           <div
@@ -2041,7 +1898,8 @@ export default function StaffStatistics() {
                     </div>
                     <StudentLineChart
                       data={selectedStudent.lineData || []}
-                      onExpand={() => setIsStudentChartExpanded(true)}
+                      expanded={isStudentChartExpanded}
+                      onToggleExpand={() => setIsStudentChartExpanded((v) => !v)}
                     />
                   </div>
 
