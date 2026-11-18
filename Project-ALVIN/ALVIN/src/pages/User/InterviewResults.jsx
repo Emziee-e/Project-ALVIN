@@ -1351,14 +1351,7 @@ export default function InterviewResults() {
           )
         );
         try {
-          await Promise.race([
-            Promise.all(
-              ["400 10pt Inter", "500 10pt Inter", "600 10pt Inter", "700 10pt Inter", "600 10pt Geist", "700 10pt Geist"].map(
-                (face) => doc.fonts.load(face).catch(() => [])
-              )
-            ).then(() => doc.fonts.ready),
-            new Promise((r) => setTimeout(r, 4000)),
-          ]);
+          await Promise.race([doc.fonts?.ready, new Promise((r) => setTimeout(r, 2500))]);
         } catch {
           // Fonts are cosmetic; continue with fallbacks.
         }
@@ -1373,54 +1366,36 @@ export default function InterviewResults() {
 
         // Measure the blocks so pages can break between them, never through one.
         // A section heading stays attached to the block that follows it.
-        //
-        // The measuring runs on the exact copy of the report that html2canvas draws
-        // (the onclone callback), so the measured positions always match the captured
-        // image. Measuring the original frame instead can drift (fonts or text wrapping
-        // can differ between the two) and cut a question through the middle.
-        let blocks = [];
-        let items = [];
-        const measureLayout = (rootDoc) => {
-          const bodyTop = rootDoc.body.getBoundingClientRect().top;
-          const found = [];
-          let pendingTop = null;
-          rootDoc
-            .querySelectorAll(
-              ".header, .candidate-strip, .score-section, .section-heading, .rec-container, .qa-block, .empty-note, .footer"
-            )
-            .forEach((el) => {
-              if (el.parentElement.closest(".rec-container, .qa-block")) return;
-              const rect = el.getBoundingClientRect();
-              const top = (rect.top - bodyTop) * SCALE;
-              const bottom = (rect.bottom - bodyTop) * SCALE;
-              if (el.classList.contains("section-heading")) {
-                pendingTop = top;
-                return;
-              }
-              found.push({ top: pendingTop ?? top, bottom });
-              pendingTop = null;
-            });
-          blocks = found;
-          // Inner pieces, used only to split a block that is taller than one page.
-          items = Array.from(
-            rootDoc.querySelectorAll(".rec-item, .q-header, .ans-box, .critique-box")
-          ).map((el) => (el.getBoundingClientRect().bottom - bodyTop) * SCALE);
-        };
+        const bodyTop = doc.body.getBoundingClientRect().top;
+        const blocks = [];
+        let pendingTop = null;
+        doc
+          .querySelectorAll(
+            ".header, .candidate-strip, .score-section, .section-heading, .rec-container, .qa-block, .empty-note, .footer"
+          )
+          .forEach((el) => {
+            if (el.parentElement.closest(".rec-container, .qa-block")) return;
+            const rect = el.getBoundingClientRect();
+            const top = (rect.top - bodyTop) * SCALE;
+            const bottom = (rect.bottom - bodyTop) * SCALE;
+            if (el.classList.contains("section-heading")) {
+              pendingTop = top;
+              return;
+            }
+            blocks.push({ top: pendingTop ?? top, bottom });
+            pendingTop = null;
+          });
+        // Inner pieces, used only to split a block that is taller than one page.
+        const items = Array.from(
+          doc.querySelectorAll(".rec-item, .q-header, .ans-box, .critique-box")
+        ).map((el) => (el.getBoundingClientRect().bottom - bodyTop) * SCALE);
 
         const canvas = await html2canvas(doc.body, {
           scale: SCALE,
           backgroundColor: "#ffffff",
           useCORS: true,
           logging: false,
-          onclone: (clonedDoc) => {
-            try {
-              measureLayout(clonedDoc);
-            } catch {
-              // Fall back to measuring the original frame below.
-            }
-          },
         });
-        if (!blocks.length) measureLayout(doc);
 
         const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
         const pageW = pdf.internal.pageSize.getWidth();
