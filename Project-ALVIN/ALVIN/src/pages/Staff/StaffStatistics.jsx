@@ -1448,7 +1448,7 @@ export default function StaffStatistics() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold tracking-wider mt-3 font-Inter">
-                <span>Scored <span className="text-emerald-600">80%+</span> on Latest Attempt</span>
+                <span>Scored <span className="text-emerald-600">70%+</span> on Latest Attempt</span>
               </div>
             </div>
 
@@ -1459,7 +1459,7 @@ export default function StaffStatistics() {
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-sm font-bold text-gray-700 font-Inter tracking-wider">
-                    Progression Velocity
+                    Improvement Rate
                   </span>
                   <h3 className="text-3xl font-bold font-Geist text-[#862334] mt-2 tracking-tight">
                     {overviewLoading ? (
