@@ -22,7 +22,9 @@ import {
   Calendar,
   AlertTriangle,
   Trash2,
+  Maximize2,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
 import AccountActionToast from "../../Components/AccountActionToast";
@@ -92,16 +94,18 @@ function CountUpNumber({ value, duration = 1000, prefix = "", suffix = "" }) {
 // ----------------------------------------------------------------------
 // 1. STUDENT LINE CHART COMPONENT (Historical Growth Trend)
 // ----------------------------------------------------------------------
-function StudentLineChart({ data = [] }) {
+function StudentLineChart({ data = [], pxPerPoint = 0, chartHeightClass = "h-[280px]", onExpand }) {
   const safeData = Array.isArray(data) ? data : [];
   const latestScore = safeData.length > 0 ? (safeData[safeData.length - 1]?.score ?? 0) : 0;
 
   return (
     <div className="flex flex-col justify-between h-full min-h-[340px] w-full min-w-0">
-      <div className="h-[280px] w-full min-w-0 overflow-hidden">
+      <div className={`${chartHeightClass} w-full min-w-0 overflow-hidden`}>
         {safeData.length > 0 ? (
+          <div className="h-full w-full overflow-x-auto overflow-y-hidden">
+          <div style={{ minWidth: pxPerPoint ? safeData.length * pxPerPoint : undefined, height: "100%" }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={safeData} margin={{ top: 15, right: 14, left: -10, bottom: 5 }}>
+            <AreaChart data={safeData} margin={{ top: 30, right: 24, left: -10, bottom: 5 }}>
               <defs>
                 <linearGradient id="studentLineGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#862334" stopOpacity={0.25} />
@@ -153,9 +157,12 @@ function StudentLineChart({ data = [] }) {
                 fill="url(#studentLineGrad)"
                 dot={{ r: 4, fill: "#FFFFFF", stroke: "#862334", strokeWidth: 2 }}
                 activeDot={{ r: 6, fill: "#862334", stroke: "#FFFFFF", strokeWidth: 2 }}
+                label={(props) => <CustomDataLabel {...props} value={props.value == null ? props.value : Number(props.value).toFixed(1)} />}
               />
             </AreaChart>
           </ResponsiveContainer>
+          </div>
+          </div>
         ) : (
           <div className="h-full flex items-center justify-center text-gray-400 text-xs font-Inter">
             No evaluation attempt history recorded for this student.
@@ -167,6 +174,16 @@ function StudentLineChart({ data = [] }) {
         <span className="text-sm text-gray-500 font-normal">
           Latest Score: <strong className="text-gray-900 font-bold font-Geist text-sm">{Number(latestScore).toFixed(1)}%</strong>
         </span>
+        {onExpand && safeData.length > 0 && (
+          <button
+            type="button"
+            onClick={onExpand}
+            className="no-print flex items-center gap-1.5 bg-[#862334] text-white rounded-lg px-3 py-1.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#6d1c2a] transition-colors cursor-pointer"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            Expand
+          </button>
+        )}
       </div>
     </div>
   );
@@ -350,6 +367,99 @@ const CustomDataLabel = (props) => {
   );
 };
 
+// ----------------------------------------------------------------------
+// COHORT TREND CHART (scrolls horizontally so every dot + score stays readable)
+// ----------------------------------------------------------------------
+function CohortTrendChart({ data = [], pxPerPoint = 60 }) {
+  const minWidth = data.length * pxPerPoint;
+  return (
+    <div className="h-full w-full overflow-x-auto overflow-y-hidden">
+      <div style={{ minWidth, height: "100%" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 25, right: 20, left: -10, bottom: 10 }}>
+            <defs>
+              <linearGradient id="maroonGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#862334" stopOpacity={0.15} />
+                <stop offset="100%" stopColor="#862334" stopOpacity={0.01} />
+              </linearGradient>
+            </defs>
+
+            <CartesianGrid strokeDasharray="3 3" vertical={true} stroke="#EAE5D9" opacity={0.6} />
+
+            <XAxis
+              dataKey="date"
+              tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+              tick={{ fontSize: 11, fill: "#4B5563", fontWeight: 600, fontFamily: "Inter" }}
+              axisLine={{ stroke: "#EAE5D9" }}
+              tickLine={false}
+              dy={8}
+            />
+
+            <YAxis
+              domain={[0, 100]}
+              ticks={[0, 25, 50, 75, 100]}
+              tickFormatter={(value) => `${value}%`}
+              tick={{ fontSize: 11, fill: "#4B5563", fontWeight: 600, fontFamily: "Geist" }}
+              axisLine={{ stroke: "#EAE5D9" }}
+              tickLine={false}
+            />
+
+            <Tooltip
+              content={({ active, payload, label }) => {
+                if (active && payload && payload.length) {
+                  const val = payload[0].value;
+                  const isPassing = val >= 70;
+                  return (
+                    <div className="bg-[#FDFBF7] border border-[#EAE5D9] p-3 rounded-2xl shadow-lg text-xs font-Inter space-y-1 z-50">
+                      <p className="text-gray-400 text-xs uppercase font-bold tracking-wider font-mono">
+                        {label ? new Date(`${label}T00:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : ""}
+                      </p>
+                      <div className="flex items-center gap-2.5 pt-0.5">
+                        <span className="font-extrabold text-base text-[#862334] font-Geist">{val}%</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-bold font-Inter ${isPassing ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-[#862334] border border-rose-200"}`}>
+                          {isPassing ? "Passing" : "Needs Coaching"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+
+            <ReferenceLine
+              y={70}
+              stroke="#D97706"
+              strokeDasharray="4 4"
+              strokeWidth={1.5}
+              label={{
+                value: "70% Target Benchmark",
+                fill: "#D97706",
+                fontSize: 10,
+                fontWeight: 700,
+                position: "top",
+                offset: 6
+              }}
+            />
+
+            <Area
+              type="monotone"
+              dataKey="average"
+              stroke="#862334"
+              strokeWidth={3}
+              strokeOpacity={0.95}
+              fill="url(#maroonGradient)"
+              dot={{ r: 5, fill: "#FFFFFF", stroke: "#862334", strokeWidth: 2.5 }}
+              activeDot={{ r: 7, fill: "#FFB003", stroke: "#862334", strokeWidth: 3 }}
+              label={<CustomDataLabel />}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 const navItems = [
   { id: "account", label: "Account" },
   { id: "dashboard", label: "Dashboard", path: "/staff/dashboard" },
@@ -396,6 +506,26 @@ export default function StaffStatistics() {
   const [toast, setToast] = useState(null); // { id, title, message } | null
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState("");
+  const [isTrendExpanded, setIsTrendExpanded] = useState(false);
+  const [isStudentChartExpanded, setIsStudentChartExpanded] = useState(false);
+
+  // Close the expanded chart with Escape and stop the page scrolling behind it.
+  useEffect(() => {
+    if (!isTrendExpanded && !isStudentChartExpanded) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setIsTrendExpanded(false);
+        setIsStudentChartExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isTrendExpanded, isStudentChartExpanded]);
 
   const [userProfile, setUserProfile] = useState({
     name: "User",
@@ -998,6 +1128,11 @@ export default function StaffStatistics() {
     }
   };
 
+  const cohortAverageLabel =
+    Array.isArray(overview?.trend) && overview.trend.length
+      ? `${Math.round(overview.trend.reduce((acc, curr) => acc + (curr.average || 0), 0) / overview.trend.length)}%`
+      : "—";
+
   const currentSectionLabel =
     selectedSection === "ALL"
       ? "Overall Section"
@@ -1542,6 +1677,16 @@ export default function StaffStatistics() {
                       <span className="text-sm font-bold text-gray-800 font-Geist">70% Target</span>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsTrendExpanded(true)}
+                    disabled={!(Array.isArray(overview?.trend) && overview.trend.length)}
+                    className="flex items-center gap-2 bg-[#862334] text-white rounded-xl px-3.5 py-1.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#6d1c2a] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    Expand
+                  </button>
                 </div>
               </div>
 
@@ -1557,86 +1702,7 @@ export default function StaffStatistics() {
                     Loading section statistics…
                   </div>
                 ) : Array.isArray(overview?.trend) && overview.trend.length ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={overview.trend} margin={{ top: 25, right: 20, left: -10, bottom: 10 }}>
-                      <defs>
-                        <linearGradient id="maroonGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#862334" stopOpacity={0.15} />
-                          <stop offset="100%" stopColor="#862334" stopOpacity={0.01} />
-                        </linearGradient>
-                      </defs>
-
-                      <CartesianGrid strokeDasharray="3 3" vertical={true} stroke="#EAE5D9" opacity={0.6} />
-
-                      <XAxis
-                        dataKey="date"
-                        tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                        tick={{ fontSize: 11, fill: "#4B5563", fontWeight: 600, fontFamily: "Inter" }}
-                        axisLine={{ stroke: "#EAE5D9" }}
-                        tickLine={false}
-                        dy={8}
-                      />
-
-                      <YAxis
-                        domain={[0, 100]}
-                        ticks={[0, 25, 50, 75, 100]}
-                        tickFormatter={(value) => `${value}%`}
-                        tick={{ fontSize: 11, fill: "#4B5563", fontWeight: 600, fontFamily: "Geist" }}
-                        axisLine={{ stroke: "#EAE5D9" }}
-                        tickLine={false}
-                      />
-
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (active && payload && payload.length) {
-                            const val = payload[0].value;
-                            const isPassing = val >= 70;
-                            return (
-                              <div className="bg-[#FDFBF7] border border-[#EAE5D9] p-3 rounded-2xl shadow-lg text-xs font-Inter space-y-1 z-50">
-                                <p className="text-gray-400 text-xs uppercase font-bold tracking-wider font-mono">
-                                  {label ? new Date(`${label}T00:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : ""}
-                                </p>
-                                <div className="flex items-center gap-2.5 pt-0.5">
-                                  <span className="font-extrabold text-base text-[#862334] font-Geist">{val}%</span>
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold font-Inter ${isPassing ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-[#862334] border border-rose-200"}`}>
-                                    {isPassing ? "Passing" : "Needs Coaching"}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-
-                      <ReferenceLine
-                        y={70}
-                        stroke="#D97706"
-                        strokeDasharray="4 4"
-                        strokeWidth={1.5}
-                        label={{
-                          value: "70% Target Benchmark",
-                          fill: "#D97706",
-                          fontSize: 10,
-                          fontWeight: 700,
-                          position: "top",
-                          offset: 6
-                        }}
-                      />
-
-                      <Area
-                        type="monotone"
-                        dataKey="average"
-                        stroke="#862334"
-                        strokeWidth={3}
-                        strokeOpacity={0.95}
-                        fill="url(#maroonGradient)"
-                        dot={{ r: 5, fill: "#FFFFFF", stroke: "#862334", strokeWidth: 2.5 }}
-                        activeDot={{ r: 7, fill: "#FFB003", stroke: "#862334", strokeWidth: 3 }}
-                        label={<CustomDataLabel />}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <CohortTrendChart data={overview.trend} pxPerPoint={60} />
                 ) : (
                   <div className="h-full flex items-center justify-center text-gray-400 text-sm font-Inter">
                     No evaluation data available for {currentSectionLabel} yet.
@@ -1645,6 +1711,93 @@ export default function StaffStatistics() {
               </div>
             </div>
           </div>
+
+          {isStudentChartExpanded && selectedStudent &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-3 md:p-6"
+                onClick={() => setIsStudentChartExpanded(false)}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={`Performance Growth (${selectedStudent.name})`}
+                  className="bg-white rounded-2xl border border-[#862334]/20 shadow-2xl w-full max-w-[96vw] max-h-[92vh] flex flex-col p-5 md:p-8"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-start justify-between gap-4 border-b border-[#EAE5D9] pb-4 mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900 font-Geist tracking-tight">
+                        Performance Growth ({selectedStudent.name})
+                      </h2>
+                      <p className="text-sm text-gray-500 font-Inter">
+                        Historical score progression across all completed attempts
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsStudentChartExpanded(false)}
+                      aria-label="Close expanded chart"
+                      className="w-9 h-9 shrink-0 rounded-full bg-[#862334]/10 text-[#862334] flex items-center justify-center hover:bg-[#862334]/20 transition-colors cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <StudentLineChart
+                    data={selectedStudent.lineData || []}
+                    pxPerPoint={110}
+                    chartHeightClass="h-[60vh]"
+                  />
+                </div>
+              </div>,
+              document.body
+            )}
+
+          {isTrendExpanded &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-3 md:p-6"
+                onClick={() => setIsTrendExpanded(false)}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={dynamicChartTitle}
+                  className="bg-white rounded-2xl border border-[#862334]/20 shadow-2xl w-full max-w-[96vw] max-h-[92vh] flex flex-col p-5 md:p-8"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EAE5D9] pb-4 mb-4">
+                    <h2 className="text-xl font-bold text-gray-900 font-Geist tracking-tight">
+                      {dynamicChartTitle}
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl px-3.5 py-1.5 flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#862334]" />
+                        <span className="text-xs font-bold text-gray-500 font-Inter tracking-wider">Cohort Average:</span>
+                        <span className="text-sm font-bold text-[#862334] font-Geist">{cohortAverageLabel}</span>
+                      </div>
+                      <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl px-3.5 py-1.5 flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="text-xs font-bold text-gray-500 font-Inter tracking-wider">Benchmark:</span>
+                        <span className="text-sm font-bold text-gray-800 font-Geist">70% Target</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsTrendExpanded(false)}
+                        aria-label="Close expanded chart"
+                        className="w-9 h-9 rounded-full bg-[#862334]/10 text-[#862334] flex items-center justify-center hover:bg-[#862334]/20 transition-colors cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="h-[70vh] w-full">
+                    <CohortTrendChart data={overview?.trend || []} pxPerPoint={90} />
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
 
           {/* Detailed Printable Student Report */}
           <div
@@ -1886,7 +2039,10 @@ export default function StaffStatistics() {
                         Historical score progression across all completed attempts
                       </p>
                     </div>
-                    <StudentLineChart data={selectedStudent.lineData || []} />
+                    <StudentLineChart
+                      data={selectedStudent.lineData || []}
+                      onExpand={() => setIsStudentChartExpanded(true)}
+                    />
                   </div>
 
                   {/* Skills Assessment Radar Chart */}
