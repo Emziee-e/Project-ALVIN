@@ -120,7 +120,8 @@ function StudentLineChart({ data = [], expanded = false, onToggleExpand }) {
               <XAxis
                 dataKey="idx"
                 tickFormatter={(i) => safeData[i]?.date ?? ""}
-                interval={0}
+                interval={expanded ? 0 : "preserveStartEnd"}
+                minTickGap={24}
                 tick={{ fontSize: 13, fill: "#6B7280", fontFamily: "Inter" }}
                 axisLine={false}
                 tickLine={false}
