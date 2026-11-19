@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useMemo, useRef } from "react";
 import {
   LayoutDashboard,
@@ -22,6 +23,7 @@ import Logo from "/images/Alvin-logo.png";
 import SignOutModal from "../../Components/SignOutModal";
 import AccountActionToast from "../../Components/AccountActionToast";
 import { supabase } from "../../lib/supabaseClient";
+import { authenticatedFetch } from "../../lib/authenticatedFetch";
 
 const navItems = [
   { id: "account", label: "Account" },
@@ -34,8 +36,6 @@ const SORT_OPTIONS = [
   { id: "score", label: "Highest Score" },
 ];
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
-const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 const PER_PAGE = 5;
 
 const formatInterviewDate = (date) =>
@@ -61,20 +61,17 @@ function getPaginationNumbers(current, totalPages) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
   }
 
-  // Group into chunks of 3: [1,2,3], [4,5,6], [7,8,9], etc.
+  // Group into chunks of 3.
   const chunkStart = Math.floor((current - 1) / 3) * 3 + 1;
 
-  // First chunk: [1, 2, 3, ..., totalPages]
   if (chunkStart === 1) {
     return [1, 2, 3, "...", totalPages];
   }
 
-  // Final chunk: [1, ..., totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
   if (chunkStart >= totalPages - 3) {
     return [1, "...", totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
   }
 
-  // Middle chunks: [1, ..., chunkStart, chunkStart + 1, chunkStart + 2, ..., totalPages]
   return [1, "...", chunkStart, chunkStart + 1, chunkStart + 2, "...", totalPages];
 }
 
@@ -87,13 +84,13 @@ export default function Interview() {
   const [historyError, setHistoryError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("recent"); // "recent" | "score"
+  const [sortBy, setSortBy] = useState("recent");
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null); // interview row awaiting confirmation
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const [toast, setToast] = useState(null); // { id, title, message } | null
+  const [toast, setToast] = useState(null);
 
   const sortDropdownRef = useRef(null);
   const navigate = useNavigate();
@@ -106,14 +103,18 @@ export default function Interview() {
     avatarUrl: null,
     initials: "V",
   });
+
   const [imageError, setImageError] = useState(false);
 
-  // Close sort dropdown when clicking outside or pressing Escape
+  // Close sort dropdown when clicking outside or pressing Escape.
   useEffect(() => {
     if (!isSortOpen) return;
 
     const handleClickOutside = (event) => {
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(event.target)
+      ) {
         setIsSortOpen(false);
       }
     };
@@ -124,6 +125,7 @@ export default function Interview() {
 
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
@@ -132,10 +134,12 @@ export default function Interview() {
 
   const processedInterviews = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+
     const filtered = query
       ? interviews.filter((row) => {
           const role = (row.target_role || "Interview").toLowerCase();
           const formattedDate = formatInterviewDate(row.started_at).toLowerCase();
+
           return role.includes(query) || formattedDate.includes(query);
         })
       : [...interviews];
@@ -144,12 +148,14 @@ export default function Interview() {
       filtered.sort((a, b) => {
         const scoreA = a.overall_score == null ? -1 : Number(a.overall_score);
         const scoreB = b.overall_score == null ? -1 : Number(b.overall_score);
+
         return scoreB - scoreA;
       });
     } else {
       filtered.sort((a, b) => {
         const timeA = a.started_at ? new Date(a.started_at).getTime() : 0;
         const timeB = b.started_at ? new Date(b.started_at).getTime() : 0;
+
         return timeB - timeA;
       });
     }
@@ -160,11 +166,14 @@ export default function Interview() {
   const total = processedInterviews.length;
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const safePage = Math.min(page, pages);
+
   const visibleInterviews = processedInterviews.slice(
     (safePage - 1) * PER_PAGE,
     safePage * PER_PAGE
   );
+
   const pageNumbers = getPaginationNumbers(safePage, pages);
+
   const activeSortLabel =
     SORT_OPTIONS.find((opt) => opt.id === sortBy)?.label || "Most Recent";
 
@@ -172,6 +181,7 @@ export default function Interview() {
     setPage(1);
   }, [searchQuery, sortBy]);
 
+  // Load user profile.
   useEffect(() => {
     let isMounted = true;
 
@@ -182,6 +192,7 @@ export default function Interview() {
 
       if (user && isMounted) {
         const metadata = user.user_metadata || {};
+
         const fullName =
           metadata.full_name ||
           metadata.name ||
@@ -190,6 +201,7 @@ export default function Interview() {
           "Vin";
 
         const emailAddress = user.email || metadata.email || "N/A";
+
         const avatar =
           metadata.avatar_url ||
           metadata.picture ||
@@ -199,6 +211,7 @@ export default function Interview() {
           null;
 
         const nameParts = fullName.split(" ").filter(Boolean);
+
         const initials =
           nameParts.length >= 2
             ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
@@ -221,22 +234,27 @@ export default function Interview() {
     };
   }, []);
 
+  // Load student enrollments with automatic token refresh.
   useEffect(() => {
     let active = true;
+
     const loadEnrollments = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session?.access_token) return;
-        const response = await fetch(`${API_BASE_URL}/api/student/enrollments`, {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "X-API-Key": APP_API_KEY,
-          },
-        });
-        if (!response.ok) throw new Error(`Enrollment request failed (${response.status})`);
+        const response = await authenticatedFetch(
+          "/api/student/enrollments",
+          { cache: "no-store" }
+        );
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+
+          throw new Error(
+            body.detail || `Enrollment request failed (${response.status})`
+          );
+        }
+
         const rows = await response.json();
+
         if (active) {
           setUserProfile((prev) => ({
             ...prev,
@@ -247,12 +265,15 @@ export default function Interview() {
         console.error("Unable to load student enrollments:", error);
       }
     };
+
     loadEnrollments();
+
     return () => {
       active = false;
     };
   }, []);
 
+  // Update active navigation.
   useEffect(() => {
     if (location.pathname.includes("/interviews")) {
       setActiveNav("interviews");
@@ -261,42 +282,44 @@ export default function Interview() {
     }
   }, [location.pathname]);
 
+  // Load interview history with automatic token refresh.
   useEffect(() => {
     const controller = new AbortController();
+
     async function loadHistory() {
       setHistoryLoading(true);
       setHistoryError("");
+
       try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-        if (error || !session?.access_token) {
-          throw new Error("Please log in to view your interview history.");
-        }
-        const response = await fetch(`${API_BASE_URL}/api/interview/history`, {
-          headers: {
-            "X-API-Key": APP_API_KEY,
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          signal: controller.signal,
-        });
+        const response = await authenticatedFetch(
+          "/api/interview/history",
+          {
+            signal: controller.signal,
+            cache: "no-store",
+          }
+        );
+
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
+
           throw new Error(
             typeof body.detail === "string"
               ? body.detail
               : `Failed to load interviews (${response.status}).`
           );
         }
+
         const data = await response.json();
+
         if (!controller.signal.aborted) {
           setInterviews(Array.isArray(data) ? data : []);
           setPage(1);
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          setHistoryError(error.message || "Unable to load interview history.");
+          setHistoryError(
+            error.message || "Unable to load interview history."
+          );
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -304,40 +327,39 @@ export default function Interview() {
         }
       }
     }
+
     loadHistory();
+
     return () => controller.abort();
   }, [refreshKey]);
 
   const closeDeleteModal = () => {
     if (isDeleting) return;
+
     setDeleteTarget(null);
     setDeleteError("");
   };
 
+  // Delete interview report with automatic token refresh.
   const handleConfirmDelete = async () => {
     if (!deleteTarget || isDeleting) return;
+
     setIsDeleting(true);
     setDeleteError("");
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error("Please sign in again to delete this report.");
-      }
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/interview/results/${encodeURIComponent(deleteTarget.session_id)}`,
+    try {
+      const response = await authenticatedFetch(
+        `/api/interview/results/${encodeURIComponent(
+          deleteTarget.session_id
+        )}`,
         {
           method: "DELETE",
-          headers: {
-            "X-API-Key": APP_API_KEY,
-            Authorization: `Bearer ${session.access_token}`,
-          },
         }
       );
+
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
+
         throw new Error(
           typeof body.detail === "string"
             ? body.detail
@@ -346,11 +368,17 @@ export default function Interview() {
       }
 
       const deletedId = deleteTarget.session_id;
-      const deletedLabel = `${deleteTarget.target_role || "Interview"} report from ${formatInterviewDate(
-        deleteTarget.started_at
-      )}`;
-      setInterviews((prev) => prev.filter((row) => row.session_id !== deletedId));
+
+      const deletedLabel = `${
+        deleteTarget.target_role || "Interview"
+      } report from ${formatInterviewDate(deleteTarget.started_at)}`;
+
+      setInterviews((prev) =>
+        prev.filter((row) => row.session_id !== deletedId)
+      );
+
       setDeleteTarget(null);
+
       setToast({
         id: Date.now(),
         title: "Report deleted",
@@ -366,7 +394,9 @@ export default function Interview() {
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
+
       if (error) throw error;
+
       navigate("/login");
     } catch (error) {
       console.error("Error signing out:", error.message);
@@ -381,20 +411,17 @@ export default function Interview() {
     <>
       <style>{`
         html, body, #root { height: 100%; margin: 0; width: 100%; }
+
         @keyframes pillPop {
-          0% {
-            transform: scale(0.88);
-          }
-          60% {
-            transform: scale(1.06);
-          }
-          100% {
-            transform: scale(1);
-          }
+          0% { transform: scale(0.88); }
+          60% { transform: scale(1.06); }
+          100% { transform: scale(1); }
         }
+
         .animate-pill-pop {
           animation: pillPop 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
+
         @keyframes pageFadeSlideIn {
           0% {
             opacity: 0;
@@ -405,9 +432,11 @@ export default function Interview() {
             transform: translateY(0);
           }
         }
+
         .animate-fade-slide-in {
           animation: pageFadeSlideIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
+
         @media (prefers-reduced-motion: reduce) {
           .animate-fade-slide-in {
             animation: none;
@@ -425,9 +454,12 @@ export default function Interview() {
           onConfirm={handleSignOut}
         />
 
-        <AccountActionToast toast={toast} onClose={() => setToast(null)} />
+        <AccountActionToast
+          toast={toast}
+          onClose={() => setToast(null)}
+        />
 
-        {/* Delete Report Confirmation (matches SignOutModal) */}
+        {/* Delete Report Confirmation */}
         {deleteTarget && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div
@@ -438,7 +470,6 @@ export default function Interview() {
               className="relative w-full max-w-sm bg-white rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-200 border border-10 border-blur-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Close Button - Overlapping */}
               <button
                 onClick={closeDeleteModal}
                 disabled={isDeleting}
@@ -448,26 +479,35 @@ export default function Interview() {
                 <X className="w-5 h-5 text-maroon group-hover:rotate-90 transition-transform duration-200" />
               </button>
 
-              {/* Header/Icon */}
               <div className="pt-6 pb-2 flex flex-col items-center">
                 <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-3">
                   <Trash2 className="w-6 h-6 text-maroon" />
                 </div>
-                <h2 id="delete-report-title" className="text-xl font-bold text-gray-900 font-Geist">
+
+                <h2
+                  id="delete-report-title"
+                  className="text-xl font-bold text-gray-900 font-Geist"
+                >
                   Delete Report
                 </h2>
               </div>
 
-              {/* Content */}
               <div className="px-6 pb-6 text-center">
-                <p id="delete-report-desc" className="text-sm text-gray-600 mb-6 font-Inter">
-                  Are you sure you want to delete your {deleteTarget.target_role || "Interview"}{" "}
-                  report from {formatInterviewDate(deleteTarget.started_at)}? Its score, feedback
-                  and answers will be permanently removed.
+                <p
+                  id="delete-report-desc"
+                  className="text-sm text-gray-600 mb-6 font-Inter"
+                >
+                  Are you sure you want to delete your{" "}
+                  {deleteTarget.target_role || "Interview"} report from{" "}
+                  {formatInterviewDate(deleteTarget.started_at)}? Its score,
+                  feedback and answers will be permanently removed.
                 </p>
 
                 {deleteError && (
-                  <p role="alert" className="text-sm text-red-700 mb-4 font-Inter">
+                  <p
+                    role="alert"
+                    className="text-sm text-red-700 mb-4 font-Inter"
+                  >
                     {deleteError}
                   </p>
                 )}
@@ -480,12 +520,16 @@ export default function Interview() {
                   >
                     Cancel
                   </button>
+
                   <button
                     onClick={handleConfirmDelete}
                     disabled={isDeleting}
                     className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-white bg-maroon hover:bg-maroon/90 shadow-lg hover:shadow-maroon/20 transition-all active:scale-[0.98] disabled:opacity-60"
                   >
-                    {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isDeleting && (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    )}
+
                     {isDeleting ? "Deleting..." : "Delete"}
                   </button>
                 </div>
@@ -497,7 +541,9 @@ export default function Interview() {
         {/* Slide-out Account Drawer */}
         <div
           className={`fixed inset-0 z-40 flex transition-all duration-300 ${
-            isAccountOpen ? "pointer-events-auto" : "pointer-events-none"
+            isAccountOpen
+              ? "pointer-events-auto"
+              : "pointer-events-none"
           }`}
         >
           <div
@@ -559,10 +605,12 @@ export default function Interview() {
                 <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
                   <Mail className="w-4 h-4" />
                 </div>
+
                 <div className="flex flex-col">
                   <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                     Email Address
                   </span>
+
                   <span className="font-[Inter] text-sm font-medium text-[#2D3B45] break-all">
                     {userProfile.email || "Not Available"}
                   </span>
@@ -579,13 +627,16 @@ export default function Interview() {
                       <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
                         <BookOpen className="w-4 h-4" />
                       </div>
+
                       <div className="flex flex-col min-w-0">
                         <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                           Enrolled Course
                         </span>
+
                         <span className="font-[Inter] text-sm font-medium text-[#2D3B45] break-words">
                           {enrollment.course_title || "Not available"}
                         </span>
+
                         {enrollment.course_code && (
                           <span className="font-[Inter] text-xs text-gray-500">
                             {enrollment.course_code}
@@ -593,27 +644,33 @@ export default function Interview() {
                         )}
                       </div>
                     </div>
+
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
                         <Users className="w-4 h-4" />
                       </div>
+
                       <div className="flex flex-col">
                         <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                           Section
                         </span>
+
                         <span className="font-[Inter] text-sm font-medium text-[#2D3B45]">
                           {enrollment.section || "Not available"}
                         </span>
                       </div>
                     </div>
+
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-rose-50 text-[#862334] rounded-lg mt-0.5">
                         <Calendar className="w-4 h-4" />
                       </div>
+
                       <div className="flex flex-col">
                         <span className="font-[Inter] text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                           Academic Term
                         </span>
+
                         <span className="font-[Inter] text-sm font-medium text-[#2D3B45]">
                           {enrollment.academic_term || "Not available"}
                         </span>
@@ -651,6 +708,7 @@ export default function Interview() {
             <nav className="w-full flex flex-col gap-1">
               {navItems.map((item) => {
                 const Icon = item.id === "account" ? User : item.icon;
+
                 const isSolidActive = isAccountOpen
                   ? item.id === "account"
                   : activeNav === item.id;
@@ -664,6 +722,7 @@ export default function Interview() {
                       } else {
                         setIsAccountOpen(false);
                         setActiveNav(item.id);
+
                         if (item.path) navigate(item.path);
                       }
                     }}
@@ -678,6 +737,7 @@ export default function Interview() {
                         isSolidActive ? "text-white" : "text-[#862334]"
                       }`}
                     />
+
                     <span
                       className={`font-[Inter] text-xs tracking-tight ${
                         isSolidActive
@@ -694,27 +754,31 @@ export default function Interview() {
           </div>
         </aside>
 
-        {/* Main Content: Non-scrollable, full-size 5-row table with pagination right beneath */}
+        {/* Main Content */}
         <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0">
           <div className="flex-1 overflow-hidden flex flex-col pt-9 pb-6 px-10 sm:px-16 lg:px-24 w-full">
-            {/* Level 1: Header Block (0ms) */}
-            <div style={staggerStyle(0)} className="mb-10 animate-fade-slide-in">
+            {/* Header */}
+            <div
+              style={staggerStyle(0)}
+              className="mb-10 animate-fade-slide-in"
+            >
               <h1 className="font-[Geist] text-3xl sm:text-4xl md:text-5xl font-bold tracking-[-0.03em] text-black leading-tight">
                 Interview History
               </h1>
+
               <p className="font-[Inter] text-[#4a4a4a] text-sm sm:text-base mt-1.5 max-w-2xl leading-relaxed">
                 Review your previous performance and detailed interview feedback reports.
               </p>
             </div>
 
-            {/* Level 2: Single-Line Compact Toolbar (110ms) */}
+            {/* Toolbar */}
             <div
               style={staggerStyle(1)}
               className="relative z-20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 animate-fade-slide-in"
             >
-              {/* Search Input */}
               <div className="relative w-full sm:w-72">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+
                 <input
                   type="text"
                   value={searchQuery}
@@ -724,9 +788,11 @@ export default function Interview() {
                 />
               </div>
 
-              {/* Right Cluster: "Sort By" Label + Active Option Dropdown + Refresh History Button */}
               <div className="flex items-center gap-2.5">
-                <div className="flex items-center gap-2" ref={sortDropdownRef}>
+                <div
+                  className="flex items-center gap-2"
+                  ref={sortDropdownRef}
+                >
                   <span className="font-[Inter] text-xs font-md text-gray-500 whitespace-nowrap">
                     Sort By:
                   </span>
@@ -744,9 +810,12 @@ export default function Interview() {
                       }`}
                     >
                       <span>{activeSortLabel}</span>
+
                       <ChevronDown
                         className={`w-3.5 h-3.5 transition-transform duration-150 ${
-                          isSortOpen ? "rotate-180 text-[#862334]" : "text-slate-400"
+                          isSortOpen
+                            ? "rotate-180 text-[#862334]"
+                            : "text-slate-400"
                         }`}
                       />
                     </button>
@@ -758,6 +827,7 @@ export default function Interview() {
                       >
                         {SORT_OPTIONS.map((option) => {
                           const isSelected = sortBy === option.id;
+
                           return (
                             <button
                               key={option.id}
@@ -775,6 +845,7 @@ export default function Interview() {
                               }`}
                             >
                               <span>{option.label}</span>
+
                               {isSelected && (
                                 <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
                               )}
@@ -786,7 +857,7 @@ export default function Interview() {
                   </div>
                 </div>
 
-                {/* Refresh History Button */}
+                {/* Refresh History */}
                 <button
                   type="button"
                   onClick={() => setRefreshKey((n) => n + 1)}
@@ -794,8 +865,11 @@ export default function Interview() {
                   className="h-9 inline-flex items-center gap-2 bg-white border border-slate-200 hover:border-[#862334]/40 hover:bg-[#862334]/5 text-gray-700 hover:text-[#862334] rounded-lg px-3.5 font-[Inter] text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw
-                    className={`w-3.5 h-3.5 ${historyLoading ? "animate-spin" : ""}`}
+                    className={`w-3.5 h-3.5 ${
+                      historyLoading ? "animate-spin" : ""
+                    }`}
                   />
+
                   Refresh History
                 </button>
               </div>
@@ -810,7 +884,7 @@ export default function Interview() {
               </p>
             )}
 
-            {/* Level 3: Fixed-Column Data Table Card (220ms) */}
+            {/* Interview History Table */}
             <div
               style={staggerStyle(2)}
               className="relative z-10 bg-white rounded-xl overflow-hidden border border-[#862334]/20 shadow-xs animate-fade-slide-in"
@@ -823,22 +897,27 @@ export default function Interview() {
                     <col className="w-[20%]" />
                     <col className="w-[34%]" />
                   </colgroup>
+
                   <thead>
                     <tr className="bg-slate-50/70 border-b border-slate-100">
                       <th className="pl-7 pr-4 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold">
                         Target Role
                       </th>
+
                       <th className="px-4 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold">
                         Date
                       </th>
+
                       <th className="px-4 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold">
                         Readiness Score
                       </th>
+
                       <th className="pl-4 pr-7 py-3.5 font-[Inter] text-[14px] text-gray-900 font-semibold text-right">
                         Actions
                       </th>
                     </tr>
                   </thead>
+
                   <tbody className="divide-y divide-slate-100">
                     {historyLoading ? (
                       <tr>
@@ -875,7 +954,6 @@ export default function Interview() {
                           key={row.session_id}
                           className="hover:bg-slate-50/70 transition-colors"
                         >
-                          {/* Role with Status Dot */}
                           <td className="pl-7 pr-4 py-4">
                             <div className="flex items-center gap-3 min-w-0">
                               <p className="font-[Inter] font-semibold text-gray-700 text-sm sm:text-base truncate">
@@ -884,12 +962,10 @@ export default function Interview() {
                             </div>
                           </td>
 
-                          {/* Date */}
                           <td className="px-4 py-4 font-[Inter] font-mediumtext-gray-700 text-xs sm:text-sm whitespace-nowrap">
                             {formatInterviewDate(row.started_at)}
                           </td>
 
-                          {/* Score Only */}
                           <td className="px-4 py-4">
                             <span
                               className={`font-[Inter] font-bold text-sm sm:text-base tabular-nums whitespace-nowrap ${
@@ -904,41 +980,43 @@ export default function Interview() {
                             </span>
                           </td>
 
-                          {/* Action */}
                           <td className="pl-4 pr-7 py-4 text-right">
                             <div className="inline-flex items-center gap-2">
-                            <button
-                              onClick={() =>
-                                navigate(
-                                  `/user/interview-results/${encodeURIComponent(
-                                    row.session_id
-                                  )}`
-                                )
-                              }
-                              disabled={
-                                row.report_status !== "completed" &&
-                                row.report_status !== "failed"
-                              }
-                              className="bg-[#862334] text-white hover:bg-[#6e1c2a] transition-all duration-200 px-4 py-2 text-xs font-[Inter] font-semibold uppercase tracking-wider rounded-md disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 whitespace-nowrap cursor-pointer shadow-2xs"
-                            >
-                              View Report
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDeleteError("");
-                                setDeleteTarget(row);
-                              }}
-                              disabled={
-                                row.report_status !== "completed" &&
-                                row.report_status !== "failed"
-                              }
-                              aria-label={`Delete ${row.target_role || "interview"} report`}
-                              title="Delete report"
-                              className="p-2 rounded-md border border-slate-200 text-slate-500 hover:text-[#862334] hover:border-[#862334]/40 hover:bg-[#862334]/5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                              <button
+                                onClick={() =>
+                                  navigate(
+                                    `/user/interview-results/${encodeURIComponent(
+                                      row.session_id
+                                    )}`
+                                  )
+                                }
+                                disabled={
+                                  row.report_status !== "completed" &&
+                                  row.report_status !== "failed"
+                                }
+                                className="bg-[#862334] text-white hover:bg-[#6e1c2a] transition-all duration-200 px-4 py-2 text-xs font-[Inter] font-semibold uppercase tracking-wider rounded-md disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 whitespace-nowrap cursor-pointer shadow-2xs"
+                              >
+                                View Report
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteError("");
+                                  setDeleteTarget(row);
+                                }}
+                                disabled={
+                                  row.report_status !== "completed" &&
+                                  row.report_status !== "failed"
+                                }
+                                aria-label={`Delete ${
+                                  row.target_role || "interview"
+                                } report`}
+                                title="Delete report"
+                                className="p-2 rounded-md border border-slate-200 text-slate-500 hover:text-[#862334] hover:border-[#862334]/40 hover:bg-[#862334]/5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -949,12 +1027,11 @@ export default function Interview() {
               </div>
             </div>
 
-            {/* Level 4: Always Directly at the Bottom of the Table (330ms) */}
+            {/* Pagination */}
             <div
               style={staggerStyle(3)}
               className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-slide-in"
             >
-              {/* Left: Chunked 3-Page + Ellipsis + First/Last Page Pagination */}
               <nav
                 aria-label="Interview history pagination"
                 className="flex items-center gap-1.5"
@@ -981,7 +1058,9 @@ export default function Interview() {
                       <button
                         key={item}
                         onClick={() => setPage(item)}
-                        aria-current={safePage === item ? "page" : undefined}
+                        aria-current={
+                          safePage === item ? "page" : undefined
+                        }
                         className={`w-9 h-9 rounded-lg font-[Inter] text-sm font-semibold tabular-nums active:scale-95 transition-all duration-200 cursor-pointer ${
                           safePage === item
                             ? "bg-[#862334] text-white shadow-xs animate-pill-pop"
@@ -1004,17 +1083,20 @@ export default function Interview() {
                 </button>
               </nav>
 
-              {/* Right: Borderless Inline Showing Text Matching Pagination Scale & Weight */}
               <div className="h-9 flex items-center gap-1.5 font-[Inter] text-sm text-slate-500">
                 <span>Showing</span>
+
                 <span className="font-[Geist] font-semibold text-slate-900 tabular-nums">
                   {total === 0 ? 0 : (safePage - 1) * PER_PAGE + 1}–
                   {Math.min(safePage * PER_PAGE, total)}
                 </span>
+
                 <span>of</span>
+
                 <span className="font-[Geist] font-semibold text-[#862334] tabular-nums">
                   {total}
                 </span>
+
                 <span>Interviews</span>
               </div>
             </div>
