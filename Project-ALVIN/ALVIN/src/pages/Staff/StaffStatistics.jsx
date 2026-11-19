@@ -613,6 +613,8 @@ export default function StaffStatistics() {
   }, []);
 
   useEffect(() => {
+    if (sectionsLoading) return;
+
     let alive = true;
     const path =
       selectedSection === "ALL"
@@ -668,8 +670,64 @@ export default function StaffStatistics() {
           };
         });
 
-        setStudents(mapped);
-        setSelectedStudent(mapped[0] || null);
+        const sectionStudents =
+          selectedSection === "ALL"
+            ? mapped
+            : mapped.filter((student) => {
+                const selectedSectionInfo = sections.find((section) => {
+                  const sectionId =
+                    section.id ||
+                    section.section_id ||
+                    section.name ||
+                    section.section_name;
+                  return String(sectionId) === String(selectedSection);
+                });
+
+                const selectedSectionName = compact(
+                  selectedSectionInfo?.section_name ||
+                    selectedSectionInfo?.name ||
+                    selectedSectionInfo?.title ||
+                    selectedSection
+                );
+
+                const enrollments = Array.isArray(student.enrollments)
+                  ? student.enrollments
+                  : [];
+
+                return enrollments.some((enrollment) => {
+                  const enrollmentSectionId =
+                    enrollment.section_id ||
+                    enrollment.sectionId ||
+                    enrollment.section?.id;
+
+                  if (
+                    enrollmentSectionId != null &&
+                    String(enrollmentSectionId) === String(selectedSection)
+                  ) {
+                    return true;
+                  }
+
+                  const enrollmentSectionName = compact(
+                    typeof enrollment.section === "string"
+                      ? enrollment.section
+                      : enrollment.section?.section_name ||
+                          enrollment.section?.name ||
+                          enrollment.section_name ||
+                          enrollment.sectionName ||
+                          ""
+                  );
+
+                  return (
+                    selectedSectionName !== "" &&
+                    enrollmentSectionName === selectedSectionName
+                  );
+                });
+              });
+
+        setStudents(sectionStudents);
+        setSelectedStudent(sectionStudents[0] || null);
+        setSearchQuery("");
+        setIsSearchFocused(false);
         setStudentImageError(false);
       })
       .catch((err) => {
@@ -682,7 +740,7 @@ export default function StaffStatistics() {
     return () => {
       alive = false;
     };
-  }, [selectedSection]);
+  }, [selectedSection, sections, sectionsLoading]);
 
   useEffect(() => {
     let active = true;
@@ -711,6 +769,10 @@ export default function StaffStatistics() {
     };
   }, [selectedSection]);
 
+  // Ignore case, spaces and punctuation when comparing section names.
+  const compact = (value) =>
+    String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
   // Student number = the part of the UB mail before "@ub.edu.ph".
   const getStudentNumber = (student) => {
     if (student?.student_number) return String(student.student_number);
@@ -719,8 +781,6 @@ export default function StaffStatistics() {
   };
 
   // Ignore case, dashes and spaces so "2021-12345" finds "202112345" and vice versa.
-  const compact = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-
   const matchesSearch = (student, query) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
