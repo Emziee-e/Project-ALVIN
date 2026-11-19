@@ -61,7 +61,6 @@ function getPaginationNumbers(current, totalPages) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
   }
 
-  // Group into chunks of 3.
   const chunkStart = Math.floor((current - 1) / 3) * 3 + 1;
 
   if (chunkStart === 1) {
@@ -340,7 +339,7 @@ export default function Interview() {
     setDeleteError("");
   };
 
-  // Delete interview report with automatic token refresh.
+  // Delete interview record with automatic token refresh.
   const handleConfirmDelete = async () => {
     if (!deleteTarget || isDeleting) return;
 
@@ -363,7 +362,7 @@ export default function Interview() {
         throw new Error(
           typeof body.detail === "string"
             ? body.detail
-            : `Failed to delete report (${response.status}).`
+            : `Failed to delete interview (${response.status}).`
         );
       }
 
@@ -371,7 +370,7 @@ export default function Interview() {
 
       const deletedLabel = `${
         deleteTarget.target_role || "Interview"
-      } report from ${formatInterviewDate(deleteTarget.started_at)}`;
+      } interview from ${formatInterviewDate(deleteTarget.started_at)}`;
 
       setInterviews((prev) =>
         prev.filter((row) => row.session_id !== deletedId)
@@ -381,11 +380,11 @@ export default function Interview() {
 
       setToast({
         id: Date.now(),
-        title: "Report deleted",
+        title: "Interview deleted",
         message: `Your ${deletedLabel} was permanently deleted.`,
       });
     } catch (error) {
-      setDeleteError(error.message || "Unable to delete this report.");
+      setDeleteError(error.message || "Unable to delete this interview.");
     } finally {
       setIsDeleting(false);
     }
@@ -459,7 +458,7 @@ export default function Interview() {
           onClose={() => setToast(null)}
         />
 
-        {/* Delete Report Confirmation */}
+        {/* Delete Interview Confirmation */}
         {deleteTarget && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div
@@ -488,7 +487,7 @@ export default function Interview() {
                   id="delete-report-title"
                   className="text-xl font-bold text-gray-900 font-Geist"
                 >
-                  Delete Report
+                  Delete Interview
                 </h2>
               </div>
 
@@ -497,10 +496,11 @@ export default function Interview() {
                   id="delete-report-desc"
                   className="text-sm text-gray-600 mb-6 font-Inter"
                 >
-                  Are you sure you want to delete your{" "}
-                  {deleteTarget.target_role || "Interview"} report from{" "}
-                  {formatInterviewDate(deleteTarget.started_at)}? Its score,
-                  feedback and answers will be permanently removed.
+                  Are you sure you want to permanently delete your{" "}
+                  {deleteTarget.target_role || "Interview"} interview from{" "}
+                  {formatInterviewDate(deleteTarget.started_at)}? Its associated
+                  responses, evaluation and results will also be permanently
+                  removed.
                 </p>
 
                 {deleteError && (
@@ -1005,15 +1005,11 @@ export default function Interview() {
                                   setDeleteError("");
                                   setDeleteTarget(row);
                                 }}
-                                disabled={
-                                  row.report_status !== "completed" &&
-                                  row.report_status !== "failed"
-                                }
                                 aria-label={`Delete ${
                                   row.target_role || "interview"
-                                } report`}
-                                title="Delete report"
-                                className="p-2 rounded-md border border-slate-200 text-slate-500 hover:text-[#862334] hover:border-[#862334]/40 hover:bg-[#862334]/5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                                } interview`}
+                                title="Delete interview"
+                                className="p-2 rounded-md border border-slate-200 text-slate-500 hover:text-[#862334] hover:border-[#862334]/40 hover:bg-[#862334]/5 transition-colors cursor-pointer active:scale-95"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
