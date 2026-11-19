@@ -463,6 +463,7 @@ export default function StaffStatistics() {
   // Search & Student Management States
   const [searchQuery, setSearchQuery] = useState("");
   const [students, setStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(true);
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState("");
@@ -616,6 +617,9 @@ export default function StaffStatistics() {
     if (sectionsLoading) return;
 
     let alive = true;
+    setStudentsLoading(true);
+    setStudents([]);
+    setSelectedStudent(null);
     const path =
       selectedSection === "ALL"
         ? "/api/staff/students"
@@ -736,6 +740,9 @@ export default function StaffStatistics() {
           setSelectedStudent(null);
           setCommentError(err.message);
         }
+      })
+      .finally(() => {
+        if (alive) setStudentsLoading(false);
       });
     return () => {
       alive = false;
@@ -1498,6 +1505,13 @@ export default function StaffStatistics() {
                   <div className="absolute right-0 top-full mt-1.5 w-full bg-white border border-[#EAE5D9] rounded-xl shadow-xl z-50 py-1 max-h-60 overflow-y-auto font-Inter">
                     <div
                       onClick={() => {
+                        if (selectedSection !== "ALL") {
+                          setStudentsLoading(true);
+                          setStudents([]);
+                          setSelectedStudent(null);
+                          setSearchQuery("");
+                          setIsSearchFocused(false);
+                        }
                         setSelectedSection("ALL");
                         setIsDropdownOpen(false);
                       }}
@@ -1521,6 +1535,13 @@ export default function StaffStatistics() {
                         <div
                           key={secId}
                           onClick={() => {
+                            if (selectedSection !== secId) {
+                              setStudentsLoading(true);
+                              setStudents([]);
+                              setSelectedStudent(null);
+                              setSearchQuery("");
+                              setIsSearchFocused(false);
+                            }
                             setSelectedSection(secId);
                             setIsDropdownOpen(false);
                           }}
@@ -1824,7 +1845,11 @@ export default function StaffStatistics() {
                 </div>
 
                 {/* Selected Student Featured Banner */}
-                {selectedStudent ? (
+                {studentsLoading ? (
+                  <div className="bg-[#FDFBF7] border border-[#EAE5D9] rounded-xl p-8 text-center text-gray-500 text-sm font-medium font-Inter">
+                    Loading students for {currentSectionLabel}…
+                  </div>
+                ) : selectedStudent ? (
                   <div className="bg-[#FDFBF7]/50 rounded-2xl border border-[#862334]/20 p-6 md:p-8 shadow-xs relative overflow-hidden print-card">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                       <div className="flex items-center gap-6">
