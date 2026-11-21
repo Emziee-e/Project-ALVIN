@@ -86,18 +86,18 @@ function FloatingButton({
                       ${isDisabled
                         ? "!bg-gray-200 !border-gray-300 !text-gray-400 !opacity-100 grayscale cursor-not-allowed"
                         : isStarting
-                        ? "bg-white border-[#e5e5e5] scale-95 opacity-80 cursor-wait"
-                        : "bg-white border-[#e5e5e5] hover:bg-gray-50 active:scale-95 cursor-pointer"}`}
+                        ? "bg-[#862334] border-[#862334] scale-95 opacity-80 cursor-wait"
+                        : "bg-[#862334] border-[#862334] hover:bg-[#6d1c2a] active:scale-95 cursor-pointer"}`}
           style={isDisabled ? { pointerEvents: "none" } : undefined}
         >
           {isStarting ? (
-            <Loader2 size={24} className="animate-spin text-[#862334]" />
+            <Loader2 size={24} className="animate-spin text-white" />
           ) : isDisabled ? (
             <PauseCircle size={26} className="text-gray-400" />
           ) : (
             <Mic
               size={26}
-              className={`relative z-10 text-[#862334] ${
+              className={`relative z-10 text-white ${
                 isHovered ? "scale-110" : ""
               } transition-transform duration-300`}
             />
