@@ -721,7 +721,36 @@ function base64EncodeAudio(uint8Array) {
   return btoa(binary);
 }
 
+async function getValidSupabaseAccessToken() {
+  let { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    throw new Error(`Could not retrieve your login session: ${error.message}`);
+  }
+
+  let session = data?.session;
+  const expiresSoon = session?.expires_at
+    ? session.expires_at <= Math.floor(Date.now() / 1000) + 60
+    : false;
+
+  if (!session?.access_token || expiresSoon) {
+    const refreshed = await supabase.auth.refreshSession();
+
+    if (refreshed.error || !refreshed.data?.session?.access_token) {
+      throw new Error(
+        refreshed.error?.message ||
+          "Your login session has expired. Please sign in again."
+      );
+    }
+
+    session = refreshed.data.session;
+  }
+
+  return session.access_token;
+}
+
 async function fetchNavTalkWsUrl(sessionId) {
+  const accessToken = await getValidSupabaseAccessToken();
   const body = new FormData();
   body.append("session_id", sessionId);
 
@@ -731,7 +760,7 @@ async function fetchNavTalkWsUrl(sessionId) {
       method: "POST",
       headers: {
         "X-API-Key": APP_API_KEY,
-        Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body,
     }
@@ -759,32 +788,45 @@ async function fetchNavTalkWsUrl(sessionId) {
   return { wsUrl: data.ws_url, avatarName: data.avatar_name || "" };
 }
 
-async function postBackend(path, payload) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": APP_API_KEY,
-      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    },
-    body: JSON.stringify(payload),
-  });
+async function postBackend(path, payload, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!response.ok) {
-    let detail = `Request failed (${response.status})`;
+  try {
+    const accessToken = await getValidSupabaseAccessToken();
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": APP_API_KEY,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
 
-    try {
-      const errorJson = await response.json();
-      detail = errorJson.detail || detail;
-    } catch {
-      // Ignore invalid error JSON.
+    if (!response.ok) {
+      let detail = `Request failed (${response.status})`;
+
+      try {
+        const errorJson = await response.json();
+        detail = errorJson.detail || detail;
+      } catch {
+        // Ignore invalid error JSON.
+      }
+
+      throw new Error(detail);
     }
 
-    throw new Error(detail);
+    return await response.json();
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`The request to ${path} timed out. Please try again.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return response.json();
 }
 
 function extractText(value) {
@@ -1123,6 +1165,7 @@ export default function LiveSession() {
 
   const [isFinishing, setIsFinishing] =
     useState(false);
+  const finalizationStartedRef = useRef(false);
 
   const [avatarConnected, setAvatarConnected] =
     useState(false);
@@ -1200,16 +1243,58 @@ export default function LiveSession() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [avatarSubtitle]);
 
-  // Renew the server-side NavTalk queue lease during the live interview.
+  // Renew the queue lease only after the candidate starts connecting.
   useEffect(() => {
-    if (!navtalkSessionId || isFinishing) return;
-    const heartbeat = () => postBackend('/api/interview/queue/status', {
-      session_id: navtalkSessionId,
-    }).catch((error) => console.warn('Queue heartbeat failed:', error));
+    if (
+      !navtalkSessionId ||
+      !connectionInitiated ||
+      isFinishing ||
+      disconnectedReason
+    ) {
+      return;
+    }
+
+    let stopped = false;
+    let requestInFlight = false;
+
+    const heartbeat = async () => {
+      if (stopped || requestInFlight) return;
+      requestInFlight = true;
+
+      try {
+        const result = await postBackend(
+          "/api/interview/queue/status",
+          { session_id: navtalkSessionId }
+        );
+
+        if (
+          !stopped &&
+          !["reserved", "active"].includes(result?.state)
+        ) {
+          setDisconnectedReason(
+            "Your interview slot is no longer active. Please end this session and rejoin the queue."
+          );
+        }
+      } catch (error) {
+        console.warn("Queue heartbeat failed:", error);
+      } finally {
+        requestInFlight = false;
+      }
+    };
+
     heartbeat();
     const interval = setInterval(heartbeat, 20000);
-    return () => clearInterval(interval);
-  }, [navtalkSessionId, isFinishing]);
+
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, [
+    navtalkSessionId,
+    connectionInitiated,
+    isFinishing,
+    disconnectedReason,
+  ]);
 
   useEffect(() => {
     if (!sessionData) {
@@ -4343,11 +4428,13 @@ After saying it, stop and wait for the candidate's answer.`,
 
     const syncBackendSession = async () => {
       try {
+        const accessToken = await getValidSupabaseAccessToken();
         const response = await fetch(
           `${API_BASE_URL}/api/interview/session/${navtalkSessionId}`,
           {
             headers: {
               "X-API-Key": APP_API_KEY,
+              Authorization: `Bearer ${accessToken}`,
             },
           }
         );
@@ -4558,9 +4645,13 @@ After saying it, stop and wait for the candidate's answer.`,
         body.append("session_id", navtalkSessionId);
         body.append("frame", blob, "cv-frame.jpg");
 
+        const accessToken = await getValidSupabaseAccessToken();
         const response = await fetch(`${API_BASE_URL}/api/interview/cv-frame`, {
           method: "POST",
-          headers: { "X-API-Key": APP_API_KEY },
+          headers: {
+            "X-API-Key": APP_API_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
           body,
         });
 
@@ -4570,9 +4661,14 @@ After saying it, stop and wait for the candidate's answer.`,
           if (typeof result.confidence === "number") {
             setLiveConfidence(result.confidence);
           }
-        } else if (response.status === 503 || response.status === 409) {
+        } else {
           consecutiveFailures += 1;
-          if (consecutiveFailures >= 3) {
+          if (response.status === 401 || response.status === 403) {
+            console.warn(
+              `CV frame request was rejected (${response.status}); disabling frame sampling.`,
+            );
+            window.clearInterval(intervalId);
+          } else if (consecutiveFailures >= 3) {
             console.warn("CV analysis unavailable; disabling frame sampling.");
             window.clearInterval(intervalId);
           }
@@ -4594,105 +4690,131 @@ After saying it, stop and wait for the candidate's answer.`,
   }, [camActive, navtalkSessionId, sessionStarted]);
 
   const handleConfirmEnd = async () => {
-    if (isFinishing) return;
+    if (finalizationStartedRef.current) return;
+    finalizationStartedRef.current = true;
 
-    // IMPORTANT: shut down the paid/live NavTalk path BEFORE asking Gemini
-    // to build results. A Gemini/network failure must never leave NavTalk
-    // connected or allow this component to create a replacement connection.
     setIsEndModalOpen(false);
     setFinalizationError(null);
     setDisconnectedReason(null);
     setIsFinishing(true);
     candidateAnswerEnabledRef.current = false;
 
-    // The last answer may still be being transcribed by NavTalk. Keep the connection
-    // open for a few seconds so it is not lost when the socket closes.
-    const gotAllTranscripts = await waitForOwedTranscripts({
-      getOwed: () => transcriptOwedRef.current,
-      getMsSinceSpeechStart: () =>
-        performance.now() - lastAcceptedSpeechStartAtRef.current,
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    });
-    if (!gotAllTranscripts) {
-      console.warn("Ending the session while a candidate transcript was still pending.");
-    }
-
-    flushCandidateAnswer(); // Don't lose an answer that is still settling.
-
-    cancelledRef.current = true;
-    setConnectionInitiated(false);
-    setAvatarConnected(false);
-
-    clearSilenceTimer();
-    stopAudioStreaming();
-    stopRemoteAudioMonitor();
-
-    if (candidateSpeechStopTimerRef.current) {
-      clearTimeout(candidateSpeechStopTimerRef.current);
-      candidateSpeechStopTimerRef.current = null;
-    }
-
-    if (candidateAnswerFinalizeTimerRef.current) {
-      clearTimeout(candidateAnswerFinalizeTimerRef.current);
-      candidateAnswerFinalizeTimerRef.current = null;
-    }
-
-    if (closingGraceTimerRef.current) {
-      clearTimeout(closingGraceTimerRef.current);
-      closingGraceTimerRef.current = null;
-    }
-    closingPendingRef.current = false;
-
-    if (backendSyncTimerRef.current) {
-      clearInterval(backendSyncTimerRef.current);
-      backendSyncTimerRef.current = null;
-    }
-
-    // Best-effort only. Never keep the live connection open waiting for this.
-    if (navtalkSessionId) {
-      postBackend(
-        "/api/interview/candidate-speaking",
-        { session_id: navtalkSessionId, speaking: false }
-      ).catch(() => {});
-    }
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
-
-    if (wsRef.current) {
-      try {
-        wsRef.current.close(1000, "Interview completed");
-      } catch {}
-      wsRef.current = null;
-    }
-
-    if (pcRef.current) {
-      try {
-        pcRef.current.close();
-      } catch {}
-      pcRef.current = null;
-    }
-
-    remoteStreamRef.current = null;
-    sessionReadyRef.current = false;
-    mqttModeRegisteredRef.current = false;
-    navtalkSessionIdRef.current = "";
-    openingSentRef.current = false;
-
     try {
-      await flushCandidateAnswer();
-      await Promise.allSettled([
-        ...pendingTranscriptRequestsRef.current,
-      ]);
+      // Allow the final NavTalk transcript a short time to arrive.
+      const gotAllTranscripts = await waitForOwedTranscripts({
+        getOwed: () => transcriptOwedRef.current,
+        getMsSinceSpeechStart: () =>
+          performance.now() - lastAcceptedSpeechStartAtRef.current,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      });
 
-      // This endpoint is idempotent. It marks the backend session ended and
-      // returns either the scored result or a transcript-only fallback when
-      // Gemini assessment was unavailable.
+      if (!gotAllTranscripts) {
+        console.warn(
+          "Ending the session while a candidate transcript was still pending."
+        );
+      }
+
+      // Submit any unfinished candidate answer before closing the connection.
+      await flushCandidateAnswer();
+
+      cancelledRef.current = true;
+      setConnectionInitiated(false);
+      setAvatarConnected(false);
+
+      clearSilenceTimer();
+      stopAudioStreaming();
+      stopRemoteAudioMonitor();
+
+      if (candidateSpeechStopTimerRef.current) {
+        clearTimeout(candidateSpeechStopTimerRef.current);
+        candidateSpeechStopTimerRef.current = null;
+      }
+
+      if (candidateAnswerFinalizeTimerRef.current) {
+        clearTimeout(candidateAnswerFinalizeTimerRef.current);
+        candidateAnswerFinalizeTimerRef.current = null;
+      }
+
+      if (closingGraceTimerRef.current) {
+        clearTimeout(closingGraceTimerRef.current);
+        closingGraceTimerRef.current = null;
+      }
+      closingPendingRef.current = false;
+
+      if (backendSyncTimerRef.current) {
+        clearInterval(backendSyncTimerRef.current);
+        backendSyncTimerRef.current = null;
+      }
+
+      // Best-effort only; do not block finalization on this status update.
+      if (navtalkSessionId) {
+        postBackend(
+          "/api/interview/candidate-speaking",
+          { session_id: navtalkSessionId, speaking: false }
+        ).catch((error) => {
+          console.warn("Candidate speaking status update failed:", error);
+        });
+      }
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+        localStreamRef.current = null;
+      }
+
+      if (wsRef.current) {
+        try {
+          wsRef.current.close(1000, "Interview completed");
+        } catch (error) {
+          console.warn("WebSocket close failed:", error);
+        }
+        wsRef.current = null;
+      }
+
+      if (pcRef.current) {
+        try {
+          pcRef.current.close();
+        } catch (error) {
+          console.warn("WebRTC close failed:", error);
+        }
+        pcRef.current = null;
+      }
+
+      remoteStreamRef.current = null;
+      sessionReadyRef.current = false;
+      mqttModeRegisteredRef.current = false;
+      navtalkSessionIdRef.current = "";
+      openingSentRef.current = false;
+
+      // Wait up to 15 seconds for already queued transcript writes.
+      const pendingTranscriptRequests = [
+        ...pendingTranscriptRequestsRef.current,
+      ];
+
+      if (pendingTranscriptRequests.length > 0) {
+        let transcriptTimeoutId;
+        const pendingWrites = Promise.allSettled(
+          pendingTranscriptRequests
+        ).then(() => false);
+        const timedOut = await Promise.race([
+          pendingWrites,
+          new Promise((resolve) => {
+            transcriptTimeoutId = setTimeout(() => resolve(true), 15000);
+          }),
+        ]);
+        clearTimeout(transcriptTimeoutId);
+
+        if (timedOut) {
+          console.warn(
+            "Transcript writes exceeded 15 seconds; continuing finalization."
+          );
+        }
+      }
+
+      // Generate and persist the final result. Allow Gemini more time.
       await postBackend(
         "/api/interview/end-session",
-        { session_id: navtalkSessionId }
+        { session_id: navtalkSessionId },
+        120000
       );
 
       navigate(
@@ -4701,9 +4823,7 @@ After saying it, stop and wait for the candidate's answer.`,
       );
     } catch (error) {
       console.error("Failed to finalize interview:", error);
-
-      // Do NOT reactivate NavTalk here. The paid/live session remains closed.
-      // A retry only retries backend result generation.
+      finalizationStartedRef.current = false;
       setIsFinishing(false);
       setFinalizationError(
         error?.message ||
