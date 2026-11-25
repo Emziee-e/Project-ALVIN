@@ -800,7 +800,7 @@ export default function UserDashboard() {
 
         {/* Main Workspace Canvas (Non-scrollable outer shell on desktop, full-scale content preserved) */}
         <main className="flex-1 w-full bg-[#F7F7F8] overflow-hidden flex flex-col h-screen min-w-0 relative">
-          <div className="flex-1 overflow-y-auto lg:overflow-hidden flex flex-col px-12 sm:px-16 md:px-20 lg:px-28 py-5 lg:py-6 w-full relative">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col px-12 sm:px-16 md:px-20 lg:px-28 py-5 lg:py-6 w-full relative">
 
             {/* Level 1: Large Display Greeting & Full-Width Narrative Summary (0ms) */}
             <section
@@ -961,12 +961,12 @@ export default function UserDashboard() {
             </section>
 
             {/* Level 3: Distinct Minimalist Sections with Matching Soft Maroon Outline (550ms – 660ms) */}
-            <section className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pb-2">
+            <section className="flex-shrink-0 lg:flex-1 lg:min-h-[380px] grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start pb-2">
 
               {/* Left Panel: Clean Structured Ledger for Interview History (550ms) */}
               <div
                 style={staggerStyle(5)}
-                className="animate-fade-slide-in lg:col-span-7 bg-white border border-[#862334]/20 rounded-xl overflow-hidden shadow-xs flex flex-col max-h-full"
+                className="animate-fade-slide-in lg:col-span-7 bg-white border border-[#862334]/20 rounded-xl overflow-hidden shadow-xs flex flex-col w-full max-h-[480px] lg:max-h-full"
               >
                 <div className="px-6 py-3.5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
                   <h3 className="font-[Geist] text-lg font-bold tracking-tight text-slate-900">
@@ -997,7 +997,7 @@ export default function UserDashboard() {
                   </p>
                 )}
 
-                <div className="divide-y divide-slate-100 overflow-y-auto overflow-x-hidden">
+                <div className="divide-y divide-slate-100 overflow-y-auto overflow-x-hidden min-h-0">
                   {interviews.map((row, i) => (
                     <div
                       key={row.id || i}
@@ -1032,7 +1032,7 @@ export default function UserDashboard() {
               {/* Right Panel: Naturally Sized Career Advisor Comments (Vertical Scroll Only, Edge Maroon Dot) (660ms) */}
               <div
                 style={staggerStyle(6)}
-                className="animate-fade-slide-in lg:col-span-5 bg-white border border-[#862334]/20 rounded-xl p-5 shadow-xs flex flex-col max-h-full overflow-hidden"
+                className="animate-fade-slide-in lg:col-span-5 bg-white border border-[#862334]/20 rounded-xl p-5 shadow-xs flex flex-col w-full max-h-[480px] lg:max-h-full overflow-hidden"
               >
                 <div className="pb-2.5 mb-2 border-b border-slate-100 flex items-center justify-between gap-2 flex-shrink-0">
                   <h3 className="font-[Geist] text-lg font-bold tracking-tight text-slate-900">
