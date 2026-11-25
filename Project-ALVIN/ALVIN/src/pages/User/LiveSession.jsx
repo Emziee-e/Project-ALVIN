@@ -105,9 +105,18 @@ const MAX_SIMPLIFICATIONS_PER_QUESTION = 2;
 // probably thinking; a pause after a long answer is probably the end.
 // Reply delay after you stop talking ~= this hold + ALVIN's own response time.
 // Raise a value for more thinking time, lower it for a snappier reply.
-const THINKING_HOLD_SHORT_ANSWER_MS = 3000; // under ~4s of speech so far
-const THINKING_HOLD_NORMAL_MS = 2000; // 4s - 12s of speech so far
-const THINKING_HOLD_LONG_ANSWER_MS = 1200; // over ~12s of speech so far
+// Candidates must never be cut off mid-thought, so the holds below are deliberately
+// generous. A long answer used to get the SHORTEST hold (1.2 s), which is exactly when
+// people pause between points; every tier now tolerates a real thinking pause.
+const THINKING_HOLD_SHORT_ANSWER_MS = 3500; // under ~4s of speech so far
+const THINKING_HOLD_NORMAL_MS = 3000; // 4s - 12s of speech so far
+const THINKING_HOLD_LONG_ANSWER_MS = 2500; // over ~12s of speech so far
+// A candidate who has already paused and then carried on within this answer is a
+// "pausing speaker": each such resume adds PAUSER_BONUS_MS to the hold (capped), so
+// the longer they have shown they pause mid-answer, the more patient ALVIN becomes.
+const MID_ANSWER_PAUSE_MS = 800; // a quiet gap at least this long counts as a pause
+const PAUSER_BONUS_MS = 500;
+const PAUSER_BONUS_MAX_MS = 1500;
 // Length of the synthetic silence sent when the client decides the answer is over.
 // Sent instantly (not in real time). Kept short: long stretches of pure silence make
 // speech-to-text models invent words.
@@ -125,10 +134,18 @@ const MIC_NOISE_SUPPRESSION_ENABLED =
 const ENDPOINT_NOISE_FLOOR_FACTOR = 3; // speech = at least 3x the noise floor
 const ENDPOINT_MIN_SPEECH_RMS = 0.003; // never treat anything below this as speech
 
-function getThinkingHoldMs(speechMsSoFar) {
-  if (speechMsSoFar < 4000) return THINKING_HOLD_SHORT_ANSWER_MS;
-  if (speechMsSoFar < 12000) return THINKING_HOLD_NORMAL_MS;
-  return THINKING_HOLD_LONG_ANSWER_MS;
+function getThinkingHoldMs(speechMsSoFar, resumedPauses = 0) {
+  const base =
+    speechMsSoFar < 4000
+      ? THINKING_HOLD_SHORT_ANSWER_MS
+      : speechMsSoFar < 12000
+        ? THINKING_HOLD_NORMAL_MS
+        : THINKING_HOLD_LONG_ANSWER_MS;
+  const bonus = Math.min(
+    PAUSER_BONUS_MAX_MS,
+    Math.max(0, resumedPauses) * PAUSER_BONUS_MS
+  );
+  return base + bonus;
 }
 
 // Console diagnostics: how long after the candidate's last speech did each stage happen?
@@ -1086,6 +1103,8 @@ export default function LiveSession() {
   const candidateSpokeThisAnswerRef = useRef(false);
   // Milliseconds of actual speech in the current answer (drives the adaptive hold).
   const candidateSpeechMsRef = useRef(0);
+  // How many times the candidate paused mid-answer and then carried on.
+  const candidateResumeCountRef = useRef(0);
   // Set once the client has declared the current answer finished (and sent silence).
   const answerEndSignalledRef = useRef(false);
   // Recent microphone levels (for the adaptive noise floor) and the last time the
@@ -2032,6 +2051,7 @@ Do not add thanks, praise, commentary, or another greeting.`;
 
     candidateSpokeThisAnswerRef.current = false;
     candidateSpeechMsRef.current = 0;
+    candidateResumeCountRef.current = 0;
     answerEndSignalledRef.current = false;
     answerEndSentAtRef.current = 0;
     endpointLastSpeechAtRef.current = 0;
@@ -2041,6 +2061,9 @@ Do not add thanks, praise, commentary, or another greeting.`;
     const candidateHasSaidSomething = () =>
       candidateSpokeThisAnswerRef.current ||
       candidateSpeakingRef.current ||
+      candidateLocalSpeakingRef.current ||
+      // Any mic speech in the last 2 s means they are mid-thought: stay quiet.
+      performance.now() - candidateLastAudioAtRef.current < 2000 ||
       Boolean(candidateAnswerBufferRef.current.trim());
 
     noAnswerTimerRef.current = setTimeout(async () => {
@@ -2584,9 +2607,13 @@ After saying it, stop and wait for the candidate's answer.`,
               )
             );
             // Only audio this close to the noise floor is withheld during a pause.
+            // NavTalk's server VAD ends the turn on its own silence timer, so during a
+            // thinking pause everything that is not clearly speech is withheld (not
+            // just dead-quiet audio). Its silence clock then cannot run out before
+            // the client's hold does.
             const withholdBelowRms = Math.max(
               0.0015,
-              Math.min(noiseFloor * 1.5, endpointThreshold * 0.6)
+              endpointThreshold * 0.85
             );
             const nowMs = performance.now();
 
@@ -2612,6 +2639,18 @@ After saying it, stop and wait for the candidate's answer.`,
 
             // ---- Client-side end-of-answer detection (see THINKING_HOLD_* above) ----
             if (rms >= endpointThreshold) {
+              if (
+                candidateSpokeThisAnswerRef.current &&
+                endpointLastSpeechAtRef.current > 0 &&
+                nowMs - endpointLastSpeechAtRef.current >= MID_ANSWER_PAUSE_MS
+              ) {
+                candidateResumeCountRef.current += 1;
+                console.log(
+                  `[PAUSE] Candidate resumed after ${Math.round(
+                    nowMs - endpointLastSpeechAtRef.current
+                  )} ms; patience level ${candidateResumeCountRef.current}.`
+                );
+              }
               endpointLastSpeechAtRef.current = nowMs;
               candidateSpokeThisAnswerRef.current = true;
               candidateSpeechMsRef.current += (input.length / 24000) * 1000;
@@ -2624,7 +2663,10 @@ After saying it, stop and wait for the candidate's answer.`,
               rms < endpointThreshold
             ) {
               const quietForMs = nowMs - endpointLastSpeechAtRef.current;
-              const holdMs = getThinkingHoldMs(candidateSpeechMsRef.current);
+              const holdMs = getThinkingHoldMs(
+                candidateSpeechMsRef.current,
+                candidateResumeCountRef.current
+              );
 
               if (quietForMs < holdMs) {
                 // Still within thinking time: withhold only dead-quiet audio so a
@@ -4037,6 +4079,25 @@ After saying it, stop and wait for the candidate's answer.`,
               candidateAnswerEnabledRef.current = false;
               if (!avatarTurnStartedAtRef.current) {
                 avatarTurnStartedAtRef.current = performance.now();
+                if (
+                  candidateLocalSpeakingRef.current ||
+                  candidateVadSpeakingRef.current ||
+                  avatarTurnStartedAtRef.current -
+                    candidateLastAudioAtRef.current <
+                    600
+                ) {
+                  console.warn(
+                    "[INTERRUPTION] ALVIN started talking while the candidate was still speaking.",
+                    {
+                      msSinceLastMicSpeech: Math.round(
+                        avatarTurnStartedAtRef.current -
+                          candidateLastAudioAtRef.current
+                      ),
+                      speechMs: Math.round(candidateSpeechMsRef.current),
+                      pausesResumed: candidateResumeCountRef.current,
+                    }
+                  );
+                }
                 if (candidateSpokeThisAnswerRef.current) {
                   console.log(
                     "[TIMING] ALVIN audio started:",
