@@ -469,6 +469,29 @@ export default function StaffDashboard() {
     }
   };
 
+  // Posts one notification email to the backend. Returns true when it was accepted.
+  // Failures are logged and swallowed so a mail problem never blocks the action itself.
+  const sendNotificationEmail = async (path, payload) => {
+    const API_BASE_URL =
+      import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
+    const API_KEY = import.meta.env.VITE_APP_API_KEY || "";
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": API_KEY,
+        },
+        body: JSON.stringify(payload),
+      });
+      return response.ok;
+    } catch (emailError) {
+      console.error(`Email notification to ${path} failed:`, emailError);
+      return false;
+    }
+  };
+
   const confirmConcludeCourse = async () => {
     if (!courseToConclude) return;
 
@@ -517,8 +540,46 @@ export default function StaffDashboard() {
       setCourseToConclude(null);
       setActiveMenuId(null);
 
+      // Email every student still enrolled (dropped students are skipped).
+      // Sent one at a time so the mail server isn't flooded.
+      let recipients = [];
+      let recipientsLoaded = true;
+      try {
+        const enrollmentRows = await getCourseEnrollments(concludedCourse.id);
+        recipients = enrollmentRows
+          .map(mapEnrollmentFromDatabase)
+          .filter((item) => item.status.toLowerCase() !== "dropped" && item.email);
+      } catch (loadError) {
+        recipientsLoaded = false;
+        console.error("Course concluded, but students could not be loaded for email:", loadError);
+      }
+
+      let emailsSent = 0;
+      for (const recipient of recipients) {
+        const ok = await sendNotificationEmail("/api/email/course-concluded", {
+          student_email: recipient.email,
+          student_name: recipient.name || "Student",
+          course_title: concludedCourse.title,
+          course_code: concludedCourse.code,
+          section: concludedCourse.section || "",
+          academic_term: concludedCourse.term || "",
+        });
+        if (ok) emailsSent += 1;
+      }
+
+      const failed = recipients.length - emailsSent;
       showToastNotification(
-        `Course "${concludedCourse.code}" successfully concluded!`
+        !recipientsLoaded
+          ? `Course "${concludedCourse.code}" successfully concluded, but students could not be notified by email.`
+          : recipients.length === 0
+          ? `Course "${concludedCourse.code}" successfully concluded!`
+          : failed === 0
+          ? `Course "${concludedCourse.code}" successfully concluded! ${emailsSent} student${
+              emailsSent === 1 ? "" : "s"
+            } notified by email.`
+          : `Course "${concludedCourse.code}" successfully concluded, but ${failed} email notification${
+              failed === 1 ? "" : "s"
+            } could not be sent.`
       );
     } catch (error) {
       console.error("Error concluding course:", error);
@@ -835,9 +896,27 @@ export default function StaffDashboard() {
         )
       );
 
+      let dropEmailSent = null;
+      if (action === "drop" && student.email) {
+        dropEmailSent = await sendNotificationEmail("/api/email/dropped", {
+          student_email: student.email,
+          student_name: student.name || "Student",
+          course_title: selectedCourse.title,
+          course_code: selectedCourse.code,
+          section: selectedCourse.section || "",
+          academic_term: selectedCourse.term || "",
+        });
+      }
+
       showToastNotification(
         action === "drop"
-          ? `${student.name} marked as dropped from ${selectedCourse.code}.`
+          ? `${student.name} marked as dropped from ${selectedCourse.code}.${
+              dropEmailSent === true
+                ? " Email notification sent."
+                : dropEmailSent === false
+                ? " The email notification could not be sent."
+                : ""
+            }`
           : action === "undrop"
           ? `${student.name} re-enrolled in ${selectedCourse.code}.`
           : `${student.name} successfully unenrolled from ${selectedCourse.code}.`

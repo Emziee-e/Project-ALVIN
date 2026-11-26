@@ -1860,7 +1860,18 @@ export default function StaffStatistics() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <button
+                type="button"
+                onClick={handleDownloadOverviewPDF}
+                disabled={overviewLoading || isGeneratingOverviewPdf || !overview}
+                className="flex items-center justify-center gap-2 bg-[#862334] text-white rounded-xl px-4 py-2.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#6d1c2a] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {isGeneratingOverviewPdf ? "Generating PDF..." : "Download PDF"}
+              </button>
+
+              <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-[#862334] hidden sm:block" />
               <div className="relative w-full sm:w-72" ref={dropdownRef}>
                 <button
@@ -1933,8 +1944,15 @@ export default function StaffStatistics() {
                   </div>
                 )}
               </div>
+              </div>
             </div>
           </div>
+
+          {overviewPdfError && (
+            <p role="alert" className="text-xs text-red-700 font-Inter no-print">
+              {overviewPdfError}
+            </p>
+          )}
 
           {/* KPI Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 no-print">
@@ -2091,20 +2109,6 @@ export default function StaffStatistics() {
                     {isTrendExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                     {isTrendExpanded ? "Unexpand" : "Expand"}
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={handleDownloadOverviewPDF}
-                    disabled={
-                      overviewLoading ||
-                      isGeneratingOverviewPdf ||
-                      !(Array.isArray(overview?.trend) && overview.trend.length)
-                    }
-                    className="flex items-center gap-2 bg-white text-[#862334] border border-[#862334]/40 rounded-xl px-3.5 py-1.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#862334]/5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    {isGeneratingOverviewPdf ? "Generating PDF..." : "Download PDF"}
-                  </button>
                 </div>
               </div>
 
@@ -2130,12 +2134,6 @@ export default function StaffStatistics() {
                   </div>
                 )}
               </div>
-
-              {overviewPdfError && (
-                <p role="alert" className="mt-3 text-xs text-red-700 font-Inter">
-                  {overviewPdfError}
-                </p>
-              )}
 
               {!overviewLoading && (
                 <AIAnalysis
