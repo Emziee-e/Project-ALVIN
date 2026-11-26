@@ -24,6 +24,8 @@ import {
   Trash2,
   Maximize2,
   Minimize2,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SignOutModal from "../../Components/SignOutModal";
@@ -433,6 +435,109 @@ function CohortTrendChart({ data = [], pxPerPoint = 0 }) {
   );
 }
 
+// ----------------------------------------------------------------------
+// AI ANALYSIS BLOCK: plain-language reading of a chart, written by the backend AI
+// ----------------------------------------------------------------------
+function AIAnalysis({ chart, body, request, onResult, className = "" }) {
+  const [status, setStatus] = useState("idle"); // idle | loading | done | error
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+
+  // Keep the latest callbacks in refs so they never retrigger the request.
+  const requestRef = useRef(request);
+  const onResultRef = useRef(onResult);
+  requestRef.current = request;
+  onResultRef.current = onResult;
+
+  const bodyKey = JSON.stringify(body);
+  const hasData = (body.points?.length || 0) > 0 || (body.skills?.length || 0) > 0;
+
+  useEffect(() => {
+    if (!hasData) {
+      setStatus("idle");
+      setText("");
+      onResultRef.current?.("");
+      return undefined;
+    }
+
+    let alive = true;
+    setStatus("loading");
+    setError("");
+    onResultRef.current?.("");
+
+    // Short delay so quickly switching between students doesn't fire a request each time.
+    const timer = setTimeout(async () => {
+      try {
+        const res = await requestRef.current("/api/staff/statistics/ai-analysis", {
+          method: "POST",
+          body: JSON.stringify({ chart, ...body }),
+        });
+        if (!alive) return;
+        setText(res.analysis || "");
+        setStatus("done");
+        onResultRef.current?.(res.analysis || "");
+      } catch (err) {
+        if (!alive) return;
+        setError(err.message || "AI analysis is unavailable right now.");
+        setStatus("error");
+      }
+    }, 600);
+
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart, bodyKey, attempt]);
+
+  if (!hasData) return null;
+
+  return (
+    <div
+      // Anything not finished is dropped from the student PDF (see handleDownloadPDF).
+      data-ai-pending={status === "done" ? undefined : "true"}
+      className={`rounded-xl border border-[#862334]/15 bg-white p-4 font-Inter ${className}`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 text-[#862334]">
+          <Sparkles className="w-4 h-4" />
+          <span className="text-xs font-bold tracking-wider uppercase">AI Analysis</span>
+        </div>
+        {status === "error" && (
+          <button
+            type="button"
+            onClick={() => setAttempt((a) => a + 1)}
+            className="no-print flex items-center gap-1.5 text-xs font-semibold text-[#862334] hover:text-[#6d1c2a] cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry
+          </button>
+        )}
+      </div>
+
+      {status === "loading" && (
+        <div className="space-y-2 animate-pulse" aria-label="Generating AI analysis">
+          <div className="h-3 rounded bg-gray-100 w-full" />
+          <div className="h-3 rounded bg-gray-100 w-11/12" />
+          <div className="h-3 rounded bg-gray-100 w-8/12" />
+        </div>
+      )}
+
+      {status === "error" && <p className="text-sm text-rose-600">{error}</p>}
+
+      {status === "done" && (
+        <>
+          <p className="text-sm text-gray-700 leading-relaxed">{text}</p>
+          <p className="mt-2 text-[11px] text-gray-400">
+            AI-generated from the data shown. Review before acting on it.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 const navItems = [
   { id: "account", label: "Account" },
   { id: "dashboard", label: "Dashboard", path: "/staff/dashboard" },
@@ -482,6 +587,10 @@ export default function StaffStatistics() {
   const [pdfError, setPdfError] = useState("");
   const [isTrendExpanded, setIsTrendExpanded] = useState(false);
   const [isStudentChartExpanded, setIsStudentChartExpanded] = useState(false);
+  const [isGeneratingOverviewPdf, setIsGeneratingOverviewPdf] = useState(false);
+  const [overviewPdfError, setOverviewPdfError] = useState("");
+  const [cohortAnalysis, setCohortAnalysis] = useState("");
+  const overviewChartRef = useRef(null);
 
   const [userProfile, setUserProfile] = useState({
     name: "User",
@@ -1012,6 +1121,8 @@ export default function StaffStatistics() {
           }
           // The on-screen title/search row is replaced by the branded header below.
           clonedDoc.querySelectorAll("[data-pdf-hide]").forEach((el) => el.remove());
+          // AI analysis that is still loading (or failed) would show as a skeleton/error; leave it out.
+          clonedDoc.querySelectorAll("[data-ai-pending]").forEach((el) => el.remove());
 
           // Branded header (same look as the interview results report).
           const header = clonedDoc.createElement("div");
@@ -1162,6 +1273,267 @@ export default function StaffStatistics() {
     selectedSection === "ALL"
       ? "Competency Growth Trend (Overall)"
       : `Competency Growth Trend (${currentSectionLabel})`;
+
+  // ---- AI analysis payloads: numbers only, no student names or emails ----
+  const clampScore = (v) => Math.min(100, Math.max(0, Number(v) || 0));
+
+  const cohortBody = {
+    points: (Array.isArray(overview?.trend) ? overview.trend : [])
+      .slice(-200)
+      .map((t) => ({ label: String(t.date ?? "").slice(0, 40), value: clampScore(t.average) })),
+    kpis: overview
+      ? {
+          total_interviews: Number(overview.total_interviews) || 0,
+          job_readiness_rate: clampScore(overview.job_readiness_rate),
+          average_improvement: Math.min(100, Math.max(-100, Number(overview.average_improvement) || 0)),
+          requires_coaching: Number(overview.requires_coaching) || 0,
+        }
+      : undefined,
+  };
+
+  const studentGrowthBody = {
+    points: (selectedStudent?.lineData || [])
+      .slice(-200)
+      .map((d) => ({ label: String(d.date ?? "").slice(0, 40), value: clampScore(d.score) })),
+  };
+
+  const studentSkillsBody = {
+    skills: (selectedStudent?.latestRadarData || selectedStudent?.radarData || [])
+      .slice(0, 30)
+      .map((s) => ({ name: String(s.subject ?? "").slice(0, 60), score: clampScore(s.score) })),
+  };
+
+  const blobToDataUrl = (blob) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+  // jsPDF's built-in fonts only cover Latin-1, so swap/strip anything outside it.
+  const pdfText = (s) =>
+    String(s ?? "")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u2026/g, "...")
+      .replace(/[^\x00-\xFF]/g, "");
+
+  // Downloads the evaluation overview (summary cards, cohort trend chart, AI analysis) as a PDF.
+  // Requires: npm install html2canvas-pro jspdf  (already used by the student report)
+  const handleDownloadOverviewPDF = async () => {
+    if (!overview || isGeneratingOverviewPdf) return;
+
+    setIsGeneratingOverviewPdf(true);
+    setOverviewPdfError("");
+    setIsTrendExpanded(false);
+    try {
+      // Let the chart return to its normal size before it is captured.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
+
+      // AI text: reuse what is on screen, otherwise ask the backend (it is cached there).
+      let analysis = cohortAnalysis;
+      if (!analysis && cohortBody.points.length) {
+        try {
+          const res = await staffRequest("/api/staff/statistics/ai-analysis", {
+            method: "POST",
+            body: JSON.stringify({ chart: "cohort_trend", ...cohortBody }),
+          });
+          analysis = res.analysis || "";
+        } catch (aiErr) {
+          console.warn("AI analysis could not be added to the PDF:", aiErr);
+        }
+      }
+
+      let logoDataUrl = null;
+      try {
+        const logoResponse = await fetch("/images/Alvin-logo.png");
+        if (logoResponse.ok) logoDataUrl = await blobToDataUrl(await logoResponse.blob());
+      } catch (logoErr) {
+        console.warn("Logo could not be added to the PDF:", logoErr);
+      }
+
+      const chartCanvas = overviewChartRef.current
+        ? await html2canvas(overviewChartRef.current, {
+            scale: 2,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+            logging: false,
+          })
+        : null;
+
+      const now = new Date();
+      const reportDate = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      const isoDate = now.toISOString().slice(0, 10);
+      const fmt = (n) =>
+        Number.isFinite(Number(n)) ? Number(n).toLocaleString("en-US", { maximumFractionDigits: 1 }) : "0";
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 14;
+      const contentW = pageW - margin * 2;
+      const maroon = [134, 35, 52];
+      let y = margin;
+
+      // Header
+      let textX = margin;
+      if (logoDataUrl) {
+        try {
+          pdf.addImage(logoDataUrl, "PNG", margin, y, 14, 14);
+          textX = margin + 18;
+        } catch (imgErr) {
+          console.warn("Logo format not supported by the PDF:", imgErr);
+        }
+      }
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(8);
+      pdf.setTextColor(...maroon);
+      pdf.text("ALVIN AI CAREER READINESS", textX, y + 4);
+      pdf.setFontSize(18);
+      pdf.setTextColor(9, 13, 22);
+      pdf.text("Evaluation Overview", textX, y + 12);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(71, 85, 105);
+      pdf.text(`Section: ${pdfText(currentSectionLabel).slice(0, 45)}`, pageW - margin, y + 5, { align: "right" });
+      pdf.text(`Date: ${reportDate}`, pageW - margin, y + 11, { align: "right" });
+      y += 19;
+      pdf.setDrawColor(...maroon);
+      pdf.setLineWidth(0.6);
+      pdf.line(margin, y, pageW - margin, y);
+      y += 6;
+
+      // Summary cards
+      const improvement = Number(overview.average_improvement) || 0;
+      const kpis = [
+        ["Evaluations Completed", fmt(overview.total_interviews)],
+        ["Career Readiness Index", `${fmt(overview.job_readiness_rate)}%`],
+        ["Improvement Rate", `${improvement > 0 ? "+" : ""}${fmt(improvement)}%`],
+        ["Priority Attention", fmt(overview.requires_coaching)],
+      ];
+      const gap = 4;
+      const boxW = (contentW - gap * 3) / 4;
+      const boxH = 22;
+      kpis.forEach(([label, value], i) => {
+        const x = margin + i * (boxW + gap);
+        pdf.setFillColor(253, 251, 247);
+        pdf.setDrawColor(234, 229, 217);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(x, y, boxW, boxH, 2, 2, "FD");
+        pdf.setFillColor(...maroon);
+        pdf.rect(x + 1, y, boxW - 2, 1.1, "F");
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text(label, x + 3, y + 7);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(15);
+        pdf.setTextColor(...maroon);
+        pdf.text(value, x + 3, y + 16);
+      });
+      y += boxH + 4;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7);
+      pdf.setTextColor(107, 114, 128);
+      pdf.text(
+        "Career Readiness Index: students scoring 70%+ on their latest attempt.  Priority Attention: students scoring below 70%.",
+        margin,
+        y + 2
+      );
+      y += 9;
+
+      // Cohort trend chart
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.setTextColor(9, 13, 22);
+      pdf.text(pdfText(dynamicChartTitle), margin, y + 4);
+      y += 8;
+      if (chartCanvas) {
+        const chartH = (chartCanvas.height / chartCanvas.width) * contentW;
+        pdf.addImage(chartCanvas.toDataURL("image/jpeg", 0.95), "JPEG", margin, y, contentW, chartH);
+        y += chartH + 3;
+        const trend = Array.isArray(overview.trend) ? overview.trend : [];
+        const avg = trend.length
+          ? Math.round(trend.reduce((acc, cur) => acc + (cur.average || 0), 0) / trend.length)
+          : null;
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text(
+          `Dashed line = 70% target benchmark.${avg != null ? `  Cohort average: ${avg}%.` : ""}`,
+          margin,
+          y + 2
+        );
+        y += 8;
+      } else {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text("No evaluation data available for this section yet.", margin, y + 4);
+        y += 10;
+      }
+
+      // AI analysis
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9.5);
+      pdf.setLineHeightFactor(1.4);
+      const lines = pdf.splitTextToSize(
+        pdfText(analysis || "AI analysis was not available when this report was generated."),
+        contentW - 8
+      );
+      const lineH = 9.5 * 1.4 * 0.3528;
+      const aiBoxH = 14 + lines.length * lineH;
+      if (y + aiBoxH > pageH - 16) {
+        pdf.addPage();
+        y = margin;
+      }
+      pdf.setFillColor(253, 251, 247);
+      pdf.setDrawColor(134, 35, 52);
+      pdf.setLineWidth(0.2);
+      pdf.roundedRect(margin, y, contentW, aiBoxH, 2, 2, "FD");
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.setTextColor(...maroon);
+      pdf.text("AI Analysis", margin + 4, y + 7);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(55, 65, 81);
+      pdf.text(lines, margin + 4, y + 13);
+
+      // Footer on every page
+      const totalPages = pdf.getNumberOfPages();
+      pdf.setFontSize(8);
+      pdf.setTextColor(120);
+      for (let n = 1; n <= totalPages; n += 1) {
+        pdf.setPage(n);
+        pdf.text("AI analysis is generated automatically from the chart data. Review before sharing.", pageW / 2, pageH - 9, {
+          align: "center",
+        });
+        pdf.text(`Page ${n} of ${totalPages}`, pageW / 2, pageH - 5, { align: "center" });
+      }
+
+      const safeSection = pdfText(currentSectionLabel).trim().replace(/[^\w\-]+/g, "_") || "Overall";
+      pdf.save(`Evaluation_Overview_${safeSection}_${isoDate}.pdf`);
+
+      setToast({
+        id: Date.now(),
+        title: "PDF downloaded",
+        message: "The evaluation overview was saved to your device.",
+      });
+    } catch (err) {
+      console.error("Overview PDF generation failed:", err);
+      setOverviewPdfError("Could not generate the PDF. Please try again.");
+    } finally {
+      setIsGeneratingOverviewPdf(false);
+    }
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white font-Inter relative">
@@ -1719,6 +2091,20 @@ export default function StaffStatistics() {
                     {isTrendExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                     {isTrendExpanded ? "Unexpand" : "Expand"}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadOverviewPDF}
+                    disabled={
+                      overviewLoading ||
+                      isGeneratingOverviewPdf ||
+                      !(Array.isArray(overview?.trend) && overview.trend.length)
+                    }
+                    className="flex items-center gap-2 bg-white text-[#862334] border border-[#862334]/40 rounded-xl px-3.5 py-1.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#862334]/5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {isGeneratingOverviewPdf ? "Generating PDF..." : "Download PDF"}
+                  </button>
                 </div>
               </div>
 
@@ -1728,7 +2114,10 @@ export default function StaffStatistics() {
                 </div>
               )}
 
-              <div className={`${isTrendExpanded ? "h-[520px]" : "h-[360px]"} w-full pt-2 transition-all duration-300`}>
+              <div
+                ref={overviewChartRef}
+                className={`${isTrendExpanded ? "h-[520px]" : "h-[360px]"} w-full pt-2 transition-all duration-300`}
+              >
                 {overviewLoading ? (
                   <div className="h-full flex items-center justify-center text-gray-400 text-sm font-Inter">
                     Loading section statistics…
@@ -1741,6 +2130,22 @@ export default function StaffStatistics() {
                   </div>
                 )}
               </div>
+
+              {overviewPdfError && (
+                <p role="alert" className="mt-3 text-xs text-red-700 font-Inter">
+                  {overviewPdfError}
+                </p>
+              )}
+
+              {!overviewLoading && (
+                <AIAnalysis
+                  chart="cohort_trend"
+                  body={cohortBody}
+                  request={staffRequest}
+                  onResult={setCohortAnalysis}
+                  className="mt-5"
+                />
+              )}
             </div>
           </div>
 
@@ -1993,6 +2398,12 @@ export default function StaffStatistics() {
                       expanded={isStudentChartExpanded}
                       onToggleExpand={() => setIsStudentChartExpanded((v) => !v)}
                     />
+                    <AIAnalysis
+                      chart="student_growth"
+                      body={studentGrowthBody}
+                      request={staffRequest}
+                      className="mt-4"
+                    />
                   </div>
 
                   {/* Skills Assessment Radar Chart */}
@@ -2011,6 +2422,12 @@ export default function StaffStatistics() {
                       </div>
                     </div>
                     <RadarChartComponent data={selectedStudent.latestRadarData || selectedStudent.radarData || []} />
+                    <AIAnalysis
+                      chart="student_skills"
+                      body={studentSkillsBody}
+                      request={staffRequest}
+                      className="mt-4"
+                    />
                   </div>
                 </div>
               )}
