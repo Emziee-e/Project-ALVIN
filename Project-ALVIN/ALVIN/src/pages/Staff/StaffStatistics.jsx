@@ -1374,15 +1374,65 @@ export default function StaffStatistics() {
       const fmt = (n) =>
         Number.isFinite(Number(n)) ? Number(n).toLocaleString("en-US", { maximumFractionDigits: 1 }) : "0";
 
+      const improvement = Number(overview.average_improvement) || 0;
+      const trend = Array.isArray(overview.trend) ? overview.trend : [];
+      const cohortAvg = trend.length
+        ? Math.round(trend.reduce((acc, cur) => acc + (cur.average || 0), 0) / trend.length)
+        : null;
+
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 14;
+      const margin = 12;
       const contentW = pageW - margin * 2;
+      const footerTop = pageH - 16; // content must stay above the footer
       const maroon = [134, 35, 52];
+      const ink = [9, 13, 22];
+      const slate = [100, 116, 139];
+      const border = [229, 231, 235];
       let y = margin;
 
-      // Header
+      // ---- small drawing helpers (match the interview results report look) ----
+      const eyebrow = (text, x, yy, color = slate, size = 6.5) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(size);
+        pdf.setTextColor(...color);
+        pdf.text(pdfText(text).toUpperCase(), x, yy, { charSpace: 0.35 });
+      };
+      const labelValueRight = (label, value, rightX, yy) => {
+        pdf.setFontSize(9);
+        pdf.setFont("helvetica", "bold");
+        const valueW = pdf.getTextWidth(value);
+        pdf.setTextColor(...ink);
+        pdf.text(value, rightX, yy, { align: "right" });
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(...slate);
+        pdf.text(label, rightX - valueW - 1, yy, { align: "right" });
+      };
+      const sectionHeading = (title, right) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(...ink);
+        pdf.text(pdfText(title), margin, y + 4);
+        if (right) {
+          pdf.setFontSize(11);
+          pdf.setTextColor(...maroon);
+          pdf.text(pdfText(right), pageW - margin, y + 4, { align: "right" });
+        }
+        y += 7;
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, y, pageW - margin, y);
+        y += 4;
+      };
+      const ensureSpace = (needed) => {
+        if (y + needed > footerTop) {
+          pdf.addPage();
+          y = margin;
+        }
+      };
+
+      // ---- Header ----
       let textX = margin;
       if (logoDataUrl) {
         try {
@@ -1392,130 +1442,175 @@ export default function StaffStatistics() {
           console.warn("Logo format not supported by the PDF:", imgErr);
         }
       }
+      eyebrow("ALVIN AI Evaluation Overview Report", textX, y + 4, maroon, 7);
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(8);
-      pdf.setTextColor(...maroon);
-      pdf.text("ALVIN AI CAREER READINESS", textX, y + 4);
       pdf.setFontSize(18);
-      pdf.setTextColor(9, 13, 22);
+      pdf.setTextColor(...ink);
       pdf.text("Evaluation Overview", textX, y + 12);
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(71, 85, 105);
-      pdf.text(`Section: ${pdfText(currentSectionLabel).slice(0, 45)}`, pageW - margin, y + 5, { align: "right" });
-      pdf.text(`Date: ${reportDate}`, pageW - margin, y + 11, { align: "right" });
-      y += 19;
+      labelValueRight("Date: ", reportDate, pageW - margin, y + 5);
+      labelValueRight("Section: ", pdfText(currentSectionLabel).slice(0, 40), pageW - margin, y + 11);
+      y += 18;
       pdf.setDrawColor(...maroon);
       pdf.setLineWidth(0.6);
       pdf.line(margin, y, pageW - margin, y);
       y += 6;
 
-      // Summary cards
-      const improvement = Number(overview.average_improvement) || 0;
-      const kpis = [
-        ["Evaluations Completed", fmt(overview.total_interviews)],
-        ["Career Readiness Index", `${fmt(overview.job_readiness_rate)}%`],
-        ["Improvement Rate", `${improvement > 0 ? "+" : ""}${fmt(improvement)}%`],
-        ["Priority Attention", fmt(overview.requires_coaching)],
+      // ---- Info box (prepared by / email / section) ----
+      const infoH = 15;
+      pdf.setFillColor(252, 252, 252);
+      pdf.setDrawColor(...border);
+      pdf.setLineWidth(0.3);
+      pdf.roundedRect(margin, y, contentW, infoH, 2.5, 2.5, "FD");
+      const infoCols = [
+        ["Prepared By", userProfile?.name || "Staff Advisor"],
+        ["Email", userProfile?.email || "Not Available"],
+        ["Section", currentSectionLabel],
       ];
-      const gap = 4;
-      const boxW = (contentW - gap * 3) / 4;
-      const boxH = 22;
-      kpis.forEach(([label, value], i) => {
-        const x = margin + i * (boxW + gap);
-        pdf.setFillColor(253, 251, 247);
-        pdf.setDrawColor(234, 229, 217);
-        pdf.setLineWidth(0.3);
-        pdf.roundedRect(x, y, boxW, boxH, 2, 2, "FD");
-        pdf.setFillColor(...maroon);
-        pdf.rect(x + 1, y, boxW - 2, 1.1, "F");
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(7);
-        pdf.setTextColor(107, 114, 128);
-        pdf.text(label, x + 3, y + 7);
+      const colW = contentW / 3;
+      infoCols.forEach(([label, value], i) => {
+        const x = margin + 4 + i * colW;
+        eyebrow(label, x, y + 5.5);
         pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(15);
-        pdf.setTextColor(...maroon);
-        pdf.text(value, x + 3, y + 16);
+        pdf.setFontSize(9);
+        pdf.setTextColor(...ink);
+        const lines = pdf.splitTextToSize(pdfText(value), colW - 8);
+        const shown = lines.length > 1 ? `${String(lines[0]).slice(0, -3)}...` : lines[0] || "";
+        pdf.text(shown, x, y + 11);
       });
-      y += boxH + 4;
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(107, 114, 128);
-      pdf.text(
-        "Career Readiness Index: students scoring 70%+ on their latest attempt.  Priority Attention: students scoring below 70%.",
-        margin,
-        y + 2
-      );
-      y += 9;
+      y += infoH + 6;
 
-      // Cohort trend chart
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(12);
-      pdf.setTextColor(9, 13, 22);
-      pdf.text(pdfText(dynamicChartTitle), margin, y + 4);
-      y += 8;
-      if (chartCanvas) {
-        const chartH = (chartCanvas.height / chartCanvas.width) * contentW;
-        pdf.addImage(chartCanvas.toDataURL("image/jpeg", 0.95), "JPEG", margin, y, contentW, chartH);
-        y += chartH + 3;
-        const trend = Array.isArray(overview.trend) ? overview.trend : [];
-        const avg = trend.length
-          ? Math.round(trend.reduce((acc, cur) => acc + (cur.average || 0), 0) / trend.length)
-          : null;
+      // ---- Summary cards (2 x 2, same card style as the rubric cards) ----
+      const kpis = [
+        {
+          tag: "Metric 01",
+          label: "Evaluations Completed",
+          value: fmt(overview.total_interviews),
+          note: "Completed in this section",
+        },
+        {
+          tag: "Metric 02",
+          label: "Career Readiness Index",
+          value: `${fmt(overview.job_readiness_rate)}%`,
+          note: "Students scoring 70%+ on their latest attempt",
+          bar: Math.min(100, Math.max(0, Number(overview.job_readiness_rate) || 0)),
+        },
+        {
+          tag: "Metric 03",
+          label: "Improvement Rate",
+          value: `${improvement > 0 ? "+" : ""}${fmt(improvement)}%`,
+          note: "Between 1st and latest attempt",
+        },
+        {
+          tag: "Metric 04",
+          label: "Priority Attention",
+          value: fmt(overview.requires_coaching),
+          note: "Students scoring below 70%",
+        },
+      ];
+      const cardGap = 5;
+      const cardW = (contentW - cardGap) / 2;
+      const cardH = 27;
+      kpis.forEach((kpi, i) => {
+        const x = margin + (i % 2) * (cardW + cardGap);
+        const cy = y + Math.floor(i / 2) * (cardH + cardGap);
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(x, cy, cardW, cardH, 2.5, 2.5, "FD");
+        pdf.setFillColor(...maroon);
+        pdf.roundedRect(x + 0.5, cy, cardW - 1, 1.1, 0.5, 0.5, "F");
+        eyebrow(kpi.tag, x + 5, cy + 7, maroon, 6);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(10.5);
+        pdf.setTextColor(...ink);
+        pdf.text(kpi.label, x + 5, cy + 12.5);
+        pdf.setFontSize(20);
+        pdf.setTextColor(...maroon);
+        pdf.text(kpi.value, x + cardW - 5, cy + 13, { align: "right" });
+        if (kpi.bar != null) {
+          pdf.setFillColor(241, 245, 249);
+          pdf.roundedRect(x + 5, cy + 17.5, cardW - 10, 1.8, 0.9, 0.9, "F");
+          if (kpi.bar > 0) {
+            pdf.setFillColor(...maroon);
+            pdf.roundedRect(x + 5, cy + 17.5, Math.max(1.8, ((cardW - 10) * kpi.bar) / 100), 1.8, 0.9, 0.9, "F");
+          }
+        }
         pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8);
-        pdf.setTextColor(107, 114, 128);
-        pdf.text(
-          `Dashed line = 70% target benchmark.${avg != null ? `  Cohort average: ${avg}%.` : ""}`,
-          margin,
-          y + 2
-        );
-        y += 8;
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(...slate);
+        pdf.text(pdfText(kpi.note), x + 5, cy + 23.5);
+      });
+      y += cardH * 2 + cardGap + 9;
+
+      // ---- Competency growth trend ----
+      ensureSpace(60);
+      sectionHeading(dynamicChartTitle, cohortAvg != null ? `Cohort Average: ${cohortAvg}%` : "");
+      if (chartCanvas) {
+        const innerW = contentW - 8;
+        const chartH = (chartCanvas.height / chartCanvas.width) * innerW;
+        const boxH = chartH + 14;
+        ensureSpace(boxH);
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(margin, y, contentW, boxH, 2.5, 2.5, "FD");
+        pdf.addImage(chartCanvas.toDataURL("image/jpeg", 0.95), "JPEG", margin + 4, y + 4, innerW, chartH);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(...slate);
+        pdf.text("Dashed line = 70% target benchmark.", margin + 4, y + chartH + 9.5);
+        y += boxH + 8;
       } else {
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(9);
-        pdf.setTextColor(107, 114, 128);
+        pdf.setTextColor(...slate);
         pdf.text("No evaluation data available for this section yet.", margin, y + 4);
-        y += 10;
+        y += 12;
       }
 
-      // AI analysis
+      // ---- AI analysis (styled like the "AI Coach Feedback" blocks) ----
       pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9.5);
-      pdf.setLineHeightFactor(1.4);
-      const lines = pdf.splitTextToSize(
+      pdf.setFontSize(9);
+      pdf.setLineHeightFactor(1.45);
+      const aiLines = pdf.splitTextToSize(
         pdfText(analysis || "AI analysis was not available when this report was generated."),
-        contentW - 8
+        contentW - 14
       );
-      const lineH = 9.5 * 1.4 * 0.3528;
-      const aiBoxH = 14 + lines.length * lineH;
-      if (y + aiBoxH > pageH - 16) {
-        pdf.addPage();
-        y = margin;
-      }
-      pdf.setFillColor(253, 251, 247);
-      pdf.setDrawColor(134, 35, 52);
-      pdf.setLineWidth(0.2);
-      pdf.roundedRect(margin, y, contentW, aiBoxH, 2, 2, "FD");
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(10);
-      pdf.setTextColor(...maroon);
-      pdf.text("AI Analysis", margin + 4, y + 7);
+      const aiLineH = 9 * 1.45 * 0.3528;
+      const aiBoxH = 13 + aiLines.length * aiLineH + 7;
+      ensureSpace(aiBoxH + 11);
+      sectionHeading("AI Analysis");
+      pdf.setFillColor(250, 245, 246);
+      pdf.rect(margin, y, contentW, aiBoxH, "F");
+      pdf.setFillColor(...maroon);
+      pdf.rect(margin, y, 1.2, aiBoxH, "F");
+      eyebrow("AI Analysis", margin + 6, y + 6.5, maroon, 6.5);
       pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9.5);
+      pdf.setFontSize(9);
       pdf.setTextColor(55, 65, 81);
-      pdf.text(lines, margin + 4, y + 13);
+      pdf.text(aiLines, margin + 6, y + 12.5);
+      pdf.setFontSize(7);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(
+        "Generated automatically from the chart data. Review before sharing.",
+        margin + 6,
+        y + aiBoxH - 3
+      );
 
-      // Footer on every page
+      // ---- Footer on every page ----
       const totalPages = pdf.getNumberOfPages();
-      pdf.setFontSize(8);
-      pdf.setTextColor(120);
       for (let n = 1; n <= totalPages; n += 1) {
         pdf.setPage(n);
-        pdf.text("AI analysis is generated automatically from the chart data. Review before sharing.", pageW / 2, pageH - 9, {
-          align: "center",
-        });
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, footerTop, pageW - margin, footerTop);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(148, 163, 184);
+        pdf.text("Generated by Alvin AI Career Readiness Platform", margin, footerTop + 5);
+        pdf.text("Readiness Target Benchmark: 70%+", pageW - margin, footerTop + 5, { align: "right" });
+        pdf.setFontSize(8);
+        pdf.setTextColor(120);
         pdf.text(`Page ${n} of ${totalPages}`, pageW / 2, pageH - 5, { align: "center" });
       }
 
