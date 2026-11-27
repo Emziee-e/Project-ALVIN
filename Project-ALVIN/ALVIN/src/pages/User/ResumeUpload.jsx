@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FileText,
   UploadCloud,
@@ -31,6 +31,8 @@ export default function ResumeUpload() {
   const [isLoading, setIsLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [userName, setUserName] = useState("");
+  const [isValidating, setIsValidating] = useState(false);
+  const validationRun = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -136,21 +138,66 @@ export default function ResumeUpload() {
     navigate("/");
   };
 
-  const handleFileDrop = (e) => {
+  const handleFileDrop = async (e) => {
     e.preventDefault();
     setDragOver(false);
     setError("");
 
     const uploadedFile = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
+    if (e.target?.type === "file") e.target.value = ""; // allows re-selecting the same file
+    if (!uploadedFile) return;
 
-    if (uploadedFile && uploadedFile.type === "application/pdf") {
-      if (uploadedFile.size > 5 * 1024 * 1024) {
-        setError("File exceeds the 5MB limit. Please upload a smaller PDF.");
-        return;
-      }
-      setFile(uploadedFile);
-    } else if (uploadedFile) {
+    if (uploadedFile.type !== "application/pdf") {
       setError("Please upload a PDF file.");
+      return;
+    }
+    if (uploadedFile.size > 5 * 1024 * 1024) {
+      setError("File exceeds the 5MB limit. Please upload a smaller PDF.");
+      return;
+    }
+
+    // Ask the backend whether this PDF is actually a resume before accepting it.
+    const runId = ++validationRun.current; // ignore stale results if another file is picked
+    setIsValidating(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Please sign out and sign in again.");
+      }
+
+      const headers = { Authorization: `Bearer ${session.access_token}` };
+      if (APP_API_KEY) headers["X-API-Key"] = APP_API_KEY;
+
+      const formData = new FormData();
+      formData.append("resume", uploadedFile);
+
+      const response = await fetch(`${API_BASE_URL}/api/interview/validate-resume`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (runId !== validationRun.current) return;
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        setError(
+          typeof payload?.detail === "string"
+            ? payload.detail
+            : "We couldn't verify this file. Please try again."
+        );
+        return; // file is NOT accepted
+      }
+
+      setFile(uploadedFile); // only reached if it's a resume
+    } catch (err) {
+      if (runId === validationRun.current) {
+        setError(err.message || "We couldn't verify this file. Please try again.");
+      }
+    } finally {
+      if (runId === validationRun.current) setIsValidating(false);
     }
   };
 
@@ -450,6 +497,12 @@ export default function ResumeUpload() {
                         />
                       </div>
 
+                      {isValidating && (
+                        <p className="mb-3 flex items-center gap-2 text-sm text-[#862334] font-Inter">
+                          <Loader2 className="animate-spin" size={16} /> Checking your resume...
+                        </p>
+                      )}
+
                       {file ? (
                         <>
                           <h4 className="font-[Space_Grotesk,sans-serif] text-lg font-semibold mb-1 text-[#862334] break-all max-w-md">
@@ -477,6 +530,7 @@ export default function ResumeUpload() {
                                 accept=".pdf"
                                 className="hidden"
                                 onChange={handleFileDrop}
+                                disabled={isValidating}
                               />
                             </label>
 
@@ -511,6 +565,7 @@ export default function ResumeUpload() {
                               accept=".pdf"
                               className="hidden"
                               onChange={handleFileDrop}
+                              disabled={isValidating}
                             />
                           </label>
                         </>
@@ -589,7 +644,7 @@ export default function ResumeUpload() {
                       )}
                       <button
                         onClick={handleInitialize}
-                        disabled={isLoading}
+                        disabled={isLoading || isValidating}
                         className="w-full py-5 bg-[#862334] hover:bg-[#ffb003] disabled:bg-gray-400 text-white font-Geist font-black text-lg tracking-tight hover:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3 rounded-[2px] uppercase cursor-pointer"
                       >
                         {isLoading ? (
