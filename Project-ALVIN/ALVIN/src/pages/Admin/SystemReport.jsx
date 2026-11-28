@@ -10,6 +10,9 @@ import {
   X,
   Mail,
   Check,
+  Download,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import {
   PieChart,
@@ -73,6 +76,48 @@ const buildProfileFromUser = (user) => {
     initials,
   };
 };
+
+const ADMIN_API_BASE =
+  import.meta.env.VITE_API_BASE_URL || "https://project-alvin-backend-production.up.railway.app";
+
+// Authenticated request to the admin API (same headers as the report loader).
+const adminRequest = async (path, options = {}) => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Please sign in again.");
+  const response = await fetch(`${ADMIN_API_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      "X-API-Key": import.meta.env.VITE_APP_API_KEY || "",
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `Request failed (${response.status})`);
+  }
+  return response.json();
+};
+
+const blobToDataUrl = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+// jsPDF's built-in fonts only cover Latin-1, so swap/strip anything outside it.
+const pdfText = (value) =>
+  String(value ?? "")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[^\x00-\xFF]/g, "");
 
 // ----------------------------------------------------------------------
 // CUSTOM MAROON DROPDOWN COMPONENT
@@ -339,6 +384,14 @@ export default function SystemReport() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const isMountedRef = useRef(true);
 
+  // AI analysis of the whole report + PDF export
+  const volumeChartRef = useRef(null);
+  const donutChartRef = useRef(null);
+  const aiRequestedRef = useRef(false);
+  const [aiAnalysis, setAiAnalysis] = useState({ status: "idle", text: "", error: "" }); // idle | loading | done | error
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const navigate = useNavigate();
@@ -487,6 +540,337 @@ export default function SystemReport() {
     }
     return { total: 0, segments: [] };
   }, [report, userTrendType, summary]);
+
+  const hasAiData = (summary?.total_interviews ?? 0) > 0 || (summary?.active_users ?? 0) > 0;
+
+  // Asks the backend AI for a plain-language reading of the whole report.
+  const generateAiAnalysis = useCallback(async (reportData) => {
+    setAiAnalysis((prev) => ({ ...prev, status: "loading", error: "" }));
+    try {
+      const res = await adminRequest("/api/admin/reports/ai-analysis", {
+        method: "POST",
+        body: JSON.stringify({
+          chart: "system_report",
+          summary: reportData.summary,
+          interview_volume: reportData.interview_volume,
+          user_activity: reportData.user_activity,
+        }),
+      });
+      const text = res.analysis || "";
+      if (isMountedRef.current) setAiAnalysis({ status: "done", text, error: "" });
+      return text;
+    } catch (error) {
+      console.warn("AI analysis unavailable:", error);
+      if (isMountedRef.current) {
+        setAiAnalysis({
+          status: "error",
+          text: "",
+          error: error.message || "AI analysis is unavailable right now.",
+        });
+      }
+      return "";
+    }
+  }, []);
+
+  // Generate once when the data first arrives. Live refreshes do not re-run it
+  // (that would call the AI on every update); use the Regenerate button instead.
+  useEffect(() => {
+    if (report && hasAiData && !aiRequestedRef.current) {
+      aiRequestedRef.current = true;
+      generateAiAnalysis(report);
+    }
+  }, [report, hasAiData, generateAiAnalysis]);
+
+  // Downloads the system report (cards, both charts, AI analysis) as a PDF.
+  // Requires: npm install html2canvas-pro jspdf
+  const handleDownloadPdf = async () => {
+    if (!report || isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+    setPdfError("");
+    try {
+      // Give charts a moment to finish any animation before they are captured.
+      await new Promise((resolve) => setTimeout(resolve, 700));
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
+
+      let analysis = aiAnalysis.status === "done" ? aiAnalysis.text : "";
+      if (!analysis && hasAiData) analysis = await generateAiAnalysis(report);
+
+      let logoDataUrl = null;
+      try {
+        const logoResponse = await fetch(Logo);
+        if (logoResponse.ok) logoDataUrl = await blobToDataUrl(await logoResponse.blob());
+      } catch (logoErr) {
+        console.warn("Logo could not be added to the PDF:", logoErr);
+      }
+
+      const capture = (node) =>
+        node
+          ? html2canvas(node, { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false })
+          : Promise.resolve(null);
+      const volumeCanvas = await capture(volumeChartRef.current);
+      const donutCanvas = await capture(donutChartRef.current);
+
+      const now = new Date();
+      const reportDate = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      const isoDate = now.toISOString().slice(0, 10);
+      const fmt = (n) =>
+        Number.isFinite(Number(n)) ? Number(n).toLocaleString("en-US", { maximumFractionDigits: 1 }) : "0";
+      const avgPerformance = summary?.average_performance;
+      const volumeTotal = volumeData.reduce((acc, cur) => acc + (Number(cur.volume) || 0), 0);
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 12;
+      const contentW = pageW - margin * 2;
+      const footerTop = pageH - 16; // content must stay above the footer
+      const maroon = [134, 35, 52];
+      const ink = [9, 13, 22];
+      const slate = [100, 116, 139];
+      const border = [229, 231, 235];
+      let y = margin;
+
+      // ---- small drawing helpers (same look as the staff overview / interview report) ----
+      const eyebrow = (text, x, yy, color = slate, size = 6.5) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(size);
+        pdf.setTextColor(...color);
+        pdf.text(pdfText(text).toUpperCase(), x, yy, { charSpace: 0.35 });
+      };
+      const labelValueRight = (label, value, rightX, yy) => {
+        pdf.setFontSize(9);
+        pdf.setFont("helvetica", "bold");
+        const valueW = pdf.getTextWidth(value);
+        pdf.setTextColor(...ink);
+        pdf.text(value, rightX, yy, { align: "right" });
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(...slate);
+        pdf.text(label, rightX - valueW - 1, yy, { align: "right" });
+      };
+      const sectionHeading = (title, right) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(...ink);
+        pdf.text(pdfText(title), margin, y + 4);
+        if (right) {
+          pdf.setTextColor(...maroon);
+          pdf.text(pdfText(right), pageW - margin, y + 4, { align: "right" });
+        }
+        y += 7;
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, y, pageW - margin, y);
+        y += 4;
+      };
+      const ensureSpace = (needed) => {
+        if (y + needed > footerTop) {
+          pdf.addPage();
+          y = margin;
+        }
+      };
+      // A chart image inside a rounded card, scaled to fit without distortion.
+      const chartCard = (title, rightText, canvas, caption) => {
+        const innerW = contentW - 8;
+        const maxH = 58;
+        let w = innerW;
+        let h = canvas ? (canvas.height / canvas.width) * w : 12;
+        if (canvas && h > maxH) {
+          h = maxH;
+          w = (canvas.width / canvas.height) * h;
+        }
+        const boxH = h + 14;
+        ensureSpace(boxH + 11);
+        sectionHeading(title, rightText);
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(margin, y, contentW, boxH, 2.5, 2.5, "FD");
+        if (canvas) {
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", margin + (contentW - w) / 2, y + 4, w, h);
+        } else {
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
+          pdf.setTextColor(...slate);
+          pdf.text("Chart unavailable.", margin + 4, y + 8);
+        }
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(...slate);
+        pdf.text(pdfText(caption), margin + 4, y + h + 9.5);
+        y += boxH + 8;
+      };
+
+      // ---- Header ----
+      let textX = margin;
+      if (logoDataUrl) {
+        try {
+          pdf.addImage(logoDataUrl, "PNG", margin, y, 14, 14);
+          textX = margin + 18;
+        } catch (imgErr) {
+          console.warn("Logo format not supported by the PDF:", imgErr);
+        }
+      }
+      eyebrow("ALVIN AI System Report", textX, y + 4, maroon, 7);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(18);
+      pdf.setTextColor(...ink);
+      pdf.text("System Report", textX, y + 12);
+      labelValueRight("Date: ", reportDate, pageW - margin, y + 5);
+      labelValueRight("Scope: ", "Platform-wide", pageW - margin, y + 11);
+      y += 18;
+      pdf.setDrawColor(...maroon);
+      pdf.setLineWidth(0.6);
+      pdf.line(margin, y, pageW - margin, y);
+      y += 6;
+
+      // ---- Info box ----
+      const infoH = 15;
+      pdf.setFillColor(252, 252, 252);
+      pdf.setDrawColor(...border);
+      pdf.setLineWidth(0.3);
+      pdf.roundedRect(margin, y, contentW, infoH, 2.5, 2.5, "FD");
+      const infoCols = [
+        ["Prepared By", userProfile?.name || "Administrator"],
+        ["Email", userProfile?.email || "Not Available"],
+        ["Data Last Updated", lastUpdated ? lastUpdated.toLocaleString("en-US") : "N/A"],
+      ];
+      const colW = contentW / 3;
+      infoCols.forEach(([label, value], i) => {
+        const x = margin + 4 + i * colW;
+        eyebrow(label, x, y + 5.5);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(9);
+        pdf.setTextColor(...ink);
+        const lines = pdf.splitTextToSize(pdfText(value), colW - 8);
+        const shown = lines.length > 1 ? `${String(lines[0]).slice(0, -3)}...` : lines[0] || "";
+        pdf.text(shown, x, y + 11);
+      });
+      y += infoH + 6;
+
+      // ---- Summary cards (3 across) ----
+      const kpis = [
+        {
+          tag: "Metric 01",
+          label: "Total Interviews",
+          value: fmt(summary?.total_interviews ?? 0),
+          note: "All-time completed sessions",
+        },
+        {
+          tag: "Metric 02",
+          label: "Avg. Performance",
+          value: avgPerformance == null ? "-" : `${fmt(avgPerformance)}%`,
+          note: "Target benchmark 70%+",
+          bar: avgPerformance == null ? null : Math.min(100, Math.max(0, Number(avgPerformance) || 0)),
+        },
+        {
+          tag: "Metric 03",
+          label: "Active Users",
+          value: fmt(summary?.active_users ?? 0),
+          note: `${fmt(summary?.daily_users ?? 0)} active today, last 30 days`,
+        },
+      ];
+      const cardGap = 4;
+      const cardW = (contentW - cardGap * 2) / 3;
+      const cardH = 34;
+      kpis.forEach((kpi, i) => {
+        const x = margin + i * (cardW + cardGap);
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(x, y, cardW, cardH, 2.5, 2.5, "FD");
+        pdf.setFillColor(...maroon);
+        pdf.roundedRect(x + 0.5, y, cardW - 1, 1.1, 0.5, 0.5, "F");
+        eyebrow(kpi.tag, x + 5, y + 7, maroon, 6);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(9.5);
+        pdf.setTextColor(...ink);
+        pdf.text(kpi.label, x + 5, y + 12.5);
+        pdf.setFontSize(20);
+        pdf.setTextColor(...maroon);
+        pdf.text(kpi.value, x + 5, y + 22);
+        if (kpi.bar != null) {
+          pdf.setFillColor(241, 245, 249);
+          pdf.roundedRect(x + 5, y + 25, cardW - 10, 1.6, 0.8, 0.8, "F");
+          if (kpi.bar > 0) {
+            pdf.setFillColor(...maroon);
+            pdf.roundedRect(x + 5, y + 25, Math.max(1.6, ((cardW - 10) * kpi.bar) / 100), 1.6, 0.8, 0.8, "F");
+          }
+        }
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7);
+        pdf.setTextColor(...slate);
+        pdf.text(pdfText(kpi.note), x + 5, y + 30.5);
+      });
+      y += cardH + 9;
+
+      // ---- Charts (as currently selected on screen) ----
+      chartCard(
+        `${interviewReportType} Interview Volume`,
+        `Total: ${fmt(volumeTotal)} sessions`,
+        volumeCanvas,
+        `Interview sessions per period (${interviewReportType.toLowerCase()} view).`
+      );
+      chartCard(
+        `${userTrendType} Users`,
+        `Total: ${fmt(donut?.total ?? 0)} users`,
+        donutCanvas,
+        `User activity breakdown (${userTrendType.toLowerCase()} view).`
+      );
+
+      // ---- AI analysis (styled like the "AI Coach Feedback" blocks) ----
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setLineHeightFactor(1.45);
+      const aiLines = pdf.splitTextToSize(
+        pdfText(analysis || "AI analysis was not available when this report was generated."),
+        contentW - 14
+      );
+      const aiLineH = 9 * 1.45 * 0.3528;
+      const aiBoxH = 13 + aiLines.length * aiLineH + 7;
+      ensureSpace(aiBoxH + 11);
+      sectionHeading("AI Analysis");
+      pdf.setFillColor(250, 245, 246);
+      pdf.rect(margin, y, contentW, aiBoxH, "F");
+      pdf.setFillColor(...maroon);
+      pdf.rect(margin, y, 1.2, aiBoxH, "F");
+      eyebrow("AI Analysis", margin + 6, y + 6.5, maroon, 6.5);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(55, 65, 81);
+      pdf.text(aiLines, margin + 6, y + 12.5);
+      pdf.setFontSize(7);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text("Generated automatically from the report data. Review before sharing.", margin + 6, y + aiBoxH - 3);
+
+      // ---- Footer on every page ----
+      const totalPages = pdf.getNumberOfPages();
+      for (let n = 1; n <= totalPages; n += 1) {
+        pdf.setPage(n);
+        pdf.setDrawColor(...border);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, footerTop, pageW - margin, footerTop);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(148, 163, 184);
+        pdf.text("Generated by Alvin AI Career Readiness Platform", margin, footerTop + 5);
+        pdf.text("Readiness Target Benchmark: 70%+", pageW - margin, footerTop + 5, { align: "right" });
+        pdf.setFontSize(8);
+        pdf.setTextColor(120);
+        pdf.text(`Page ${n} of ${totalPages}`, pageW / 2, pageH - 5, { align: "center" });
+      }
+
+      pdf.save(`System_Report_${isoDate}.pdf`);
+    } catch (error) {
+      console.error("System report PDF generation failed:", error);
+      setPdfError("Could not generate the PDF. Please try again.");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -691,6 +1075,30 @@ export default function SystemReport() {
                 </div>
               )}
 
+              {/* Page heading + PDF export */}
+              <div className="animate-item-in flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-bold font-Geist text-slate-900 tracking-tight">System Report</h2>
+                  <p className="text-xs text-slate-500 font-Inter mt-0.5">
+                    Platform-wide interview activity and performance
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={!report || isGeneratingPdf}
+                  className="flex items-center justify-center gap-2 bg-[#862334] text-white rounded-xl px-4 py-2.5 text-xs font-bold font-Inter tracking-wider hover:bg-[#6d1c2a] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  {isGeneratingPdf ? "Generating PDF..." : "Download PDF"}
+                </button>
+              </div>
+              {pdfError && (
+                <p role="alert" className="text-xs text-red-700 font-Inter">
+                  {pdfError}
+                </p>
+              )}
+
               {/* Minimalist Top KPI Row */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
@@ -814,7 +1222,7 @@ export default function SystemReport() {
                       onChange={setInterviewReportType}
                     />
                   </div>
-                  <div className="p-6">
+                  <div className="p-6" ref={volumeChartRef}>
                     <InterviewVolumeAreaChart data={volumeData} reportType={interviewReportType} />
                   </div>
                 </div>
@@ -836,7 +1244,7 @@ export default function SystemReport() {
                       onChange={setUserTrendType}
                     />
                   </div>
-                  <div className="p-6">
+                  <div className="p-6" ref={donutChartRef}>
                     <RadialDonutUsersChart
                       segments={donut?.segments}
                       total={donut?.total}
@@ -846,6 +1254,52 @@ export default function SystemReport() {
                 </div>
 
               </div>
+
+              {/* AI Analysis of the whole report */}
+              {hasAiData && (
+                <div
+                  style={{ animationDelay: "540ms" }}
+                  className="animate-item-in bg-white rounded-2xl border border-[#862334]/25 shadow-[0_4px_16px_rgba(134,35,52,0.05)]"
+                >
+                  <div className="px-6 py-4 border-b border-[#862334]/15 flex justify-between items-center bg-rose-50/20 rounded-t-2xl">
+                    <div className="flex items-center gap-2 text-[#862334]">
+                      <Sparkles className="w-4 h-4" />
+                      <h3 className="text-base font-bold font-[Geist,Inter] text-slate-900 tracking-tight">
+                        AI Analysis
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => report && generateAiAnalysis(report)}
+                      disabled={!report || aiAnalysis.status === "loading"}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-[#862334] hover:text-[#6d1c2a] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${aiAnalysis.status === "loading" ? "animate-spin" : ""}`} />
+                      {aiAnalysis.status === "error" ? "Retry" : "Regenerate"}
+                    </button>
+                  </div>
+                  <div className="p-6 font-Inter">
+                    {(aiAnalysis.status === "loading" || aiAnalysis.status === "idle") && (
+                      <div className="space-y-2 animate-pulse" aria-label="Generating AI analysis">
+                        <div className="h-3 rounded bg-gray-100 w-full" />
+                        <div className="h-3 rounded bg-gray-100 w-11/12" />
+                        <div className="h-3 rounded bg-gray-100 w-8/12" />
+                      </div>
+                    )}
+                    {aiAnalysis.status === "error" && (
+                      <p className="text-sm text-rose-600">{aiAnalysis.error}</p>
+                    )}
+                    {aiAnalysis.status === "done" && (
+                      <>
+                        <p className="text-sm text-gray-700 leading-relaxed">{aiAnalysis.text}</p>
+                        <p className="mt-2 text-[11px] text-gray-400">
+                          AI-generated from the data shown. Review before acting on it.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Bottom-right Last Updated status */}
               <div
