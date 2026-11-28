@@ -32,6 +32,9 @@ const APP_API_KEY = import.meta.env.VITE_APP_API_KEY || "";
 const DEFAULT_AVATAR_IMAGE = "/images/Alvin.png";
 const PROFILE_CACHE_KEY = "alvin_admin_profile_cache";
 
+const LIVE_LOCK_MESSAGE =
+  "A live interview is ongoing. You cannot modify the avatar until it ends.";
+
 const buildProfileFromUser = (user) => {
   const metadata = user.user_metadata || {};
   const fullName =
@@ -93,6 +96,8 @@ export default function AvatarManagement() {
   const [editError, setEditError] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [toast, setToast] = useState(null);
+  // True while an interview is running: avatar switching is locked until it ends.
+  const [isLiveSession, setIsLiveSession] = useState(false);
   const toastTimerRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -256,7 +261,27 @@ export default function AvatarManagement() {
     queueMicrotask(loadAvatars);
   }, [loadAvatars]);
 
+  const checkLiveSession = useCallback(async () => {
+    try {
+      const result = await apiRequest("/api/admin/live-session");
+      setIsLiveSession(result?.live === true);
+    } catch (error) {
+      // Keep the last known state; the backend still blocks the change itself.
+      console.warn("Unable to check for a live interview:", error);
+    }
+  }, [apiRequest]);
+
+  useEffect(() => {
+    queueMicrotask(checkLiveSession);
+    const timer = setInterval(checkLiveSession, 10000);
+    return () => clearInterval(timer);
+  }, [checkLiveSession]);
+
   const selectModel = async (id) => {
+    if (isLiveSession) {
+      setAvatarError(LIVE_LOCK_MESSAGE);
+      return;
+    }
     setAvatarError("");
     try {
       await apiRequest(`/api/admin/avatars/${encodeURIComponent(id)}/select`, {
@@ -269,6 +294,7 @@ export default function AvatarManagement() {
     } catch (error) {
       console.error("Unable to select avatar:", error);
       setAvatarError(error.message || "Unable to select avatar.");
+      checkLiveSession();
     }
   };
 
@@ -301,6 +327,10 @@ export default function AvatarManagement() {
   };
 
   const requestDeleteModel = (model) => {
+    if (isLiveSession) {
+      setAvatarError(LIVE_LOCK_MESSAGE);
+      return;
+    }
     if (!model.selected) {
       setAvatarPendingDeletion(model);
     }
@@ -308,6 +338,11 @@ export default function AvatarManagement() {
 
   const deleteModel = async () => {
     if (!avatarPendingDeletion) return;
+    if (isLiveSession) {
+      setAvatarPendingDeletion(null);
+      setAvatarError(LIVE_LOCK_MESSAGE);
+      return;
+    }
 
     setAvatarError("");
     try {
@@ -379,6 +414,10 @@ export default function AvatarManagement() {
   };
 
   const openEditModal = (model) => {
+    if (isLiveSession) {
+      setAvatarError(LIVE_LOCK_MESSAGE);
+      return;
+    }
     setEditError("");
     setEditForm({
       avatar_name: model.name,
@@ -399,6 +438,10 @@ export default function AvatarManagement() {
   const saveAvatarEdit = async (event) => {
     event.preventDefault();
     if (!avatarBeingEdited) return;
+    if (isLiveSession) {
+      setEditError(LIVE_LOCK_MESSAGE);
+      return;
+    }
 
     const name = editForm.avatar_name.trim();
     const newId = editForm.avatar_id.trim();
@@ -1136,6 +1179,15 @@ export default function AvatarManagement() {
                 )}
               </div>
 
+              {isLiveSession && (
+                <p
+                  role="status"
+                  className="animate-item-in rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                >
+                  {LIVE_LOCK_MESSAGE}
+                </p>
+              )}
+
               {avatarError && (
                 <p className="animate-item-in rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {avatarError}
@@ -1210,10 +1262,20 @@ export default function AvatarManagement() {
                         <button
                           type="button"
                           onClick={() => selectModel(model.id)}
-                          disabled={model.selected}
-                          aria-disabled={model.selected}
-                          className="flex w-full items-center justify-center rounded-xl bg-maroon px-4 py-3 text-sm font-Geist text-white shadow-[0_10px_20px_rgba(15,76,92,0.18)] transition-all duration-300 hover:bg-[#862334] hover:shadow-[0_14px_26px_rgba(134,35,52,0.25)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:hover:bg-maroon disabled:hover:shadow-none"
-                          title={model.selected ? "This avatar is already selected for the session" : "Select for session"}
+                          disabled={model.selected || isLiveSession}
+                          aria-disabled={model.selected || isLiveSession}
+                          className={`flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-Geist text-white transition-all duration-300 ${
+                            isLiveSession
+                              ? "bg-gray-400 shadow-none cursor-not-allowed"
+                              : "bg-maroon shadow-[0_10px_20px_rgba(15,76,92,0.18)] hover:bg-[#862334] hover:shadow-[0_14px_26px_rgba(134,35,52,0.25)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:hover:bg-maroon disabled:hover:shadow-none"
+                          }`}
+                          title={
+                            isLiveSession
+                              ? "Locked: a live interview is in progress"
+                              : model.selected
+                                ? "This avatar is already selected for the session"
+                                : "Select for session"
+                          }
                         >
                           {model.selected ? "Selected for Session" : "Select for Session"}
                         </button>
@@ -1221,8 +1283,13 @@ export default function AvatarManagement() {
                           <button
                             type="button"
                             onClick={() => openEditModal(model)}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#862334]/30 px-4 py-3 text-sm font-semibold text-[#862334] transition-colors hover:bg-[#862334]/10 cursor-pointer"
-                            title="Edit avatar"
+                            disabled={isLiveSession}
+                            className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+                              isLiveSession
+                                ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : "border-[#862334]/30 text-[#862334] hover:bg-[#862334]/10 cursor-pointer"
+                            }`}
+                            title={isLiveSession ? "Locked: a live interview is ongoing" : "Edit avatar"}
                           >
                             <Pencil className="h-4 w-4" />
                             Edit
@@ -1230,9 +1297,19 @@ export default function AvatarManagement() {
                           <button
                             type="button"
                             onClick={() => requestDeleteModel(model)}
-                            disabled={model.selected}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                            title={model.selected ? "Select another avatar before deleting this avatar" : "Delete avatar"}
+                            disabled={model.selected || isLiveSession}
+                            className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+                              isLiveSession
+                                ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : "border-red-200 text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            }`}
+                            title={
+                              isLiveSession
+                                ? "Locked: a live interview is ongoing"
+                                : model.selected
+                                  ? "Select another avatar before deleting this avatar"
+                                  : "Delete avatar"
+                            }
                           >
                             <Trash2 className="h-4 w-4" />
                             Delete
