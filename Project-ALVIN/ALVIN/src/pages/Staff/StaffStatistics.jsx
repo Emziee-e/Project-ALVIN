@@ -1193,6 +1193,10 @@ export default function StaffStatistics() {
       // Lay whole cards onto pages (never cutting through one). A card taller than
       // a page is split, preferring the gap between its inner items.
       const PAD = 4 * SCALE;
+      // A card (or group of cards) that overshoots the page by up to 12% is shrunk
+      // slightly to fit instead of being pushed to the next page, which left a
+      // large empty gap at the bottom of the previous page.
+      const FIT = 1.12;
       const blocks = cards.length ? cards.map((c) => ({ ...c })) : [{ top: 0, bottom: canvas.height }];
       const pages = [];
       let i = 0;
@@ -1200,10 +1204,10 @@ export default function StaffStatistics() {
         const first = blocks[i];
         const start = Math.max(0, Math.floor(first.cont ? first.top : first.top - PAD));
         let j = i;
-        while (j + 1 < blocks.length && blocks[j + 1].bottom + PAD - start <= pageHeightPx) j += 1;
+        while (j + 1 < blocks.length && blocks[j + 1].bottom + PAD - start <= pageHeightPx * FIT) j += 1;
         const end = Math.min(canvas.height, Math.ceil(blocks[j].bottom + PAD));
 
-        if (end - start > pageHeightPx && j === i) {
+        if (end - start > pageHeightPx * FIT && j === i) {
           const limit = start + pageHeightPx;
           const cuts = items.filter((b) => b > start + pageHeightPx * 0.3 && b + PAD <= limit);
           const cut = Math.floor(cuts.length ? Math.max(...cuts) + PAD : limit);
@@ -1225,13 +1229,17 @@ export default function StaffStatistics() {
         ctx.drawImage(canvas, 0, start, canvas.width, end - start, 0, 0, canvas.width, end - start);
 
         if (pageIndex > 0) pdf.addPage();
+        // Shrink (keeping the aspect ratio, centred) when the slice is taller than a page.
+        const shrink = end - start > pageHeightPx ? pageHeightPx / (end - start) : 1;
+        const drawW = contentW * shrink;
+        const drawH = ((end - start) / pxPerMm) * shrink;
         pdf.addImage(
           slice.toDataURL("image/jpeg", 0.95),
           "JPEG",
+          margin + (contentW - drawW) / 2,
           margin,
-          margin,
-          contentW,
-          (end - start) / pxPerMm
+          drawW,
+          drawH
         );
       });
 
